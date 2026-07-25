@@ -18,6 +18,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -81,6 +82,22 @@ class ConnectionPoolTest {
     }
 
     @Test
+    void staleConnectionShouldBeValidatedBeforeBorrow() {
+        AtomicBoolean closed = new AtomicBoolean();
+        AtomicInteger validationCalls = new AtomicInteger();
+        ConnectInfo pooled = connectInfo(connection(false, closed, validationCalls));
+        pooled.setLastAccessTime(new Date(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(1)));
+        LinkedBlockingQueue<ConnectInfo> queue = ConnectionPool.newConnectionQueue();
+        queue.offer(pooled);
+
+        assertNull(ConnectionPool.tryBorrowConnection(new ConnectInfo(), queue));
+
+        assertEquals(1, validationCalls.get());
+        assertTrue(closed.get());
+        assertNull(pooled.getConnection());
+    }
+
+    @Test
     void concurrentReturnsShouldKeepQueueBoundedAndCloseOverflowConnections() throws Exception {
         int connectionCount = 32;
         LinkedBlockingQueue<ConnectInfo> queue = ConnectionPool.newConnectionQueue();
@@ -131,6 +148,10 @@ class ConnectionPoolTest {
     }
 
     private static Connection connection(boolean valid, AtomicBoolean closed) {
+        return connection(valid, closed, new AtomicInteger());
+    }
+
+    private static Connection connection(boolean valid, AtomicBoolean closed, AtomicInteger validationCalls) {
         return (Connection) Proxy.newProxyInstance(
                 ConnectionPoolTest.class.getClassLoader(),
                 new Class<?>[]{Connection.class},
@@ -139,6 +160,7 @@ class ConnectionPoolTest {
                         case "isClosed":
                             return closed.get();
                         case "isValid":
+                            validationCalls.incrementAndGet();
                             return valid;
                         case "close":
                             closed.set(true);

@@ -142,8 +142,7 @@ public class ConnectionPool {
     }
 
 
-    private static boolean isRecentlyUsed(ConnectInfo connectInfo) {
-        Date lastAccessTime = connectInfo.getLastAccessTime();
+    private static boolean isRecentlyUsed(Date lastAccessTime) {
         return lastAccessTime != null
                 && System.currentTimeMillis() - lastAccessTime.getTime() < SKIP_VALIDATION_IF_RECENTLY_USED_MS;
     }
@@ -192,13 +191,14 @@ public class ConnectionPool {
         if (pooledConnectInfo == null) {
             return null;
         }
+        Date lastAccessTime = pooledConnectInfo.getLastAccessTime();
         if (!pooledConnectInfo.trySetInUse()) {
             queue.offer(pooledConnectInfo);
             return null;
         }
         Connection connection = tryGetExistingConnection(pooledConnectInfo);
         if (connection != null
-                && (isRecentlyUsed(pooledConnectInfo) || checkConnectionIsActive(pooledConnectInfo))) {
+                && (isRecentlyUsed(lastAccessTime) || checkConnectionIsActive(pooledConnectInfo))) {
             connectInfo.setConnection(connection);
             log.info("Got connection from pool");
             return connection;
