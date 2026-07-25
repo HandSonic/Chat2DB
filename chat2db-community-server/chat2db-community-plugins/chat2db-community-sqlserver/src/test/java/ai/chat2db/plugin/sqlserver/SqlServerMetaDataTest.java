@@ -3,6 +3,7 @@ package ai.chat2db.plugin.sqlserver;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,5 +30,24 @@ class SqlServerMetaDataTest {
         assertTrue(SqlServerMetaData.shouldOmitColumnSize("ROWVERSION"));
         assertTrue(SqlServerMetaData.shouldOmitColumnSize("FLOAT"));
         assertFalse(SqlServerMetaData.shouldOmitColumnSize("DECIMAL"));
+    }
+
+    @Test
+    void shouldRenderForeignKeyActionsIndependently() {
+        assertEquals("", SqlServerMetaData.buildReferentialActions(0, 0));
+        assertEquals(" on update cascade", SqlServerMetaData.buildReferentialActions(1, 0));
+        assertEquals(" on delete set null", SqlServerMetaData.buildReferentialActions(0, 2));
+        assertEquals(" on update set default on delete cascade",
+                SqlServerMetaData.buildReferentialActions(3, 1));
+    }
+
+    @Test
+    void shouldQuoteEveryForeignKeyIdentifierPart() {
+        assertEquals("constraint [FK orders]]owner]\n"
+                        + "foreign key ([order id] , [line]]id])\n"
+                        + "references [sales archive].[order]]history] ([id]) on delete set null",
+                SqlServerMetaData.buildForeignKeyDefinition(
+                        "FK orders]owner", List.of("order id", "line]id"),
+                        "sales archive", "order]history", List.of("id"), 0, 2));
     }
 }

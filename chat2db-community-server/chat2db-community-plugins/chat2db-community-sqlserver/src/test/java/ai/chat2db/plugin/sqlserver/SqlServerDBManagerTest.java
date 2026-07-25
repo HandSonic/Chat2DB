@@ -1,9 +1,20 @@
 package ai.chat2db.plugin.sqlserver;
 
+import ai.chat2db.community.domain.api.config.DBConfig;
+import ai.chat2db.community.domain.api.config.DriverConfig;
+import ai.chat2db.spi.IPlugin;
+import ai.chat2db.spi.model.datasource.ConnectInfo;
+import ai.chat2db.spi.model.request.TableMetadataRequest;
+import ai.chat2db.spi.sql.Chat2DBContext;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -197,6 +208,54 @@ class SqlServerDBManagerTest {
     }
 
     @Test
+    void shouldNormalizeMetadataFormattedNamesAtCopyBoundary() throws Exception {
+        AtomicReference<TableMetadataRequest> ddlRequest = new AtomicReference<>();
+        AtomicReference<List<String>> queryParameters = new AtomicReference<>();
+        List<String> preparedSql = new ArrayList<>();
+        SqlServerMetaData metadata = new SqlServerMetaData() {
+            @Override
+            public String tableDDL(Connection connection, TableMetadataRequest request) {
+                ddlRequest.set(request);
+                return "CREATE TABLE [orders]\n([id] int)\ngo\n";
+            }
+        };
+        String dbType = "SQLSERVER_COPY_TEST";
+        IPlugin previousPlugin = Chat2DBContext.PLUGIN_MAP.put(dbType, new IPlugin() {
+            @Override
+            public DBConfig getDBConfig() {
+                return null;
+            }
+
+            @Override
+            public SqlServerMetaData getDbMetaData() {
+                return metadata;
+            }
+        });
+        ConnectInfo context = new ConnectInfo();
+        context.setDbType(dbType);
+        context.setDriverConfig(new DriverConfig());
+        Chat2DBContext.putContext(context);
+
+        try {
+            new SqlServerDBManager().copyTable(
+                    recordingConnection(preparedSql, queryParameters),
+                    "catalog", "sales", "[orders]", "[orders_copy]", true);
+
+            assertEquals("orders", ddlRequest.get().getTableName());
+            assertEquals("CREATE TABLE [sales].[orders_copy]\n([id] int)", preparedSql.get(0));
+            assertEquals(List.of("sales", "orders"), queryParameters.get());
+        } finally {
+            context.setConnection(null);
+            Chat2DBContext.removeContext();
+            if (previousPlugin == null) {
+                Chat2DBContext.PLUGIN_MAP.remove(dbType);
+            } else {
+                Chat2DBContext.PLUGIN_MAP.put(dbType, previousPlugin);
+            }
+        }
+    }
+
+    @Test
     void shouldTurnIdentityInsertOffAndPreserveTheCopyFailure() {
         List<String> statements = new ArrayList<>();
         RuntimeException insertFailure = new RuntimeException("insert failed");
@@ -248,5 +307,70 @@ class SqlServerDBManagerTest {
             index += expected.length();
         }
         return count;
+    }
+
+    private static Connection recordingConnection(List<String> preparedSql,
+                                                  AtomicReference<List<String>> queryParameters) {
+        return (Connection) Proxy.newProxyInstance(
+                SqlServerDBManagerTest.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                (proxy, method, args) -> {
+                    if ("prepareStatement".equals(method.getName())) {
+                        String sql = (String) args[0];
+                        preparedSql.add(sql);
+                        List<String> parameters = new ArrayList<>();
+                        return preparedStatement(parameters, queryParameters);
+                    }
+                    if ("isClosed".equals(method.getName())) {
+                        return false;
+                    }
+                    return defaultValue(method.getReturnType());
+                });
+    }
+
+    private static PreparedStatement preparedStatement(List<String> parameters,
+                                                       AtomicReference<List<String>> queryParameters) {
+        return (PreparedStatement) Proxy.newProxyInstance(
+                SqlServerDBManagerTest.class.getClassLoader(),
+                new Class<?>[]{PreparedStatement.class},
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setString":
+                            int index = (Integer) args[0];
+                            while (parameters.size() < index) {
+                                parameters.add(null);
+                            }
+                            parameters.set(index - 1, (String) args[1]);
+                            return null;
+                        case "execute":
+                            return false;
+                        case "executeQuery":
+                            queryParameters.set(List.copyOf(parameters));
+                            return emptyResultSet();
+                        default:
+                            return defaultValue(method.getReturnType());
+                    }
+                });
+    }
+
+    private static ResultSet emptyResultSet() {
+        return (ResultSet) Proxy.newProxyInstance(
+                SqlServerDBManagerTest.class.getClassLoader(),
+                new Class<?>[]{ResultSet.class},
+                (proxy, method, args) -> "next".equals(method.getName())
+                        ? false : defaultValue(method.getReturnType()));
+    }
+
+    private static Object defaultValue(Class<?> type) {
+        if (!type.isPrimitive() || type == void.class) {
+            return null;
+        }
+        if (type == boolean.class) {
+            return false;
+        }
+        if (type == char.class) {
+            return '\0';
+        }
+        return 0;
     }
 }
