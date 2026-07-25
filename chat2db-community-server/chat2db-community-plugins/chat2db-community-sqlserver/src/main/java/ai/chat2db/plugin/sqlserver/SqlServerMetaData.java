@@ -373,7 +373,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                     ddlBuilder.append("\n").append(sqlServerIndexTypeEnum.buildIndexScript(index));
                     String comment = index.getComment();
                     if (StringUtils.isNotBlank(comment)) {
-                        ddlBuilder.append("\t").append(SQLConstant.buildIndexComment(comment, schemaName, tableName, index.getName()));
+                        ddlBuilder.append("\n").append(SQLConstant.buildIndexComment(comment, schemaName, tableName, index.getName()));
                     }
                 }
             });

@@ -114,6 +114,63 @@ class SqlServerDBManagerTest {
     }
 
     @Test
+    void shouldRewriteGeneratedUnquotedSelfReferencesOnlyInSqlCode() {
+        String ddl = """
+                CREATE TABLE [orders]
+                (
+                    [id] int,
+                    [description] AS ('references sales.orders ('),
+                    constraint FK_orders_parent
+                    foreign key ([id])
+                    references sales.orders ([id]),
+                    constraint FK_orders_catalog_parent
+                    foreign key ([id])
+                    references catalog.sales.orders ([id]),
+                    constraint FK_orders_external
+                    foreign key ([id])
+                    references audit.orders ([id])
+                    -- references sales.orders ([id])
+                    /* references catalog.sales.orders ([id]) */
+                )
+                GO
+                """;
+
+        String createTable = SqlServerDBManager.prepareCopyDdlBatches(
+                ddl, "catalog", "sales", "orders", "orders_copy").get(0);
+
+        assertTrue(createTable.contains("AS ('references sales.orders (')"));
+        assertTrue(createTable.contains("references [sales].[orders_copy] ([id])"));
+        assertTrue(createTable.contains("references audit.orders ([id])"));
+        assertTrue(createTable.contains("-- references sales.orders ([id])"));
+        assertTrue(createTable.contains("/* references catalog.sales.orders ([id]) */"));
+        assertEquals(2, countOccurrences(createTable, "references [sales].[orders_copy] ([id])"));
+    }
+
+    @Test
+    void shouldSplitInlineGoFromGeneratedIndexComment() {
+        String ddl = """
+                CREATE TABLE [orders]
+                (
+                    [id] int
+                )
+                go
+                CREATE NONCLUSTERED INDEX [IX_orders_id]
+                 ON [sales].[orders] ([id] ASC)
+                go\texec sp_addextendedproperty 'MS_Description',N'index comment','SCHEMA',N'sales','TABLE',N'orders','INDEX',N'IX_orders_id'
+                go
+                """;
+
+        List<String> batches = SqlServerDBManager.prepareCopyDdlBatches(
+                ddl, "catalog", "sales", "orders", "orders_copy");
+
+        assertEquals(3, batches.size());
+        assertTrue(batches.get(1).startsWith("CREATE NONCLUSTERED INDEX [IX_orders_id]"));
+        assertTrue(batches.get(1).contains("ON [sales].[orders_copy] ([id] ASC)"));
+        assertTrue(batches.get(2).startsWith("exec sp_addextendedproperty"));
+        assertTrue(batches.get(2).contains("'TABLE',N'orders_copy','INDEX',N'IX_orders_id'"));
+    }
+
+    @Test
     void shouldUseTheSameExplicitColumnsForInsertAndSelect() {
         assertEquals(
                 "INSERT INTO [catalog].[sales].[orders_copy] ([id], [name]) "
@@ -181,5 +238,15 @@ class SqlServerDBManagerTest {
         assertEquals(List.of(
                 "SET IDENTITY_INSERT [dbo].[orders_copy] ON",
                 "SET IDENTITY_INSERT [dbo].[orders_copy] OFF"), statements);
+    }
+
+    private static int countOccurrences(String value, String expected) {
+        int count = 0;
+        int index = 0;
+        while ((index = value.indexOf(expected, index)) >= 0) {
+            count++;
+            index += expected.length();
+        }
+        return count;
     }
 }

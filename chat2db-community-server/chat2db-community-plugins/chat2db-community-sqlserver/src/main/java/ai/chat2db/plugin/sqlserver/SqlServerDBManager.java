@@ -32,6 +32,8 @@ import static cn.hutool.core.date.DatePattern.NORM_DATETIME_PATTERN;
 public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
 
     private static final Pattern GO_BATCH_LINE = Pattern.compile("(?i)^\\s*go\\s*;?\\s*(?:--.*)?$");
+    private static final Pattern GO_EXTENDED_PROPERTY_LINE = Pattern.compile(
+            "(?i)^\\s*go\\s*;?\\s+(exec\\s+sp_addextendedproperty\\b.*)$");
     private static final Pattern CREATE_INDEX_BATCH = Pattern.compile(
             "(?is)^\\s*CREATE\\s+(?:UNIQUE\\s+)?(?:CLUSTERED\\s+|NONCLUSTERED\\s+|SPATIAL\\s+|XML\\s+)?INDEX\\b");
     private static final Pattern NAMED_TABLE_CONSTRAINT = Pattern.compile(
@@ -271,9 +273,19 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         DdlLexicalState state = new DdlLexicalState();
         String[] lines = ddl.split("\\R", -1);
         for (String line : lines) {
-            if (state.isCode() && GO_BATCH_LINE.matcher(line).matches()) {
-                addBatch(batches, batch);
-                continue;
+            if (state.isCode()) {
+                if (GO_BATCH_LINE.matcher(line).matches()) {
+                    addBatch(batches, batch);
+                    continue;
+                }
+                Matcher inlineBatch = GO_EXTENDED_PROPERTY_LINE.matcher(line);
+                if (inlineBatch.matches()) {
+                    addBatch(batches, batch);
+                    String extendedProperty = inlineBatch.group(1);
+                    batch.append(extendedProperty).append('\n');
+                    updateLexicalState(extendedProperty, state);
+                    continue;
+                }
             }
             batch.append(line).append('\n');
             updateLexicalState(line, state);
@@ -502,10 +514,26 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         references.add(buildFullTableName(databaseName, schemaName, tableName));
         references.add(buildFullTableName(null, schemaName, tableName));
         references.add(quoteIdentifier(tableName));
+        references.add(buildUnquotedFullTableName(databaseName, schemaName, tableName));
+        references.add(buildUnquotedFullTableName(null, schemaName, tableName));
         return references.stream()
                 .filter(StringUtils::isNotBlank)
                 .sorted((left, right) -> Integer.compare(right.length(), left.length()))
                 .toList();
+    }
+
+    private static String buildUnquotedFullTableName(String databaseName, String schemaName, String tableName) {
+        List<String> parts = new ArrayList<>(3);
+        if (StringUtils.isNotBlank(databaseName)) {
+            parts.add(databaseName);
+        }
+        if (StringUtils.isNotBlank(schemaName)) {
+            parts.add(schemaName);
+        }
+        if (StringUtils.isNotBlank(tableName)) {
+            parts.add(tableName);
+        }
+        return String.join(".", parts);
     }
 
     static String buildFullTableName(String databaseName, String schemaName, String tableName) {
