@@ -11,18 +11,32 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.PreparedStatement;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.sqlserver.constant.SQLConstant.*;
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerDBManagerConstants.*;
 import static cn.hutool.core.date.DatePattern.NORM_DATETIME_PATTERN;
 
-import static ai.chat2db.plugin.sqlserver.constant.SqlServerDBManagerConstants.*;
 @Slf4j
 public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
+
+    private static final Pattern GO_BATCH_LINE = Pattern.compile("(?i)^\\s*go\\s*;?\\s*(?:--.*)?$");
+    private static final Pattern CREATE_INDEX_BATCH = Pattern.compile(
+            "(?is)^\\s*CREATE\\s+(?:UNIQUE\\s+)?(?:CLUSTERED\\s+|NONCLUSTERED\\s+|SPATIAL\\s+|XML\\s+)?INDEX\\b");
+    private static final Pattern NAMED_TABLE_CONSTRAINT = Pattern.compile(
+            "(?im)^(\\s*)constraint\\s+[^\\r\\n]+\\R(?=\\s*(?:primary\\s+key|unique|check|foreign\\s+key)\\b)");
+    private static final Pattern CONSTRAINT_COMMENT = Pattern.compile(
+            "(?i)'CONSTRAINT'\\s*,");
 
 
 
@@ -165,27 +179,14 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
         String ddl = Chat2DBContext.getDbMetaData().tableDDL(connection,
                 new TableMetadataRequest(databaseName, schemaName, tableName));
-        // Replace only the CREATE TABLE [tableName] line, not other references
-        String formatOldTable = "[" + tableName + "]";
-        String formatNewTable = "[" + newTableName + "]";
-        String createDdl = ddl.replaceFirst(
-                "(?i)CREATE\\s+TABLE\\s+" + java.util.regex.Pattern.quote(formatOldTable),
-                "CREATE TABLE " + formatNewTable);
-        log.info("copy table DDL: {}", createDdl);
-
-        // tableDDL() uses 'go' as batch separator which is not valid JDBC SQL.
-        // Split by 'go' on its own line and execute each batch separately.
-        String[] batches = createDdl.split("(?m)^\\s*go\\s*$");
+        List<String> batches = prepareCopyDdlBatches(ddl, databaseName, schemaName, tableName, newTableName);
         for (String batch : batches) {
-            String trimmed = batch.trim();
-            if (!trimmed.isEmpty()) {
-                DefaultSQLExecutor.getInstance().execute(connection, trimmed, resultSet -> null);
-            }
+            log.info("copy table DDL batch: {}", batch);
+            DefaultSQLExecutor.getInstance().execute(connection, batch, resultSet -> null);
         }
 
         if (copyData) {
-            // Query column metadata to determine which columns are copyable
-            java.util.List<String> copyableColumns = new java.util.ArrayList<>();
+            List<String> copyableColumns = new ArrayList<>();
             boolean hasIdentity = false;
             try (PreparedStatement ps = connection.prepareStatement(SELECT_TABLE_COLUMNS)) {
                 ps.setString(1, schemaName);
@@ -194,16 +195,13 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
                     while (rs.next()) {
                         String computedDef = rs.getString("COMPUTED_DEFINITION");
                         String dataType = rs.getString("DATA_TYPE");
-                        if (computedDef != null && !computedDef.isEmpty()) {
-                            continue; // skip computed columns
-                        }
-                        if ("timestamp".equalsIgnoreCase(dataType) || "rowversion".equalsIgnoreCase(dataType)) {
-                            continue; // skip timestamp/rowversion (auto-generated)
+                        if (!isCopyableColumn(computedDef, dataType)) {
+                            continue;
                         }
                         if (rs.getBoolean("IS_IDENTITY")) {
                             hasIdentity = true;
                         }
-                        copyableColumns.add("[" + rs.getString("COLUMN_NAME") + "]");
+                        copyableColumns.add(quoteIdentifier(rs.getString("COLUMN_NAME")));
                     }
                 }
             }
@@ -216,23 +214,34 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
             String columnList = String.join(", ", copyableColumns);
             String sourceTable = buildFullTableName(databaseName, schemaName, tableName);
             String targetTable = buildFullTableName(databaseName, schemaName, newTableName);
-            String insertSql = String.format(SQL_COPY_TABLE_DATA_WITH_COLUMNS, targetTable, columnList, sourceTable);
+            String insertSql = buildCopyDataSql(targetTable, columnList, sourceTable);
             log.info("copy table data sql: {}", insertSql);
 
             if (hasIdentity) {
                 String identityOn = String.format(SQL_SET_IDENTITY_INSERT, targetTable, "ON");
                 String identityOff = String.format(SQL_SET_IDENTITY_INSERT, targetTable, "OFF");
+                boolean identityEnabled = false;
+                RuntimeException copyFailure = null;
                 try {
                     DefaultSQLExecutor.getInstance().execute(connection, identityOn, resultSet -> null);
+                    identityEnabled = true;
                     DefaultSQLExecutor.getInstance().execute(connection, insertSql, resultSet -> null);
-                } catch (Exception e) {
-                    log.error("Failed to copy data with identity insert", e);
-                    throw e;
+                } catch (RuntimeException exception) {
+                    copyFailure = exception;
+                    log.error("Failed to copy data with identity insert", exception);
+                    throw exception;
                 } finally {
-                    try {
-                        DefaultSQLExecutor.getInstance().execute(connection, identityOff, resultSet -> null);
-                    } catch (Exception e) {
-                        log.warn("Failed to turn off identity insert", e);
+                    if (identityEnabled) {
+                        try {
+                            DefaultSQLExecutor.getInstance().execute(connection, identityOff, resultSet -> null);
+                        } catch (RuntimeException exception) {
+                            if (copyFailure != null) {
+                                copyFailure.addSuppressed(exception);
+                                log.warn("Failed to turn off identity insert", exception);
+                            } else {
+                                throw exception;
+                            }
+                        }
                     }
                 }
             } else {
@@ -241,26 +250,180 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         }
     }
 
+    static List<String> prepareCopyDdlBatches(String ddl, String databaseName, String schemaName,
+            String tableName, String newTableName) {
+        if (StringUtils.isBlank(ddl)) {
+            throw new IllegalArgumentException("Source table DDL is empty");
+        }
 
-    private String buildFullTableName(String databaseName, String schemaName, String tableName) {
+        List<String> sourceReferences = tableReferences(databaseName, schemaName, tableName);
+        String targetTable = buildFullTableName(null, schemaName, newTableName);
+        List<String> rewrittenBatches = new ArrayList<>();
+        boolean createTableRewritten = false;
+
+        for (String batch : splitDdlBatches(ddl)) {
+            String rewritten = batch;
+            if (startsWithKeyword(batch, "CREATE\\s+TABLE")) {
+                rewritten = replaceObjectAfterKeyword(batch, "CREATE\\s+TABLE\\s+", sourceReferences,
+                        targetTable);
+                rewritten = rewriteSelfReference(rewritten, sourceReferences, tableName, targetTable);
+                // Constraint names are schema-scoped, so copied declarations must receive fresh server-generated names.
+                rewritten = NAMED_TABLE_CONSTRAINT.matcher(rewritten).replaceAll("$1");
+                createTableRewritten = true;
+            } else if (CREATE_INDEX_BATCH.matcher(batch).find()) {
+                rewritten = replaceObjectAfterKeyword(batch, "ON\\s+", sourceReferences, targetTable);
+            } else if (isExtendedPropertyBatch(batch)) {
+                if (CONSTRAINT_COMMENT.matcher(batch).find()) {
+                    // Auto-generated target constraint names cannot be addressed by the source constraint comment.
+                    continue;
+                }
+                rewritten = rewriteExtendedPropertyTable(batch, tableName, newTableName);
+            }
+            rewrittenBatches.add(rewritten.trim());
+        }
+
+        if (!createTableRewritten) {
+            throw new IllegalArgumentException("Unable to locate the source CREATE TABLE statement");
+        }
+        return rewrittenBatches;
+    }
+
+    static List<String> splitDdlBatches(String ddl) {
+        List<String> batches = new ArrayList<>();
+        StringBuilder batch = new StringBuilder();
+        boolean inString = false;
+        String[] lines = ddl.split("\\R", -1);
+        for (String line : lines) {
+            if (!inString && GO_BATCH_LINE.matcher(line).matches()) {
+                addBatch(batches, batch);
+                continue;
+            }
+            batch.append(line).append('\n');
+            inString = updateStringState(line, inString);
+        }
+        addBatch(batches, batch);
+        return batches;
+    }
+
+    private static boolean updateStringState(String line, boolean inString) {
+        for (int i = 0; i < line.length(); i++) {
+            if (line.charAt(i) != '\'') {
+                continue;
+            }
+            if (inString && i + 1 < line.length() && line.charAt(i + 1) == '\'') {
+                i++;
+            } else {
+                inString = !inString;
+            }
+        }
+        return inString;
+    }
+
+    private static void addBatch(List<String> batches, StringBuilder batch) {
+        String sql = batch.toString().trim();
+        if (StringUtils.isNotBlank(sql)) {
+            batches.add(sql);
+        }
+        batch.setLength(0);
+    }
+
+    private static boolean startsWithKeyword(String sql, String keywordPattern) {
+        return Pattern.compile("(?is)^\\s*" + keywordPattern + "\\b").matcher(sql).find();
+    }
+
+    private static boolean isExtendedPropertyBatch(String sql) {
+        return Pattern.compile("(?is)^\\s*exec\\s+sp_addextendedproperty\\b").matcher(sql).find();
+    }
+
+    private static String replaceObjectAfterKeyword(String sql, String keywordPattern, List<String> sourceReferences,
+            String targetReference) {
+        String alternatives = sourceReferences.stream()
+                .map(Pattern::quote)
+                .collect(Collectors.joining("|"));
+        Pattern pattern = Pattern.compile("(?i)(\\b" + keywordPattern + ")(?:(?:" + alternatives + "))");
+        Matcher matcher = pattern.matcher(sql);
+        if (!matcher.find()) {
+            throw new IllegalArgumentException("Unable to rewrite source table reference in DDL batch: " + sql);
+        }
+        return matcher.replaceFirst(Matcher.quoteReplacement(matcher.group(1) + targetReference));
+    }
+
+    private static String rewriteSelfReference(String sql, List<String> sourceReferences, String tableName,
+            String targetReference) {
+        Set<String> references = new LinkedHashSet<>(sourceReferences);
+        references.add(quoteIdentifier(tableName));
+        references.add(tableName);
+        String alternatives = references.stream()
+                .filter(StringUtils::isNotBlank)
+                .map(Pattern::quote)
+                .collect(Collectors.joining("|"));
+        Pattern pattern = Pattern.compile("(?i)(\\breferences\\s+)(?:(?:" + alternatives + "))(?=\\s*\\()");
+        Matcher matcher = pattern.matcher(sql);
+        StringBuffer rewritten = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(rewritten, Matcher.quoteReplacement(matcher.group(1) + targetReference));
+        }
+        matcher.appendTail(rewritten);
+        return rewritten.toString();
+    }
+
+    private static String rewriteExtendedPropertyTable(String sql, String tableName, String newTableName) {
+        Pattern pattern = Pattern.compile("(?i)('TABLE'\\s*,\\s*N')" + Pattern.quote(tableName) + "(')");
+        Matcher matcher = pattern.matcher(sql);
+        if (!matcher.find()) {
+            throw new IllegalArgumentException("Unable to rewrite table extended property: " + sql);
+        }
+        String replacement = matcher.group(1) + newTableName.replace("'", "''") + matcher.group(2);
+        return matcher.replaceFirst(Matcher.quoteReplacement(replacement));
+    }
+
+    static boolean isCopyableColumn(String computedDefinition, String dataType) {
+        return StringUtils.isBlank(computedDefinition)
+                && !"timestamp".equalsIgnoreCase(dataType)
+                && !"rowversion".equalsIgnoreCase(dataType);
+    }
+
+    static String buildCopyDataSql(String targetTable, String columnList, String sourceTable) {
+        return String.format(SQL_COPY_TABLE_DATA_WITH_COLUMNS, targetTable, columnList, columnList, sourceTable);
+    }
+
+    private static List<String> tableReferences(String databaseName, String schemaName, String tableName) {
+        Set<String> references = new LinkedHashSet<>();
+        references.add(buildFullTableName(databaseName, schemaName, tableName));
+        references.add(buildFullTableName(null, schemaName, tableName));
+        references.add(quoteIdentifier(tableName));
+        return references.stream()
+                .filter(StringUtils::isNotBlank)
+                .sorted((left, right) -> Integer.compare(right.length(), left.length()))
+                .toList();
+    }
+
+    static String buildFullTableName(String databaseName, String schemaName, String tableName) {
         StringBuilder fullTableName = new StringBuilder();
 
         if (StringUtils.isNotBlank(databaseName)) {
-            fullTableName.append("[").append(databaseName).append("].");
+            fullTableName.append(quoteIdentifier(databaseName)).append('.');
         }
         if (StringUtils.isNotBlank(schemaName)) {
-            fullTableName.append("[").append(schemaName).append("].");
+            fullTableName.append(quoteIdentifier(schemaName)).append('.');
         }
 
         if (StringUtils.isNotBlank(tableName)) {
-            if (!tableName.startsWith("[") || !tableName.endsWith("]")) {
-                fullTableName.append("[").append(tableName).append("]");
-            } else {
-                fullTableName.append(tableName);
-            }
+            fullTableName.append(quoteIdentifier(tableName));
         }
 
         return fullTableName.toString();
+    }
+
+    private static String quoteIdentifier(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        String value = identifier;
+        if (value.length() >= 2 && value.startsWith("[") && value.endsWith("]")) {
+            value = value.substring(1, value.length() - 1).replace("]]", "]");
+        }
+        return "[" + value.replace("]", "]]" ) + "]";
     }
 
     @Override

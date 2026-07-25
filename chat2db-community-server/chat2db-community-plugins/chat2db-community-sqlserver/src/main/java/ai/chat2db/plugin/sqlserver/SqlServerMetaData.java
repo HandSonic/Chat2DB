@@ -38,6 +38,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -98,18 +99,15 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                 boolean isPersisted = resultSet.getBoolean("IS_PERSISTED");
                 String dataType = resultSet.getString("DATA_TYPE").toUpperCase();
                 boolean isIdentity = resultSet.getBoolean("IS_IDENTITY");
-                int seedValue = resultSet.getInt("SEED_VALUE");
-                int incrementValue = resultSet.getInt("INCREMENT_VALUE");
+                BigDecimal seedValue = resultSet.getBigDecimal("SEED_VALUE");
+                BigDecimal incrementValue = resultSet.getBigDecimal("INCREMENT_VALUE");
                 if (StringUtils.isNotBlank(computedDefinition)) {
                     dataType = "AS " + computedDefinition;
                     if (isPersisted) {
                         dataType += " PERSISTED";
                     }
                 } else if (isIdentity) {
-                    dataType += " identity";
-                    if (seedValue != 1 && incrementValue != 1) {
-                        dataType += " (" + seedValue + "," + incrementValue + ")";
-                    }
+                    dataType = buildIdentityDataType(dataType, seedValue, incrementValue);
                 }
                 tableColumn.setColumnType(dataType);
                 tableColumn.setSparse(resultSet.getBoolean("IS_SPARSE"));
@@ -382,6 +380,22 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         }
 
         return ddlBuilder.toString();
+    }
+
+    static String buildIdentityDataType(String dataType, BigDecimal seedValue, BigDecimal incrementValue) {
+        String identityType = dataType + " identity";
+        if (seedValue == null || incrementValue == null) {
+            return identityType;
+        }
+        if (seedValue.compareTo(BigDecimal.ONE) != 0 || incrementValue.compareTo(BigDecimal.ONE) != 0) {
+            return identityType + " (" + formatIdentityValue(seedValue) + ","
+                    + formatIdentityValue(incrementValue) + ")";
+        }
+        return identityType;
+    }
+
+    private static String formatIdentityValue(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private String buildReferentialAction(int actionCode) {
