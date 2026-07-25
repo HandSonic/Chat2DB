@@ -13,7 +13,6 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
-import ai.chat2db.community.tools.util.EasyStringUtils;
 import ai.chat2db.spi.util.SqlUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -265,11 +264,11 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         createViewSqlBuilder.append(SQLConstants.VIEW_KEYWORD);
         String schemaName = modifyView.getSchemaName();
         if (StringUtils.isNotBlank(schemaName)) {
-            createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE).append(schemaName).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.DOT);
+            createViewSqlBuilder.append(quoteOracleIdentifier(schemaName)).append(SQLConstants.DOT);
         }
         String viewName = modifyView.getViewName();
         if (StringUtils.isNotBlank(viewName)) {
-            createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE).append(viewName).append(SQLConstants.DOUBLE_QUOTE);
+            createViewSqlBuilder.append(quoteOracleIdentifier(viewName));
         } else {
             createViewSqlBuilder.append(UNDEFINED_KEYWORD);
         }
@@ -318,17 +317,26 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
             createViewSqlBuilder.append(SQLConstants.LINE_SEPARATOR);
             createViewSqlBuilder.append(SQL_COMMENT_TABLE_2);
             if (StringUtils.isNotBlank(schemaName)) {
-                createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE).append(schemaName)
-                        .append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE);
-            } else {
-                createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE);
+                createViewSqlBuilder.append(quoteOracleIdentifier(schemaName)).append(SQLConstants.DOT);
             }
-            createViewSqlBuilder.append(viewName).append(SQLConstants.DOUBLE_QUOTE)
+            createViewSqlBuilder.append(quoteOracleIdentifier(viewName))
                     .append(SQLConstants.SQL_IS_LOWER)
-                    .append(EasyStringUtils.escapeAndQuoteString(comment))
+                    .append(quoteStringLiteral(comment))
                     .append(SQLConstants.SEMICOLON);
         }
         return createViewSqlBuilder.toString();
+    }
+
+    private static String quoteOracleIdentifier(String identifier) {
+        return SQLConstants.DOUBLE_QUOTE
+                + identifier.replace(SQLConstants.DOUBLE_QUOTE, SQLConstants.DOUBLE_QUOTE + SQLConstants.DOUBLE_QUOTE)
+                + SQLConstants.DOUBLE_QUOTE;
+    }
+
+    private static String quoteStringLiteral(String value) {
+        return SQLConstants.SINGLE_QUOTE
+                + value.replace(SQLConstants.SINGLE_QUOTE, SQLConstants.SINGLE_QUOTE + SQLConstants.SINGLE_QUOTE)
+                + SQLConstants.SINGLE_QUOTE;
     }
 
     @Override

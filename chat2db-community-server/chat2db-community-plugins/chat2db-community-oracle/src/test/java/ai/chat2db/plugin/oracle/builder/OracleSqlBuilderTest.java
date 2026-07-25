@@ -45,11 +45,14 @@ class OracleSqlBuilderTest {
     @Test
     void shouldBuildQualifiedAndEscapedViewComment() {
         OracleSqlBuilder builder = new OracleSqlBuilder();
-        ModifyView view = view("SCOTT", "ACTIVE_USERS", "Owner's active users");
+        ModifyView view = view("SA\"LES", "ACTIVE\"USERS", "Owner\\team's active users");
 
         String sql = builder.buildCreateView(view);
 
-        assertTrue(sql.endsWith("COMMENT ON TABLE \"SCOTT\".\"ACTIVE_USERS\" is 'Owner''s active users';"));
+        assertTrue(sql.startsWith("CREATE VIEW \"SA\"\"LES\".\"ACTIVE\"\"USERS\""));
+        assertTrue(sql.endsWith(
+                "COMMENT ON TABLE \"SA\"\"LES\".\"ACTIVE\"\"USERS\" is 'Owner\\team''s active users';"));
+        assertFalse(sql.contains("Owner\\\\team"));
     }
 
     @Test
