@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -82,6 +83,34 @@ class ConnectionPoolTest {
     }
 
     @Test
+    void failedBorrowShouldCloseConnectionWhenQueueRefillsBeforeReturn() {
+        AtomicBoolean pooledClosed = new AtomicBoolean();
+        ConnectInfo pooled = connectInfo(connection(true, pooledClosed));
+        ConnectInfo replacement = connectInfo(connection(true, new AtomicBoolean()));
+        assertTrue(pooled.trySetInUse());
+        LinkedBlockingQueue<ConnectInfo> queue = new LinkedBlockingQueue<>(1) {
+            private boolean refillAfterPoll = true;
+
+            @Override
+            public ConnectInfo poll() {
+                ConnectInfo result = super.poll();
+                if (refillAfterPoll) {
+                    refillAfterPoll = false;
+                    assertTrue(super.offer(replacement));
+                }
+                return result;
+            }
+        };
+        queue.offer(pooled);
+
+        assertNull(ConnectionPool.tryBorrowConnection(new ConnectInfo(), queue));
+
+        assertSame(replacement, queue.peek());
+        assertTrue(pooledClosed.get());
+        assertNull(pooled.getConnection());
+    }
+
+    @Test
     void staleConnectionShouldBeValidatedBeforeBorrow() {
         AtomicBoolean closed = new AtomicBoolean();
         AtomicInteger validationCalls = new AtomicInteger();
@@ -140,6 +169,34 @@ class ConnectionPoolTest {
         }
     }
 
+    @Test
+    void cleanupShouldCloseConnectionWhenDatasourceIsRemovedDuringValidation() throws Exception {
+        long datasourceId = -1924L;
+        AtomicBoolean closed = new AtomicBoolean();
+        CountDownLatch validationStarted = new CountDownLatch(1);
+        CountDownLatch finishValidation = new CountDownLatch(1);
+        ConnectInfo connectInfo = connectInfo(blockingValidationConnection(
+                closed, validationStarted, finishValidation));
+        connectInfo.setDataSourceId(datasourceId);
+        ConnectionPool.close(connectInfo);
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<?> cleanup = executor.submit(ConnectionPool::cleanupConnections);
+        try {
+            assertTrue(validationStarted.await(5, TimeUnit.SECONDS));
+            ConnectionPool.removeConnection(datasourceId);
+            finishValidation.countDown();
+            cleanup.get(5, TimeUnit.SECONDS);
+
+            assertTrue(closed.get());
+            assertNull(connectInfo.getConnection());
+        } finally {
+            finishValidation.countDown();
+            ConnectionPool.removeConnection(datasourceId);
+            executor.shutdownNow();
+        }
+    }
+
     private static ConnectInfo connectInfo(Connection connection) {
         ConnectInfo connectInfo = new ConnectInfo();
         connectInfo.setConnection(connection);
@@ -167,6 +224,33 @@ class ConnectionPoolTest {
                             return null;
                         case "toString":
                             return "TestConnection";
+                        default:
+                            return defaultValue(method.getReturnType());
+                    }
+                });
+    }
+
+    private static Connection blockingValidationConnection(AtomicBoolean closed,
+                                                           CountDownLatch validationStarted,
+                                                           CountDownLatch finishValidation) {
+        return (Connection) Proxy.newProxyInstance(
+                ConnectionPoolTest.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "isClosed":
+                            return closed.get();
+                        case "isValid":
+                            validationStarted.countDown();
+                            if (!finishValidation.await(5, TimeUnit.SECONDS)) {
+                                throw new SQLException("Timed out waiting to finish validation");
+                            }
+                            return true;
+                        case "close":
+                            closed.set(true);
+                            return null;
+                        case "toString":
+                            return "BlockingValidationConnection";
                         default:
                             return defaultValue(method.getReturnType());
                     }
