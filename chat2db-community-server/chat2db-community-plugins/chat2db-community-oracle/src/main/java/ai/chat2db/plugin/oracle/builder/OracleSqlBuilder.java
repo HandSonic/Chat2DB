@@ -13,6 +13,7 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
+import ai.chat2db.community.tools.util.EasyStringUtils;
 import ai.chat2db.spi.util.SqlUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -208,20 +209,23 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
     public String buildPageLimit(PageLimitRequest request) {
         String sql = request.getSql();
         int offset = request.getOffset();
-        int pageNo = request.getPageNo();
         int pageSize = request.getPageSize();
         int startRow = offset;
         int endRow = offset + pageSize;
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
         sqlBuilder.append(SQL_SELECT);
-        sqlBuilder.append(SQL_SELECT_TMP_PAGE_ROWNUM_CAHT2DB);
+        if (startRow > 0) {
+            sqlBuilder.append(SQL_SELECT_TMP_PAGE_ROWNUM_CAHT2DB);
+        }
         sqlBuilder.append(SQLConstants.LINE_SEPARATOR);
         sqlBuilder.append(sql);
         sqlBuilder.append(SQLConstants.LINE_SEPARATOR);
         sqlBuilder.append(SQL_CLOSE_PAREN_TMP_PAGE_WHERE_ROWNUM_EQUAL);
         sqlBuilder.append(endRow);
-        sqlBuilder.append(SQL_CLOSE_PAREN_WHERE_CAHT2DB_AUTO_ROW_ID);
-        sqlBuilder.append(startRow);
+        if (startRow > 0) {
+            sqlBuilder.append(SQL_CLOSE_PAREN_WHERE_CAHT2DB_AUTO_ROW_ID);
+            sqlBuilder.append(startRow);
+        }
         return sqlBuilder.toString();
     }
 
@@ -312,12 +316,16 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         String comment = modifyView.getComment();
         if (StringUtils.isNotBlank(comment)) {
             createViewSqlBuilder.append(SQLConstants.LINE_SEPARATOR);
-            createViewSqlBuilder.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE);
-            createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE).append(schemaName).append(SQLConstants.DOUBLE_QUOTE)
-                    .append(SQLConstants.DOT)
-                    .append(SQLConstants.DOUBLE_QUOTE).append(viewName).append(SQLConstants.DOUBLE_QUOTE)
+            createViewSqlBuilder.append(SQL_COMMENT_TABLE_2);
+            if (StringUtils.isNotBlank(schemaName)) {
+                createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE).append(schemaName)
+                        .append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE);
+            } else {
+                createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE);
+            }
+            createViewSqlBuilder.append(viewName).append(SQLConstants.DOUBLE_QUOTE)
                     .append(SQLConstants.SQL_IS_LOWER)
-                    .append(SQLConstants.SINGLE_QUOTE).append(comment).append(SQLConstants.SINGLE_QUOTE)
+                    .append(EasyStringUtils.escapeAndQuoteString(comment))
                     .append(SQLConstants.SEMICOLON);
         }
         return createViewSqlBuilder.toString();
