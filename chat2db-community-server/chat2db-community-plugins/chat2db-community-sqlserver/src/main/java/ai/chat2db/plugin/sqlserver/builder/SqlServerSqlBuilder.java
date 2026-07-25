@@ -24,6 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
 import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerSqlBuilderConstants.*;
 public class SqlServerSqlBuilder extends DefaultSqlBuilder {
@@ -357,19 +358,19 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         }
         createViewSqlBuilder.append(SQLConstants.SEMICOLON);
         String comment = modifyView.getComment();
-        if (StringUtils.isNotBlank(comment)) {
+        if (StringUtils.isNotBlank(comment) && StringUtils.isNotBlank(schemaName)) {
             createViewSqlBuilder.append(SQLConstants.LINE_SEPARATOR);
             createViewSqlBuilder.append(SQL_EXEC_SP_ADDEXTENDEDPROPERTY_SINGLE_QUOTE_MS_DESCRIPTION_SINGLE_QUOTE_COMMA)
                     .append(SQLConstants.SPACE)
-                    .append(SQLConstants.SINGLE_QUOTE).append(comment).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA)
+                    .append(SQLConstants.SINGLE_QUOTE).append(escapeStringLiteral(comment)).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA)
                     .append(SQLConstants.SPACE)
                     .append(SQL_SINGLE_QUOTE_SCHEMA_SINGLE_QUOTE).append(SQLConstants.COMMA)
                     .append(SQLConstants.SPACE)
-                    .append(SQLConstants.DOUBLE_QUOTE).append(schemaName).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.COMMA)
+                    .append(SQLConstants.SINGLE_QUOTE).append(escapeStringLiteral(schemaName)).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA)
                     .append(SQLConstants.SPACE)
                     .append(SQL_SINGLE_QUOTE_VIEW_SINGLE_QUOTE).append(SQLConstants.COMMA)
                     .append(SQLConstants.SPACE)
-                    .append(SQLConstants.SINGLE_QUOTE).append(viewName).append(SQLConstants.SINGLE_QUOTE);
+                    .append(SQLConstants.SINGLE_QUOTE).append(escapeStringLiteral(viewName)).append(SQLConstants.SINGLE_QUOTE);
 
         }
 

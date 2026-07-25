@@ -36,10 +36,13 @@ class SqlServerSqlBuilderTest {
         view.setSchemaName("order] schema");
         view.setViewName("select] view");
         view.setViewBody("SELECT 1");
+        view.setComment("owner's view");
 
         assertEquals("CREATE VIEW [order]] schema].[select]] view]\n"
                         + "AS \n"
-                        + "SELECT 1 ;",
+                        + "SELECT 1 ;\n"
+                        + "exec sp_addextendedproperty 'MS_Description', 'owner''s view', 'SCHEMA', "
+                        + "'order] schema', 'VIEW', 'select] view'",
                 builder.buildCreateView(view));
     }
 }

@@ -10,6 +10,6 @@ public final class SqlServerIdentifierUtils {
     }
 
     public static String escapeStringLiteral(String value) {
-        return value.replace("'", "''");
+        return value == null ? "" : value.replace("'", "''");
     }
 }

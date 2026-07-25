@@ -34,6 +34,7 @@ class SqlServerColumnTypeEnumTest {
 
         assertTrue(sql.startsWith(
                 "exec sp_rename '[sales]] ops].[order]] details].[old]] name]','new''name','COLUMN' \ngo\n"));
+        assertTrue(sql.contains("ALTER TABLE [sales]] ops].[order]] details] ALTER COLUMN [new'name]"));
     }
 
     @Test
@@ -47,6 +48,24 @@ class SqlServerColumnTypeEnumTest {
 
         assertTrue(sql.contains("\n go\nALTER TABLE [dbo].[next_table]"));
         assertFalse(sql.contains("goALTER TABLE"));
+    }
+
+    @Test
+    void shouldEscapeCommentProcedureStringArguments() {
+        TableColumn oldColumn = new TableColumn();
+        oldColumn.setComment("old comment");
+        TableColumn column = modifiedColumn(oldColumn);
+        column.setSchemaName("sales' ops");
+        column.setTableName("order' details");
+        column.setName("status' code");
+        column.setComment("owner's note");
+
+        String sql = SqlServerColumnTypeEnum.INT.buildModifyColumn(column);
+
+        assertTrue(sql.contains("'SCHEMA', N'sales'' ops'"));
+        assertTrue(sql.contains("'TABLE', N'order'' details'"));
+        assertTrue(sql.contains("'COLUMN', N'status'' code'"));
+        assertTrue(sql.contains("'MS_Description', N'owner''s note'"));
     }
 
     private static TableColumn modifiedColumn(TableColumn oldColumn) {
