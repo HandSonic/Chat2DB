@@ -181,7 +181,10 @@ class ConnectionPoolTest {
         ConnectInfo connectInfo = connectInfo(blockingValidationConnection(
                 closed, validationStarted, finishValidation));
         connectInfo.setDataSourceId(datasourceId);
-        ConnectionPool.close(connectInfo);
+        connectInfo.updatePoolGeneration(ConnectionPool.currentGeneration(datasourceId));
+        LinkedBlockingQueue<ConnectInfo> queue =
+                ConnectionPool.getOrCreateConnectionQueue(datasourceId, connectInfo.getKey());
+        assertTrue(queue.offer(connectInfo));
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<?> cleanup = executor.submit(ConnectionPool::cleanupConnections);
@@ -198,6 +201,39 @@ class ConnectionPoolTest {
             ConnectionPool.removeConnection(datasourceId);
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void returnedLeaseShouldCloseWhenDatasourceWasRemovedAndPoolWasRecreated() {
+        long datasourceId = -1925L;
+        AtomicBoolean oldClosed = new AtomicBoolean();
+        ConnectInfo pooled = connectInfo(connection(true, oldClosed));
+        pooled.setDataSourceId(datasourceId);
+        pooled.updatePoolGeneration(ConnectionPool.currentGeneration(datasourceId));
+        LinkedBlockingQueue<ConnectInfo> oldQueue =
+                ConnectionPool.getOrCreateConnectionQueue(datasourceId, pooled.getKey());
+        assertTrue(oldQueue.offer(pooled));
+
+        ConnectInfo oldLease = new ConnectInfo();
+        oldLease.setDataSourceId(datasourceId);
+        assertNotNull(ConnectionPool.getConnection(oldLease));
+
+        ConnectionPool.removeConnection(datasourceId);
+
+        AtomicBoolean replacementClosed = new AtomicBoolean();
+        ConnectInfo replacement = connectInfo(connection(true, replacementClosed));
+        replacement.setDataSourceId(datasourceId);
+        LinkedBlockingQueue<ConnectInfo> replacementQueue =
+                ConnectionPool.getOrCreateConnectionQueue(datasourceId, replacement.getKey());
+        assertTrue(replacementQueue.offer(replacement));
+        ConnectionPool.close(oldLease);
+
+        assertTrue(oldClosed.get());
+        assertNull(oldLease.getConnection());
+        assertFalse(replacementClosed.get());
+        assertSame(replacement, replacementQueue.peek());
+        ConnectionPool.removeConnection(datasourceId);
+        assertTrue(replacementClosed.get());
     }
 
     private static ConnectInfo connectInfo(Connection connection) {

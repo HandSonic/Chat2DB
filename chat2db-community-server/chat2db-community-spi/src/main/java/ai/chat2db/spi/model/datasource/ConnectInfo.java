@@ -139,6 +139,9 @@ public class ConnectInfo {
 
     private Date lastAccessTime;
 
+    // Runtime-only marker used to reject leases created before a pool invalidation.
+    private transient volatile Long poolGeneration;
+
 
     public String getDbVersion() {
         return dbVersion;
@@ -488,6 +491,14 @@ public class ConnectInfo {
 
     public void setLastAccessTime(Date lastAccessTime) {
         this.lastAccessTime = lastAccessTime;
+    }
+
+    public Long poolGeneration() {
+        return poolGeneration;
+    }
+
+    public void updatePoolGeneration(Long poolGeneration) {
+        this.poolGeneration = poolGeneration;
     }
 
     private AtomicBoolean inUse = new AtomicBoolean(false);

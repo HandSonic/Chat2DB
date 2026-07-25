@@ -28,6 +28,8 @@ public class ConnectionPool {
 
     private static ConcurrentHashMap<Long, ConcurrentHashMap<String, LinkedBlockingQueue<ConnectInfo>>> CONNECTION_MAP = new ConcurrentHashMap<>();
 
+    private static final ConcurrentHashMap<Long, Long> CONNECTION_GENERATIONS = new ConcurrentHashMap<>();
+
 
     static {
         new Thread(() -> {
@@ -97,6 +99,13 @@ public class ConnectionPool {
 
     static LinkedBlockingQueue<ConnectInfo> newConnectionQueue() {
         return new LinkedBlockingQueue<>(MAX_CONNECTIONS);
+    }
+
+    static LinkedBlockingQueue<ConnectInfo> getOrCreateConnectionQueue(Long datasourceId,
+                                                                        String connectionKey) {
+        ConcurrentHashMap<String, LinkedBlockingQueue<ConnectInfo>> map =
+                CONNECTION_MAP.computeIfAbsent(datasourceId, key -> new ConcurrentHashMap<>());
+        return map.computeIfAbsent(connectionKey, key -> newConnectionQueue());
     }
 
     static void offerOrClose(LinkedBlockingQueue<ConnectInfo> queue, ConnectInfo connectInfo) {
@@ -198,10 +207,19 @@ public class ConnectionPool {
         return null;
     }
 
+    static long currentGeneration(Long datasourceId) {
+        return datasourceId == null ? 0L : CONNECTION_GENERATIONS.getOrDefault(datasourceId, 0L);
+    }
+
     public static Connection createNewConnection(ConnectInfo connectInfo) {
+        return createNewConnection(connectInfo, currentGeneration(connectInfo.getDataSourceId()));
+    }
+
+    private static Connection createNewConnection(ConnectInfo connectInfo, long generation) {
         log.info("Creating new individual connection");
         Connection connection = Chat2DBContext.getDbManager(connectInfo.getDbType()).getConnection(connectInfo);
         connectInfo.setConnection(connection);
+        connectInfo.updatePoolGeneration(generation);
         return connection;
     }
 
@@ -210,27 +228,28 @@ public class ConnectionPool {
         if (connection != null) {
             return connection;
         }
-        ConcurrentHashMap<String, LinkedBlockingQueue<ConnectInfo>> map = CONNECTION_MAP.get(connectInfo.getDataSourceId());
-        if (map == null) {
+        Long datasourceId = connectInfo.getDataSourceId();
+        if (datasourceId == null) {
             return createNewConnection(connectInfo);
         }
-        LinkedBlockingQueue<ConnectInfo> queue = map.get(connectInfo.getKey());
-        if (queue != null) {
-            Connection pooledConnection = tryBorrowConnection(connectInfo, connectInfo.getDataSourceId(),
-                    connectInfo.getKey(), queue);
-            if (pooledConnection != null) {
-                return pooledConnection;
-            }
+        long acquisitionGeneration = currentGeneration(datasourceId);
+        LinkedBlockingQueue<ConnectInfo> queue =
+                getOrCreateConnectionQueue(datasourceId, connectInfo.getKey());
+        Connection pooledConnection = tryBorrowConnection(connectInfo, datasourceId,
+                connectInfo.getKey(), queue, acquisitionGeneration);
+        if (pooledConnection != null) {
+            return pooledConnection;
         }
-        return createNewConnection(connectInfo);
+        return createNewConnection(connectInfo, acquisitionGeneration);
     }
 
     static Connection tryBorrowConnection(ConnectInfo connectInfo, LinkedBlockingQueue<ConnectInfo> queue) {
-        return tryBorrowConnection(connectInfo, null, null, queue);
+        return tryBorrowConnection(connectInfo, null, null, queue, 0L);
     }
 
     private static Connection tryBorrowConnection(ConnectInfo connectInfo, Long datasourceId, String connectionKey,
-                                                   LinkedBlockingQueue<ConnectInfo> queue) {
+                                                   LinkedBlockingQueue<ConnectInfo> queue,
+                                                   long acquisitionGeneration) {
         ConnectInfo pooledConnectInfo = queue.poll();
         if (pooledConnectInfo == null) {
             return null;
@@ -240,10 +259,16 @@ public class ConnectionPool {
             returnToQueue(datasourceId, connectionKey, queue, pooledConnectInfo, false);
             return null;
         }
+        if (datasourceId != null
+                && !Objects.equals(pooledConnectInfo.poolGeneration(), acquisitionGeneration)) {
+            closeQuietly(pooledConnectInfo);
+            return null;
+        }
         Connection connection = tryGetExistingConnection(pooledConnectInfo);
         if (connection != null
                 && (isRecentlyUsed(lastAccessTime) || checkConnectionIsActive(pooledConnectInfo))) {
             connectInfo.setConnection(connection);
+            connectInfo.updatePoolGeneration(pooledConnectInfo.poolGeneration());
             log.info("Got connection from pool");
             return connection;
         }
@@ -252,6 +277,10 @@ public class ConnectionPool {
     }
 
     public static void removeConnection(Long datasourceId) {
+        if (datasourceId == null) {
+            return;
+        }
+        CONNECTION_GENERATIONS.merge(datasourceId, 1L, Long::sum);
         CONNECTION_MAP.computeIfPresent(datasourceId, (key, keyMap) -> {
             for (Map.Entry<String, LinkedBlockingQueue<ConnectInfo>> entry : keyMap.entrySet()) {
                 LinkedBlockingQueue<ConnectInfo> queue = entry.getValue();
@@ -303,10 +332,31 @@ public class ConnectionPool {
             return;
         }
 
-        String key = connectInfo.getKey();
-        ConcurrentHashMap<String, LinkedBlockingQueue<ConnectInfo>> map = CONNECTION_MAP.computeIfAbsent(connectInfo.getDataSourceId(), k -> new ConcurrentHashMap<>());
-        LinkedBlockingQueue<ConnectInfo> queue = map.computeIfAbsent(key, k -> newConnectionQueue());
-        offerOrClose(queue, connectInfo);
+        Long datasourceId = connectInfo.getDataSourceId();
+        if (datasourceId == null) {
+            closeQuietly(connectInfo);
+            return;
+        }
+        Long leaseGeneration = connectInfo.poolGeneration();
+        if (leaseGeneration == null) {
+            closeQuietly(connectInfo);
+            return;
+        }
+        long expectedGeneration = leaseGeneration;
+        String connectionKey = connectInfo.getKey();
+        CONNECTION_MAP.compute(datasourceId, (key, keyMap) -> {
+            if (expectedGeneration != currentGeneration(datasourceId) || keyMap == null) {
+                closeQuietly(connectInfo);
+                return keyMap;
+            }
+            LinkedBlockingQueue<ConnectInfo> queue = keyMap.get(connectionKey);
+            if (queue == null) {
+                closeQuietly(connectInfo);
+            } else {
+                offerOrClose(queue, connectInfo);
+            }
+            return keyMap;
+        });
     }
 
 }
