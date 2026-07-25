@@ -2,10 +2,13 @@ package ai.chat2db.plugin.sqlserver;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlServerDBManagerTest {
@@ -78,6 +81,39 @@ class SqlServerDBManagerTest {
     }
 
     @Test
+    void shouldIgnoreQuotesInCommentsAndKeepGoInsideBlockComments() {
+        List<String> batches = SqlServerDBManager.splitDdlBatches(
+                "SELECT 1; -- user's note\nGO\n"
+                        + "SELECT 2; /* owner's block\nGO\nstill a comment */\nGO\nSELECT 3;");
+
+        assertEquals(List.of(
+                "SELECT 1; -- user's note",
+                "SELECT 2; /* owner's block\nGO\nstill a comment */",
+                "SELECT 3;"), batches);
+    }
+
+    @Test
+    void shouldNotRewriteSelfReferenceTextInsideSqlLiteral() {
+        String ddl = """
+                CREATE TABLE [sales].[orders]
+                (
+                    [id] int,
+                    [description] AS ('references [orders] ('),
+                    constraint FK_orders_parent
+                    foreign key ([id])
+                    references [sales].[orders] ([id])
+                )
+                GO
+                """;
+
+        String createTable = SqlServerDBManager.prepareCopyDdlBatches(
+                ddl, "catalog", "sales", "orders", "orders_copy").get(0);
+
+        assertTrue(createTable.contains("AS ('references [orders] (')"));
+        assertTrue(createTable.contains("references [sales].[orders_copy] ([id])"));
+    }
+
+    @Test
     void shouldUseTheSameExplicitColumnsForInsertAndSelect() {
         assertEquals(
                 "INSERT INTO [catalog].[sales].[orders_copy] ([id], [name]) "
@@ -101,5 +137,49 @@ class SqlServerDBManagerTest {
                 SqlServerDBManager.buildFullTableName("catalog]archive", "sales", "orders]2026"));
         assertEquals("[catalog].[sales].[orders]",
                 SqlServerDBManager.buildFullTableName("[catalog]", "[sales]", "[orders]"));
+    }
+
+    @Test
+    void shouldTurnIdentityInsertOffAndPreserveTheCopyFailure() {
+        List<String> statements = new ArrayList<>();
+        RuntimeException insertFailure = new RuntimeException("insert failed");
+        RuntimeException offFailure = new RuntimeException("off failed");
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> SqlServerDBManager.executeIdentityCopy("[dbo].[orders_copy]", "INSERT DATA", sql -> {
+                    statements.add(sql);
+                    if ("INSERT DATA".equals(sql)) {
+                        throw insertFailure;
+                    }
+                    if (sql.endsWith(" OFF")) {
+                        throw offFailure;
+                    }
+                }));
+
+        assertSame(insertFailure, thrown);
+        assertEquals(List.of(
+                "SET IDENTITY_INSERT [dbo].[orders_copy] ON",
+                "INSERT DATA",
+                "SET IDENTITY_INSERT [dbo].[orders_copy] OFF"), statements);
+        assertEquals(List.of(offFailure), List.of(thrown.getSuppressed()));
+    }
+
+    @Test
+    void shouldAttemptIdentityInsertOffWhenEnablingFails() {
+        List<String> statements = new ArrayList<>();
+        RuntimeException onFailure = new RuntimeException("on failed");
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> SqlServerDBManager.executeIdentityCopy("[dbo].[orders_copy]", "INSERT DATA", sql -> {
+                    statements.add(sql);
+                    if (sql.endsWith(" ON")) {
+                        throw onFailure;
+                    }
+                }));
+
+        assertSame(onFailure, thrown);
+        assertEquals(List.of(
+                "SET IDENTITY_INSERT [dbo].[orders_copy] ON",
+                "SET IDENTITY_INSERT [dbo].[orders_copy] OFF"), statements);
     }
 }

@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -218,32 +219,8 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
             log.info("copy table data sql: {}", insertSql);
 
             if (hasIdentity) {
-                String identityOn = String.format(SQL_SET_IDENTITY_INSERT, targetTable, "ON");
-                String identityOff = String.format(SQL_SET_IDENTITY_INSERT, targetTable, "OFF");
-                boolean identityEnabled = false;
-                RuntimeException copyFailure = null;
-                try {
-                    DefaultSQLExecutor.getInstance().execute(connection, identityOn, resultSet -> null);
-                    identityEnabled = true;
-                    DefaultSQLExecutor.getInstance().execute(connection, insertSql, resultSet -> null);
-                } catch (RuntimeException exception) {
-                    copyFailure = exception;
-                    log.error("Failed to copy data with identity insert", exception);
-                    throw exception;
-                } finally {
-                    if (identityEnabled) {
-                        try {
-                            DefaultSQLExecutor.getInstance().execute(connection, identityOff, resultSet -> null);
-                        } catch (RuntimeException exception) {
-                            if (copyFailure != null) {
-                                copyFailure.addSuppressed(exception);
-                                log.warn("Failed to turn off identity insert", exception);
-                            } else {
-                                throw exception;
-                            }
-                        }
-                    }
-                }
+                executeIdentityCopy(targetTable, insertSql,
+                        sql -> DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null));
             } else {
                 DefaultSQLExecutor.getInstance().execute(connection, insertSql, resultSet -> null);
             }
@@ -268,7 +245,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
                         targetTable);
                 rewritten = rewriteSelfReference(rewritten, sourceReferences, tableName, targetTable);
                 // Constraint names are schema-scoped, so copied declarations must receive fresh server-generated names.
-                rewritten = NAMED_TABLE_CONSTRAINT.matcher(rewritten).replaceAll("$1");
+                rewritten = removeNamedTableConstraints(rewritten);
                 createTableRewritten = true;
             } else if (CREATE_INDEX_BATCH.matcher(batch).find()) {
                 rewritten = replaceObjectAfterKeyword(batch, "ON\\s+", sourceReferences, targetTable);
@@ -291,32 +268,54 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     static List<String> splitDdlBatches(String ddl) {
         List<String> batches = new ArrayList<>();
         StringBuilder batch = new StringBuilder();
-        boolean inString = false;
+        DdlLexicalState state = new DdlLexicalState();
         String[] lines = ddl.split("\\R", -1);
         for (String line : lines) {
-            if (!inString && GO_BATCH_LINE.matcher(line).matches()) {
+            if (state.isCode() && GO_BATCH_LINE.matcher(line).matches()) {
                 addBatch(batches, batch);
                 continue;
             }
             batch.append(line).append('\n');
-            inString = updateStringState(line, inString);
+            updateLexicalState(line, state);
         }
         addBatch(batches, batch);
         return batches;
     }
 
-    private static boolean updateStringState(String line, boolean inString) {
+    private static void updateLexicalState(String line, DdlLexicalState state) {
         for (int i = 0; i < line.length(); i++) {
-            if (line.charAt(i) != '\'') {
+            char current = line.charAt(i);
+            char next = i + 1 < line.length() ? line.charAt(i + 1) : '\0';
+            if (state.inString) {
+                if (current == '\'' && next == '\'') {
+                    i++;
+                } else if (current == '\'') {
+                    state.inString = false;
+                }
                 continue;
             }
-            if (inString && i + 1 < line.length() && line.charAt(i + 1) == '\'') {
+
+            if (state.blockCommentDepth > 0) {
+                if (current == '/' && next == '*') {
+                    state.blockCommentDepth++;
+                    i++;
+                } else if (current == '*' && next == '/') {
+                    state.blockCommentDepth--;
+                    i++;
+                }
+                continue;
+            }
+
+            if (current == '-' && next == '-') {
+                return;
+            }
+            if (current == '/' && next == '*') {
+                state.blockCommentDepth++;
                 i++;
-            } else {
-                inString = !inString;
+            } else if (current == '\'') {
+                state.inString = true;
             }
         }
-        return inString;
     }
 
     private static void addBatch(List<String> batches, StringBuilder batch) {
@@ -342,10 +341,13 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
                 .collect(Collectors.joining("|"));
         Pattern pattern = Pattern.compile("(?i)(\\b" + keywordPattern + ")(?:(?:" + alternatives + "))");
         Matcher matcher = pattern.matcher(sql);
-        if (!matcher.find()) {
-            throw new IllegalArgumentException("Unable to rewrite source table reference in DDL batch: " + sql);
+        while (matcher.find()) {
+            if (isSqlCodeAt(sql, matcher.start())) {
+                return sql.substring(0, matcher.start()) + matcher.group(1) + targetReference
+                        + sql.substring(matcher.end());
+            }
         }
-        return matcher.replaceFirst(Matcher.quoteReplacement(matcher.group(1) + targetReference));
+        throw new IllegalArgumentException("Unable to rewrite source table reference in DDL batch: " + sql);
     }
 
     private static String rewriteSelfReference(String sql, List<String> sourceReferences, String tableName,
@@ -361,10 +363,89 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         Matcher matcher = pattern.matcher(sql);
         StringBuffer rewritten = new StringBuffer();
         while (matcher.find()) {
-            matcher.appendReplacement(rewritten, Matcher.quoteReplacement(matcher.group(1) + targetReference));
+            if (isSqlCodeAt(sql, matcher.start())) {
+                matcher.appendReplacement(rewritten, Matcher.quoteReplacement(matcher.group(1) + targetReference));
+            }
         }
         matcher.appendTail(rewritten);
         return rewritten.toString();
+    }
+
+    private static String removeNamedTableConstraints(String sql) {
+        Matcher matcher = NAMED_TABLE_CONSTRAINT.matcher(sql);
+        StringBuffer rewritten = new StringBuffer();
+        while (matcher.find()) {
+            if (isSqlCodeAt(sql, matcher.start())) {
+                matcher.appendReplacement(rewritten, Matcher.quoteReplacement(matcher.group(1)));
+            }
+        }
+        matcher.appendTail(rewritten);
+        return rewritten.toString();
+    }
+
+    private static boolean isSqlCodeAt(String sql, int position) {
+        DdlLexicalState state = new DdlLexicalState();
+        boolean inLineComment = false;
+        boolean inBracketIdentifier = false;
+        boolean inQuotedIdentifier = false;
+        for (int i = 0; i < position; i++) {
+            char current = sql.charAt(i);
+            char next = i + 1 < position ? sql.charAt(i + 1) : '\0';
+            if (inLineComment) {
+                if (current == '\n' || current == '\r') {
+                    inLineComment = false;
+                }
+                continue;
+            }
+            if (state.inString) {
+                if (current == '\'' && next == '\'') {
+                    i++;
+                } else if (current == '\'') {
+                    state.inString = false;
+                }
+                continue;
+            }
+            if (inBracketIdentifier) {
+                if (current == ']' && next == ']') {
+                    i++;
+                } else if (current == ']') {
+                    inBracketIdentifier = false;
+                }
+                continue;
+            }
+            if (inQuotedIdentifier) {
+                if (current == '"' && next == '"') {
+                    i++;
+                } else if (current == '"') {
+                    inQuotedIdentifier = false;
+                }
+                continue;
+            }
+            if (state.blockCommentDepth > 0) {
+                if (current == '/' && next == '*') {
+                    state.blockCommentDepth++;
+                    i++;
+                } else if (current == '*' && next == '/') {
+                    state.blockCommentDepth--;
+                    i++;
+                }
+                continue;
+            }
+            if (current == '-' && next == '-') {
+                inLineComment = true;
+                i++;
+            } else if (current == '/' && next == '*') {
+                state.blockCommentDepth++;
+                i++;
+            } else if (current == '\'') {
+                state.inString = true;
+            } else if (current == '[') {
+                inBracketIdentifier = true;
+            } else if (current == '"') {
+                inQuotedIdentifier = true;
+            }
+        }
+        return !inLineComment && state.isCode() && !inBracketIdentifier && !inQuotedIdentifier;
     }
 
     private static String rewriteExtendedPropertyTable(String sql, String tableName, String newTableName) {
@@ -385,6 +466,35 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
 
     static String buildCopyDataSql(String targetTable, String columnList, String sourceTable) {
         return String.format(SQL_COPY_TABLE_DATA_WITH_COLUMNS, targetTable, columnList, columnList, sourceTable);
+    }
+
+    static void executeIdentityCopy(String targetTable, String insertSql, Consumer<String> executor) {
+        String identityOn = String.format(SQL_SET_IDENTITY_INSERT, targetTable, "ON");
+        String identityOff = String.format(SQL_SET_IDENTITY_INSERT, targetTable, "OFF");
+        boolean identityEnableAttempted = false;
+        RuntimeException copyFailure = null;
+        try {
+            identityEnableAttempted = true;
+            executor.accept(identityOn);
+            executor.accept(insertSql);
+        } catch (RuntimeException exception) {
+            copyFailure = exception;
+            log.error("Failed to copy data with identity insert", exception);
+            throw exception;
+        } finally {
+            if (identityEnableAttempted) {
+                try {
+                    executor.accept(identityOff);
+                } catch (RuntimeException exception) {
+                    if (copyFailure != null) {
+                        copyFailure.addSuppressed(exception);
+                        log.warn("Failed to turn off identity insert", exception);
+                    } else {
+                        throw exception;
+                    }
+                }
+            }
+        }
     }
 
     private static List<String> tableReferences(String databaseName, String schemaName, String tableName) {
@@ -423,7 +533,16 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         if (value.length() >= 2 && value.startsWith("[") && value.endsWith("]")) {
             value = value.substring(1, value.length() - 1).replace("]]", "]");
         }
-        return "[" + value.replace("]", "]]" ) + "]";
+        return "[" + value.replace("]", "]]") + "]";
+    }
+
+    private static final class DdlLexicalState {
+        private boolean inString;
+        private int blockCommentDepth;
+
+        private boolean isCode() {
+            return !inString && blockCommentDepth == 0;
+        }
     }
 
     @Override

@@ -417,9 +417,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
     }
 
     private void configureColumnSize(ResultSet columns, TableColumn tableColumn) throws SQLException {
-        if (Arrays.asList(SqlServerColumnTypeEnum.FLOAT.name(),
-                        SqlServerColumnTypeEnum.REAL.name())
-                .contains(tableColumn.getColumnType())) {
+        if (shouldOmitColumnSize(tableColumn.getColumnType())) {
             return;
         }
         int columnSize = columns.getInt("COLUMN_SIZE");
@@ -458,6 +456,14 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
 
         }
         tableColumn.setDecimalDigits(numericScale);
+    }
+
+    static boolean shouldOmitColumnSize(String columnType) {
+        return Arrays.asList(SqlServerColumnTypeEnum.FLOAT.name(),
+                        SqlServerColumnTypeEnum.REAL.name(),
+                        SqlServerColumnTypeEnum.TIMESTAMP.name(),
+                        "ROWVERSION")
+                .contains(columnType);
     }
 
 
