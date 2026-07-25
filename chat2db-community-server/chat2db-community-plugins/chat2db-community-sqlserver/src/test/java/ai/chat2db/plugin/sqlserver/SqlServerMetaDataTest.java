@@ -37,7 +37,7 @@ class SqlServerMetaDataTest {
         assertEquals("", SqlServerMetaData.buildReferentialActions(0, 0));
         assertEquals(" on update cascade", SqlServerMetaData.buildReferentialActions(1, 0));
         assertEquals(" on delete set null", SqlServerMetaData.buildReferentialActions(0, 2));
-        assertEquals(" on update set default on delete cascade",
+        assertEquals(" on delete cascade on update set default",
                 SqlServerMetaData.buildReferentialActions(3, 1));
     }
 

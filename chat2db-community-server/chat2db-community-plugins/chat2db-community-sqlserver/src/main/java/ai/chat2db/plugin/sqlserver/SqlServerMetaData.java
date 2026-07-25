@@ -395,11 +395,11 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
 
     static String buildReferentialActions(int updateAction, int deleteAction) {
         StringBuilder actions = new StringBuilder();
-        if (updateAction != 0) {
-            actions.append(SQL_UPDATE).append(buildReferentialAction(updateAction));
-        }
         if (deleteAction != 0) {
             actions.append(SQL_DELETE).append(buildReferentialAction(deleteAction));
+        }
+        if (updateAction != 0) {
+            actions.append(SQL_UPDATE).append(buildReferentialAction(updateAction));
         }
         return actions.toString();
     }
