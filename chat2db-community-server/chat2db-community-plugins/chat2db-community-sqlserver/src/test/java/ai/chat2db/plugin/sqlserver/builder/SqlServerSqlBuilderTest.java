@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.sqlserver.builder;
 
+import ai.chat2db.community.domain.api.model.view.ModifyView;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,6 +35,23 @@ class SqlServerSqlBuilderTest {
 
         assertEquals("[dbo].[orders]", builder.tableName(null, "dbo", "orders"));
         assertEquals("[analytics].[dbo].[orders]", builder.tableName("analytics", "dbo", "orders"));
+    }
+
+    @Test
+    void shouldQuoteAndEscapeQualifiedViewName() {
+        SqlServerSqlBuilder builder = new SqlServerSqlBuilder();
+        ModifyView view = new ModifyView();
+        view.setSchemaName("order] schema");
+        view.setViewName("select] view");
+        view.setViewBody("SELECT 1");
+        view.setComment("owner's view");
+
+        assertEquals("CREATE VIEW [order]] schema].[select]] view]\n"
+                        + "AS \n"
+                        + "SELECT 1 ;\n"
+                        + "exec sp_addextendedproperty 'MS_Description', 'owner''s view', 'SCHEMA', "
+                        + "'order] schema', 'VIEW', 'select] view'",
+                builder.buildCreateView(view));
     }
 
     private static final class ExposedSqlServerSqlBuilder extends SqlServerSqlBuilder {
