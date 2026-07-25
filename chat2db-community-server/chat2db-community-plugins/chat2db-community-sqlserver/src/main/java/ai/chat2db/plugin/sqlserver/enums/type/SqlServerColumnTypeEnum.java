@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.Objects;
 
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerColumnTypeEnumConstants.*;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
 public enum SqlServerColumnTypeEnum implements IColumnBuilder {
 
     BIGINT("BIGINT", false, false, true, false, false, false, true, true),
@@ -280,7 +282,7 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
             }
             return script.toString();
         }
-        if (Arrays.asList(DECIMAL, FLOAT, TIMESTAMP, FLOAT, NUMERIC).contains(type)) {
+        if (Arrays.asList(DECIMAL, FLOAT, NUMERIC).contains(type)) {
             StringBuilder script = new StringBuilder();
             script.append(columnType);
             if (column.getColumnSize() != null && column.getDecimalDigits() == null) {
@@ -291,16 +293,6 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
             return script.toString();
         }
 
-        if (Arrays.asList("TIMESTAMP").contains(type)) {
-            StringBuilder script = new StringBuilder();
-            if (column.getColumnSize() == null) {
-                script.append(columnType);
-            } else {
-                String[] split = columnType.split("TIMESTAMP");
-                script.append("TIMESTAMP").append("(").append(column.getColumnSize()).append(")").append(split[1]);
-            }
-            return script.toString();
-        }
         if (OTHER.equals(columnType)) {
             return column.getColumnType();
         }
@@ -311,7 +303,16 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
 
 
     private String renameColumn(TableColumn tableColumn) {
-        return String.format(RENAME_COLUMN_SCRIPT, tableColumn.getTableName(), tableColumn.getOldName(), tableColumn.getName());
+        StringBuilder qualifiedColumnName = new StringBuilder();
+        if (StringUtils.isNotBlank(tableColumn.getSchemaName())) {
+            qualifiedColumnName.append(quoteIdentifierPart(tableColumn.getSchemaName())).append('.');
+        }
+        qualifiedColumnName.append(quoteIdentifierPart(tableColumn.getTableName()))
+                .append('.')
+                .append(quoteIdentifierPart(tableColumn.getOldName()));
+        return String.format(RENAME_COLUMN_SCRIPT,
+                escapeStringLiteral(qualifiedColumnName.toString()),
+                escapeStringLiteral(tableColumn.getName()));
     }
 
 

@@ -24,6 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerSqlBuilderConstants.*;
 public class SqlServerSqlBuilder extends DefaultSqlBuilder {
 
@@ -339,11 +340,11 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         }
         String schemaName = modifyView.getSchemaName();
         if (StringUtils.isNotBlank(schemaName)) {
-            createViewSqlBuilder.append(SQLConstants.DOUBLE_QUOTE).append(schemaName).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.DOT);
+            createViewSqlBuilder.append(quoteIdentifierPart(schemaName)).append(SQLConstants.DOT);
         }
         String viewName = modifyView.getViewName();
         if (StringUtils.isNotBlank(viewName)) {
-            createViewSqlBuilder.append(SQLConstants.OPEN_SQUARE_BRACKET).append(viewName).append(SQLConstants.CLOSE_SQUARE_BRACKET);
+            createViewSqlBuilder.append(quoteIdentifierPart(viewName));
         } else {
             createViewSqlBuilder.append(UNDEFINED_KEYWORD);
         }
