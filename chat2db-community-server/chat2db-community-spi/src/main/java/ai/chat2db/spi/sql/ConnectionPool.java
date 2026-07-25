@@ -46,24 +46,7 @@ public class ConnectionPool {
                                 continue;
                             }
                             log.info(e.getKey() + " queue size:{}", queue.size());
-                            Iterator<ConnectInfo> iterator = queue.iterator();
-                            while (iterator.hasNext()) {
-                                ConnectInfo connectInfo = iterator.next();
-                                log.info("check connection:{},usage:{}", connectInfo.getKey(), connectInfo.isInUse());
-                                if (connectInfo.trySetInUse()) {
-                                    try {
-                                        if (connectInfo.getLastAccessTime().getTime() + 1000 * 60 * 30 < System.currentTimeMillis()) {
-                                            closeQuietly(connectInfo);
-                                            iterator.remove();
-                                        } else if (!checkConnectionIsActive(connectInfo)) {
-                                            closeQuietly(connectInfo);
-                                            iterator.remove();
-                                        }
-                                    } finally {
-                                        connectInfo.releaseInUse();
-                                    }
-                                }
-                            }
+                            cleanupQueue(queue);
                         }
                     }
                 } catch (Exception e) {
@@ -71,6 +54,46 @@ public class ConnectionPool {
                 }
             }
         }).start();
+    }
+
+    static void cleanupQueue(LinkedBlockingQueue<ConnectInfo> queue) {
+        int connectionsToCheck = queue.size();
+        for (int i = 0; i < connectionsToCheck; i++) {
+            ConnectInfo connectInfo = queue.poll();
+            if (connectInfo == null) {
+                return;
+            }
+            log.info("check connection:{},usage:{}", connectInfo.getKey(), connectInfo.isInUse());
+            Date lastAccessTime = connectInfo.getLastAccessTime();
+            if (!connectInfo.trySetInUse()) {
+                queue.offer(connectInfo);
+                continue;
+            }
+            boolean reusable = true;
+            try {
+                boolean expired = lastAccessTime != null
+                        && lastAccessTime.getTime() + 1000 * 60 * 30 < System.currentTimeMillis();
+                if (expired || !checkConnectionIsActive(connectInfo)) {
+                    closeQuietly(connectInfo);
+                    reusable = false;
+                }
+            } finally {
+                connectInfo.releaseInUse();
+                if (reusable) {
+                    offerOrClose(queue, connectInfo);
+                }
+            }
+        }
+    }
+
+    static LinkedBlockingQueue<ConnectInfo> newConnectionQueue() {
+        return new LinkedBlockingQueue<>(MAX_CONNECTIONS);
+    }
+
+    static void offerOrClose(LinkedBlockingQueue<ConnectInfo> queue, ConnectInfo connectInfo) {
+        if (!queue.offer(connectInfo)) {
+            closeQuietly(connectInfo);
+        }
     }
 
     private static boolean checkConnectionIsActive(ConnectInfo connectInfo) {
@@ -156,26 +179,32 @@ public class ConnectionPool {
         }
         LinkedBlockingQueue<ConnectInfo> queue = map.get(connectInfo.getKey());
         if (queue != null) {
-            ConnectInfo c = queue.poll();
-            if (c != null && c.trySetInUse()) {
-                Connection conn = tryGetExistingConnection(c);
-                if (conn != null && (isRecentlyUsed(c) || checkConnectionIsActive(c))) {
-                    connectInfo.setConnection(conn);
-                    log.info("Got connection from pool");
-                    return conn;
-                } else {
-                    closeQuietly(c);
-                    return createNewConnection(connectInfo);
-                }
-            } else {
-                if (c != null) {
-                    queue.offer(c);
-                }
-                return createNewConnection(connectInfo);
+            Connection pooledConnection = tryBorrowConnection(connectInfo, queue);
+            if (pooledConnection != null) {
+                return pooledConnection;
             }
-        } else {
-            return createNewConnection(connectInfo);
         }
+        return createNewConnection(connectInfo);
+    }
+
+    static Connection tryBorrowConnection(ConnectInfo connectInfo, LinkedBlockingQueue<ConnectInfo> queue) {
+        ConnectInfo pooledConnectInfo = queue.poll();
+        if (pooledConnectInfo == null) {
+            return null;
+        }
+        if (!pooledConnectInfo.trySetInUse()) {
+            queue.offer(pooledConnectInfo);
+            return null;
+        }
+        Connection connection = tryGetExistingConnection(pooledConnectInfo);
+        if (connection != null
+                && (isRecentlyUsed(pooledConnectInfo) || checkConnectionIsActive(pooledConnectInfo))) {
+            connectInfo.setConnection(connection);
+            log.info("Got connection from pool");
+            return connection;
+        }
+        closeQuietly(pooledConnectInfo);
+        return null;
     }
 
     public static void removeConnection(Long datasourceId) {
@@ -232,12 +261,8 @@ public class ConnectionPool {
 
         String key = connectInfo.getKey();
         ConcurrentHashMap<String, LinkedBlockingQueue<ConnectInfo>> map = CONNECTION_MAP.computeIfAbsent(connectInfo.getDataSourceId(), k -> new ConcurrentHashMap<>());
-        LinkedBlockingQueue<ConnectInfo> queue = map.computeIfAbsent(key, k -> new LinkedBlockingQueue<>());
-        if (queue.size() < MAX_CONNECTIONS) {
-            queue.offer(connectInfo);
-        } else {
-            closeQuietly(connectInfo);
-        }
+        LinkedBlockingQueue<ConnectInfo> queue = map.computeIfAbsent(key, k -> newConnectionQueue());
+        offerOrClose(queue, connectInfo);
     }
 
 }

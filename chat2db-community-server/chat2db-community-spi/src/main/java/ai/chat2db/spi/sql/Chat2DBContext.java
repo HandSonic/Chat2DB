@@ -49,6 +49,9 @@ public class Chat2DBContext {
     }
 
     private static IPlugin getPlugin(String dbType) {
+        if (StringUtils.isBlank(dbType)) {
+            throw new IllegalArgumentException("Database type must not be blank. Registered types: " + PLUGIN_MAP.keySet());
+        }
         IPlugin plugin = PLUGIN_MAP.get(dbType);
         if (plugin == null) {
             throw new IllegalArgumentException("Unsupported database type: " + dbType + ". Registered types: " + PLUGIN_MAP.keySet());

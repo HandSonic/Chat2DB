@@ -27,4 +27,20 @@ class SqlServerSqlBuilderTest {
         assertEquals("UPDATE TOP (1) [t] set [a] = 1" + where,
                 builder.appendSingleRowLimit("UPDATE", "[t]", where, "UPDATE [t] set [a] = 1" + where));
     }
+
+    @Test
+    void shouldIncludeSchemaWhenDatabaseNameIsBlank() {
+        ExposedSqlServerSqlBuilder builder = new ExposedSqlServerSqlBuilder();
+
+        assertEquals("[dbo].[orders]", builder.tableName(null, "dbo", "orders"));
+        assertEquals("[analytics].[dbo].[orders]", builder.tableName("analytics", "dbo", "orders"));
+    }
+
+    private static final class ExposedSqlServerSqlBuilder extends SqlServerSqlBuilder {
+        private String tableName(String databaseName, String schemaName, String tableName) {
+            StringBuilder script = new StringBuilder();
+            buildTableName(databaseName, schemaName, tableName, script);
+            return script.toString();
+        }
+    }
 }
