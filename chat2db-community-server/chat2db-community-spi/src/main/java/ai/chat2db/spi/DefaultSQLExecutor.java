@@ -46,6 +46,7 @@ import org.springframework.util.Assert;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -56,6 +57,8 @@ import java.util.stream.Collectors;
 public class DefaultSQLExecutor implements ICommandExecutor {
 
     private static final int STREAMING_ROW_BATCH_SIZE = 200;
+
+    private static final Executor DIRECT_ABORT_EXECUTOR = Runnable::run;
 
 
     private static final DefaultSQLExecutor INSTANCE = new DefaultSQLExecutor();
@@ -1545,14 +1548,15 @@ public class DefaultSQLExecutor implements ICommandExecutor {
             connectInfo.setConnection(null);
         }
         try {
+            connection.abort(DIRECT_ABORT_EXECUTOR);
+            return;
+        } catch (Exception abortEx) {
+            failure.addSuppressed(abortEx);
+        }
+        try {
             connection.close();
         } catch (Exception closeEx) {
             failure.addSuppressed(closeEx);
-            try {
-                connection.abort(Runnable::run);
-            } catch (Exception abortEx) {
-                failure.addSuppressed(abortEx);
-            }
         }
     }
 

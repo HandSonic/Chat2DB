@@ -15,6 +15,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -94,7 +97,10 @@ class DefaultSQLExecutorTransactionTest {
         try (Connection delegate = DriverManager.getConnection(url);
              Connection observer = DriverManager.getConnection(url)) {
             createTable(delegate);
-            Connection connection = proxyConnection(delegate, true, false);
+            List<String> lifecycleCalls = new ArrayList<>();
+            AtomicBoolean abortExecutorCompleted = new AtomicBoolean();
+            Connection connection = proxyConnection(delegate, true, false, false, false,
+                    lifecycleCalls, abortExecutorCompleted);
             ConnectInfo connectInfo = putContext(connection);
             IllegalStateException consumerFailure = new IllegalStateException("consumer failed");
             try {
@@ -107,6 +113,8 @@ class DefaultSQLExecutorTransactionTest {
                 assertSame(consumerFailure, thrown.getCause());
                 assertEquals(1, consumerFailure.getSuppressed().length);
                 assertEquals("rollback failed", consumerFailure.getSuppressed()[0].getMessage());
+                assertEquals(List.of("rollback", "abort"), lifecycleCalls);
+                assertTrue(abortExecutorCompleted.get());
                 assertTrue(connection.isClosed());
                 assertNull(connectInfo.getConnection());
                 assertEquals(0, countRows(observer));
@@ -121,7 +129,10 @@ class DefaultSQLExecutorTransactionTest {
         String url = "jdbc:h2:mem:fetch_records_restore_failure;DB_CLOSE_DELAY=-1";
         try (Connection delegate = DriverManager.getConnection(url)) {
             createTable(delegate);
-            Connection connection = proxyConnection(delegate, false, true);
+            List<String> lifecycleCalls = new ArrayList<>();
+            AtomicBoolean abortExecutorCompleted = new AtomicBoolean();
+            Connection connection = proxyConnection(delegate, false, true, false, false,
+                    lifecycleCalls, abortExecutorCompleted);
             ConnectInfo connectInfo = putContext(connection);
             try {
                 RuntimeException thrown = assertThrows(RuntimeException.class,
@@ -132,7 +143,71 @@ class DefaultSQLExecutorTransactionTest {
 
                 assertTrue(thrown.getCause() instanceof SQLException);
                 assertEquals("restore autoCommit failed", thrown.getCause().getMessage());
+                assertEquals(List.of("abort"), lifecycleCalls);
+                assertTrue(abortExecutorCompleted.get());
                 assertTrue(connection.isClosed());
+                assertNull(connectInfo.getConnection());
+            } finally {
+                Chat2DBContext.removeContext();
+            }
+        }
+    }
+
+    @Test
+    void shouldFallBackToCloseWhenAbortFails() throws Exception {
+        String url = "jdbc:h2:mem:fetch_records_abort_failure;DB_CLOSE_DELAY=-1";
+        try (Connection delegate = DriverManager.getConnection(url)) {
+            createTable(delegate);
+            List<String> lifecycleCalls = new ArrayList<>();
+            AtomicBoolean abortExecutorCompleted = new AtomicBoolean();
+            Connection connection = proxyConnection(delegate, true, false, true, false,
+                    lifecycleCalls, abortExecutorCompleted);
+            ConnectInfo connectInfo = putContext(connection);
+            IllegalStateException consumerFailure = new IllegalStateException("consumer failed");
+            try {
+                RuntimeException thrown = assertThrows(RuntimeException.class,
+                        () -> DefaultSQLExecutor.getInstance().fetchAllTableRecords(request(connection, rs -> {
+                            throw consumerFailure;
+                        })));
+
+                assertSame(consumerFailure, thrown.getCause());
+                assertEquals(List.of("rollback", "abort", "close"), lifecycleCalls);
+                assertEquals(2, consumerFailure.getSuppressed().length);
+                assertEquals("rollback failed", consumerFailure.getSuppressed()[0].getMessage());
+                assertEquals("abort failed", consumerFailure.getSuppressed()[1].getMessage());
+                assertTrue(abortExecutorCompleted.get());
+                assertTrue(connection.isClosed());
+                assertNull(connectInfo.getConnection());
+            } finally {
+                Chat2DBContext.removeContext();
+            }
+        }
+    }
+
+    @Test
+    void shouldPreserveAbortAndCloseFailuresWhenDiscardCannotComplete() throws Exception {
+        String url = "jdbc:h2:mem:fetch_records_abort_close_failure;DB_CLOSE_DELAY=-1";
+        try (Connection delegate = DriverManager.getConnection(url)) {
+            createTable(delegate);
+            List<String> lifecycleCalls = new ArrayList<>();
+            AtomicBoolean abortExecutorCompleted = new AtomicBoolean();
+            Connection connection = proxyConnection(delegate, true, false, true, true,
+                    lifecycleCalls, abortExecutorCompleted);
+            ConnectInfo connectInfo = putContext(connection);
+            IllegalStateException consumerFailure = new IllegalStateException("consumer failed");
+            try {
+                RuntimeException thrown = assertThrows(RuntimeException.class,
+                        () -> DefaultSQLExecutor.getInstance().fetchAllTableRecords(request(connection, rs -> {
+                            throw consumerFailure;
+                        })));
+
+                assertSame(consumerFailure, thrown.getCause());
+                assertEquals(List.of("rollback", "abort", "close"), lifecycleCalls);
+                assertEquals(3, consumerFailure.getSuppressed().length);
+                assertEquals("rollback failed", consumerFailure.getSuppressed()[0].getMessage());
+                assertEquals("abort failed", consumerFailure.getSuppressed()[1].getMessage());
+                assertEquals("close failed", consumerFailure.getSuppressed()[2].getMessage());
+                assertTrue(abortExecutorCompleted.get());
                 assertNull(connectInfo.getConnection());
             } finally {
                 Chat2DBContext.removeContext();
@@ -178,13 +253,41 @@ class DefaultSQLExecutorTransactionTest {
 
     private static Connection proxyConnection(
             Connection delegate, boolean failRollback, boolean failAutoCommitRestore) {
+        return proxyConnection(delegate, failRollback, failAutoCommitRestore, false, false,
+                new ArrayList<>(), new AtomicBoolean());
+    }
+
+    private static Connection proxyConnection(
+            Connection delegate, boolean failRollback, boolean failAutoCommitRestore,
+            boolean failAbort, boolean failClose, List<String> lifecycleCalls,
+            AtomicBoolean abortExecutorCompleted) {
         AtomicBoolean autoCommitDisabled = new AtomicBoolean();
         return (Connection) Proxy.newProxyInstance(
                 DefaultSQLExecutorTransactionTest.class.getClassLoader(),
                 new Class<?>[]{Connection.class},
                 (proxy, method, args) -> {
-                    if (failRollback && "rollback".equals(method.getName())) {
-                        throw new SQLException("rollback failed");
+                    if ("rollback".equals(method.getName())) {
+                        lifecycleCalls.add("rollback");
+                        if (failRollback) {
+                            throw new SQLException("rollback failed");
+                        }
+                    }
+                    if ("abort".equals(method.getName())) {
+                        lifecycleCalls.add("abort");
+                        AtomicBoolean taskCompleted = new AtomicBoolean();
+                        ((Executor) args[0]).execute(() -> taskCompleted.set(true));
+                        abortExecutorCompleted.set(taskCompleted.get());
+                        if (failAbort) {
+                            throw new SQLException("abort failed");
+                        }
+                        delegate.close();
+                        return null;
+                    }
+                    if ("close".equals(method.getName())) {
+                        lifecycleCalls.add("close");
+                        if (failClose) {
+                            throw new SQLException("close failed");
+                        }
                     }
                     if (failAutoCommitRestore && "setAutoCommit".equals(method.getName())) {
                         boolean autoCommit = (Boolean) args[0];

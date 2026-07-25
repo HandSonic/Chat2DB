@@ -75,7 +75,7 @@ public class ConnectionPool {
             log.info("check connection:{},usage:{}", connectInfo.getKey(), connectInfo.isInUse());
             Date lastAccessTime = connectInfo.getLastAccessTime();
             if (!connectInfo.trySetInUse()) {
-                returnToQueueOrClose(datasourceId, connectionKey, queue, connectInfo);
+                returnToQueue(datasourceId, connectionKey, queue, connectInfo, false);
                 continue;
             }
             boolean reusable = true;
@@ -89,7 +89,7 @@ public class ConnectionPool {
             } finally {
                 connectInfo.releaseInUse();
                 if (reusable) {
-                    returnToQueueOrClose(datasourceId, connectionKey, queue, connectInfo);
+                    returnToQueue(datasourceId, connectionKey, queue, connectInfo, true);
                 }
             }
         }
@@ -105,11 +105,13 @@ public class ConnectionPool {
         }
     }
 
-    private static void returnToQueueOrClose(Long datasourceId, String connectionKey,
-                                             LinkedBlockingQueue<ConnectInfo> queue,
-                                             ConnectInfo connectInfo) {
+    private static void returnToQueue(Long datasourceId, String connectionKey,
+                                      LinkedBlockingQueue<ConnectInfo> queue,
+                                      ConnectInfo connectInfo, boolean closeIfRejected) {
         if (datasourceId == null) {
-            offerOrClose(queue, connectInfo);
+            if (!queue.offer(connectInfo)) {
+                handleRejectedReturn(connectInfo, closeIfRejected);
+            }
             return;
         }
         boolean[] returnedToCurrentQueue = {false};
@@ -120,7 +122,15 @@ public class ConnectionPool {
             return keyMap;
         });
         if (!returnedToCurrentQueue[0]) {
+            handleRejectedReturn(connectInfo, closeIfRejected);
+        }
+    }
+
+    private static void handleRejectedReturn(ConnectInfo connectInfo, boolean closeIfRejected) {
+        if (closeIfRejected) {
             closeQuietly(connectInfo);
+        } else {
+            log.warn("Dropped duplicate pooled connection reference for {}", connectInfo.getKey());
         }
     }
 
@@ -227,7 +237,7 @@ public class ConnectionPool {
         }
         Date lastAccessTime = pooledConnectInfo.getLastAccessTime();
         if (!pooledConnectInfo.trySetInUse()) {
-            returnToQueueOrClose(datasourceId, connectionKey, queue, pooledConnectInfo);
+            returnToQueue(datasourceId, connectionKey, queue, pooledConnectInfo, false);
             return null;
         }
         Connection connection = tryGetExistingConnection(pooledConnectInfo);

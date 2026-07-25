@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -83,7 +85,7 @@ class ConnectionPoolTest {
     }
 
     @Test
-    void failedBorrowShouldCloseConnectionWhenQueueRefillsBeforeReturn() {
+    void failedBorrowShouldNotCloseConnectionOwnedByAnotherThreadWhenQueueRefills() {
         AtomicBoolean pooledClosed = new AtomicBoolean();
         ConnectInfo pooled = connectInfo(connection(true, pooledClosed));
         ConnectInfo replacement = connectInfo(connection(true, new AtomicBoolean()));
@@ -106,8 +108,9 @@ class ConnectionPoolTest {
         assertNull(ConnectionPool.tryBorrowConnection(new ConnectInfo(), queue));
 
         assertSame(replacement, queue.peek());
-        assertTrue(pooledClosed.get());
-        assertNull(pooled.getConnection());
+        assertFalse(pooledClosed.get());
+        assertNotNull(pooled.getConnection());
+        pooled.releaseInUse();
     }
 
     @Test
