@@ -103,6 +103,41 @@ class XugudbSqlEscapesTest {
     }
 
     @Test
+    void unbalancedQuoteInFunctionDefaultIsRejected() {
+        TableColumn c1 = column("id", "INTEGER");
+        c1.setDefaultValue("length(')");
+        assertThrows(IllegalArgumentException.class,
+                () -> XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(c1));
+
+        TableColumn c2 = column("id", "INTEGER");
+        c2.setDefaultValue("f(x')");
+        assertThrows(IllegalArgumentException.class,
+                () -> XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(c2));
+
+        TableColumn c3 = column("id", "INTEGER");
+        c3.setDefaultValue("f('ok'");
+        assertThrows(IllegalArgumentException.class,
+                () -> XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(c3));
+    }
+
+    @Test
+    void balancedQuotedArgsInFunctionDefaultAreAccepted() {
+        TableColumn noArgs = column("created", "TIMESTAMP");
+        noArgs.setDefaultValue("now()");
+        assertTrue(XUGUDBColumnTypeEnum.TIMESTAMP.buildCreateColumnSql(noArgs).contains("DEFAULT now()"));
+
+        TableColumn quotedArg = column("name_col", "VARCHAR");
+        quotedArg.setColumnSize(10);
+        quotedArg.setDefaultValue("substr('abc')");
+        assertTrue(XUGUDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(quotedArg).contains("DEFAULT substr('abc')"));
+
+        TableColumn escapedQuoteArg = column("name_col", "VARCHAR");
+        escapedQuoteArg.setColumnSize(10);
+        escapedQuoteArg.setDefaultValue("f('it''s')");
+        assertTrue(XUGUDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(escapedQuoteArg).contains("DEFAULT f('it''s')"));
+    }
+
+    @Test
     void validDefaultValuesAreAccepted() {
         TableColumn numeric = column("id", "INTEGER");
         numeric.setDefaultValue("0");

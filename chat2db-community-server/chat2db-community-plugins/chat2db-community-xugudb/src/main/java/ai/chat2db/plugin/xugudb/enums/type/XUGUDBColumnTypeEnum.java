@@ -225,7 +225,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
     }
 
     private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
-            "^(-?\\d+(\\.\\d+)?|'([^']|'')*'|[A-Za-z_][A-Za-z0-9_]*(\\([A-Za-z0-9_ ',.+\\-]*\\))?)$");
+            "^(-?\\d+(\\.\\d+)?|'([^']|'')*'|[A-Za-z_][A-Za-z0-9_]*(\\(([A-Za-z0-9_ ,.\\-+]|'([^']|'')*')*\\))?)$");
 
     private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z]+$");
 
