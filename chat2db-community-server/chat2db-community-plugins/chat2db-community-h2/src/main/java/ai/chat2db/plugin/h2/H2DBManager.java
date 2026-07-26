@@ -25,11 +25,11 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportSchema(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format("SCRIPT NODATA NOPASSWORDS NOSETTINGS DROP SCHEMA \"%s\";",
-            H2SqlEscapes.escapeIdentifier(schemaName));
+        String template = "SCRIPT NODATA NOPASSWORDS NOSETTINGS DROP SCHEMA \"%s\";";
         if (asyncContext.isContainsData()) {
-            sql = sql.replace("NODATA", "");
+            template = template.replace("NODATA", "");
         }
+        String sql = String.format(template, H2SqlEscapes.escapeIdentifier(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 String script = resultSet.getString("SCRIPT");

@@ -55,13 +55,14 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
                     String defaultValue = columns.getString("COLUMN_DEF");
                     String nullable = columns.getInt("NULLABLE") == ResultSetMetaData.columnNullable ? "NULL" : "NOT NULL";
                     StringBuilder columnDefinition = new StringBuilder();
-                    columnDefinition.append(H2SqlEscapes.quoteIdentifier(columnName)).append(" ").append(columnType);
+                    columnDefinition.append(H2SqlEscapes.quoteIdentifier(columnName)).append(" ")
+                        .append(H2SqlEscapes.requireSafeTypeName(columnType));
                     if (columnSize != 0) {
                         columnDefinition.append("(").append(columnSize).append(")");
                     }
                     columnDefinition.append(" ").append(nullable);
                     if (defaultValue != null) {
-                        columnDefinition.append(" DEFAULT ").append(defaultValue);
+                        columnDefinition.append(" DEFAULT ").append(H2SqlEscapes.escapeColumnDefault(defaultValue));
                     }
                     if (remarks != null) {
                         columnDefinition.append(SQL_COMMENT).append(H2SqlEscapes.escapeSqlLiteral(remarks)).append("'");
