@@ -4,7 +4,8 @@ import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
-import ai.chat2db.plugin.sundb.SUNDBSqlEscapes;
+import ai.chat2db.plugin.sundb.SUNDBSqlGuards;
+import ai.chat2db.plugin.sundb.identifier.SUNDBIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
@@ -73,14 +74,14 @@ public enum SUNDBIndexTypeEnum {
     public String buildIndexScript(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
-            script.append(SQL_ALTER_TABLE_2).append(SUNDBSqlEscapes.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(SUNDBSqlEscapes.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
+            script.append(SQL_ALTER_TABLE_2).append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
         } else {
             if (UNIQUE.equals(this)) {
                 script.append(SQL_CREATE_UNIQUE_INDEX);
             } else {
                 script.append(SQL_CREATE_INDEX);
             }
-            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(SUNDBSqlEscapes.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(SUNDBSqlEscapes.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
         }
         return script.toString();
     }
@@ -91,9 +92,9 @@ public enum SUNDBIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(SUNDBSqlEscapes.quoteIdentifier(column.getColumnName()));
+                script.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
-                    script.append(" ").append(SUNDBSqlEscapes.requireAscOrDesc(column.getAscOrDesc()));
+                    script.append(" ").append(SUNDBSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
             }
@@ -104,7 +105,7 @@ public enum SUNDBIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return SUNDBSqlEscapes.quoteIdentifier(tableIndex.getSchemaName()) + "." + SUNDBSqlEscapes.quoteIdentifier(tableIndex.getName());
+        return SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()) + "." + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -122,7 +123,7 @@ public enum SUNDBIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (SUNDBIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            String tableName = SUNDBSqlEscapes.quoteIdentifier(tableIndex.getSchemaName()) + "." + SUNDBSqlEscapes.quoteIdentifier(tableIndex.getTableName());
+            String tableName = SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()) + "." + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName());
             return StringUtils.join(SQL_ALTER_TABLE,tableName,SQL_DROP_PRIMARY_KEY);
         }
         StringBuilder script = new StringBuilder();

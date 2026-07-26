@@ -7,6 +7,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.sundb.builder.SUNDBSqlBuilder;
 import ai.chat2db.plugin.sundb.enums.type.SUNDBColumnTypeEnum;
 import ai.chat2db.plugin.sundb.enums.type.SUNDBIndexTypeEnum;
+import ai.chat2db.plugin.sundb.identifier.SUNDBIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -21,23 +22,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * for string literals, double-quote doubling for quoted identifiers, and
  * representative SQL-building paths fed with names containing quote chars.
  */
-class SUNDBSqlEscapesTest {
+class SUNDBIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", SUNDBSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("a''b''c", SUNDBSqlEscapes.escapeSqlLiteral("a'b'c"));
-        assertEquals("plain", SUNDBSqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("", SUNDBSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("O''Brien", SUNDBIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("a''b''c", SUNDBIdentifierProcessor.INSTANCE.escapeString("a'b'c"));
+        assertEquals("plain", SUNDBIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("", SUNDBIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void escapeIdentifierDoublesEmbeddedDoubleQuotesAndStripsOuterQuotes() {
-        assertEquals("we\"\"ird", SUNDBSqlEscapes.escapeIdentifier("we\"ird"));
-        assertEquals("abc", SUNDBSqlEscapes.escapeIdentifier("\"abc\""));
-        assertEquals("a\"\"b", SUNDBSqlEscapes.escapeIdentifier("\"a\"b\""));
-        assertEquals("", SUNDBSqlEscapes.escapeIdentifier(null));
-        assertEquals("\"we\"\"ird\"", SUNDBSqlEscapes.quoteIdentifier("we\"ird"));
+        assertEquals("we\"\"ird", SUNDBIdentifierProcessor.escapeIdentifier("we\"ird"));
+        assertEquals("abc", SUNDBIdentifierProcessor.escapeIdentifier("\"abc\""));
+        assertEquals("a\"\"b", SUNDBIdentifierProcessor.escapeIdentifier("\"a\"b\""));
+        assertEquals("", SUNDBIdentifierProcessor.escapeIdentifier(null));
+        assertEquals("\"we\"\"ird\"", SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
     }
 
     @Test
@@ -275,7 +276,7 @@ class SUNDBSqlEscapesTest {
 
     private static java.sql.Connection stubConnection(String[] capturedSql, java.util.Map<String, String> row) {
         return (java.sql.Connection) java.lang.reflect.Proxy.newProxyInstance(
-                SUNDBSqlEscapesTest.class.getClassLoader(),
+                SUNDBIdentifierProcessorTest.class.getClassLoader(),
                 new Class<?>[]{java.sql.Connection.class},
                 (proxy, method, args) -> {
                     if ("prepareStatement".equals(method.getName())) {
@@ -291,7 +292,7 @@ class SUNDBSqlEscapesTest {
 
     private static java.sql.PreparedStatement stubPreparedStatement(java.util.Map<String, String> row) {
         return (java.sql.PreparedStatement) java.lang.reflect.Proxy.newProxyInstance(
-                SUNDBSqlEscapesTest.class.getClassLoader(),
+                SUNDBIdentifierProcessorTest.class.getClassLoader(),
                 new Class<?>[]{java.sql.PreparedStatement.class},
                 (proxy, method, args) -> switch (method.getName()) {
                     case "execute" -> {
@@ -311,7 +312,7 @@ class SUNDBSqlEscapesTest {
     private static java.sql.ResultSet stubResultSet(java.util.Map<String, String> row) {
         boolean[] consumed = new boolean[1];
         return (java.sql.ResultSet) java.lang.reflect.Proxy.newProxyInstance(
-                SUNDBSqlEscapesTest.class.getClassLoader(),
+                SUNDBIdentifierProcessorTest.class.getClassLoader(),
                 new Class<?>[]{java.sql.ResultSet.class},
                 (proxy, method, args) -> switch (method.getName()) {
                     case "next" -> {

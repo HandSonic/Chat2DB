@@ -18,7 +18,9 @@ import ai.chat2db.community.domain.api.model.result.*;
 import ai.chat2db.community.domain.api.model.sql.*;
 import ai.chat2db.spi.model.value.*;
 import ai.chat2db.community.domain.api.model.view.*;
+import ai.chat2db.plugin.sundb.identifier.SUNDBIdentifierProcessor;
 import ai.chat2db.spi.DefaultSQLExecutor;
+import ai.chat2db.spi.ISQLIdentifierProcessor;
 import ai.chat2db.spi.util.SortUtils;
 import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
@@ -35,6 +37,10 @@ import java.util.stream.Collectors;
 import static ai.chat2db.plugin.sundb.constant.SUNDBMetaDataConstants.*;
 public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
+    @Override
+    public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
+        return SUNDBIdentifierProcessor.INSTANCE;
+    }
 
     @Override
     public List<Schema> schemas(Connection connection, String databaseName) {
@@ -43,14 +49,14 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String format(String tableName) {
-        return SUNDBSqlEscapes.quoteIdentifier(tableName);
+        return getSQLIdentifierProcessor().quoteIdentifier(tableName);
     }
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "SELECT * FROM \"%s\".\"%s\" LIMIT 1";
         StringBuilder ddlBuilder = new StringBuilder();
-        String tableDDLSql = String.format(sql, SUNDBSqlEscapes.escapeIdentifier(schemaName), SUNDBSqlEscapes.escapeIdentifier(tableName));
+        String tableDDLSql = String.format(sql, SUNDBIdentifierProcessor.escapeIdentifier(schemaName), SUNDBIdentifierProcessor.escapeIdentifier(tableName));
 
         try {
             Integer Scale;
@@ -58,12 +64,12 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                  ResultSet resultSet = tableDdlStatement.executeQuery()) {
             ResultSetMetaData rsMetaData = resultSet.getMetaData();
             int colCount = rsMetaData.getColumnCount();
-            ddlBuilder.append(SQL_CREATE_TABLE).append(SUNDBSqlEscapes.quoteIdentifier(schemaName)).append(".")
-                    .append(SUNDBSqlEscapes.quoteIdentifier(tableName)).append(" \n( ");
+            ddlBuilder.append(SQL_CREATE_TABLE).append(getSQLIdentifierProcessor().quoteIdentifier(schemaName)).append(".")
+                    .append(getSQLIdentifierProcessor().quoteIdentifier(tableName)).append(" \n( ");
             int i = 1;
             while (true) {
                 if (i >= colCount) {
-                    ddlBuilder.append(SUNDBSqlEscapes.quoteIdentifier(rsMetaData.getColumnName(colCount))).append(" ");
+                    ddlBuilder.append(getSQLIdentifierProcessor().quoteIdentifier(rsMetaData.getColumnName(colCount))).append(" ");
                     ddlBuilder.append(rsMetaData.getColumnTypeName(colCount));
                     Integer Precision = 0;
                     Scale = 0;
@@ -78,21 +84,21 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                         }
                     }
 
-                    String constraintSql = SQL_SELECT_TC_TABLE_SCHEMA_TC + SUNDBSqlEscapes.escapeSqlLiteral(tableName) + "'; ";
+                    String constraintSql = SQL_SELECT_TC_TABLE_SCHEMA_TC + getSQLIdentifierProcessor().escapeString(tableName) + "'; ";
 
                     try (PreparedStatement constraintStatement = connection.prepareStatement(constraintSql);
                          ResultSet constraintSet = constraintStatement.executeQuery()) {
                     while (constraintSet.next()) {
                         if (!constraintSet.isLast()) {
-                            ddlBuilder.append(" ,\nCONSTRAINT " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(5)) + " ) ");
+                            ddlBuilder.append(" ,\nCONSTRAINT " + getSQLIdentifierProcessor().quoteIdentifier(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + getSQLIdentifierProcessor().quoteIdentifier(constraintSet.getString(5)) + " ) ");
                             ddlBuilder.append(", ");
                         } else {
-                            ddlBuilder.append(" ,\nCONSTRAINT " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(5)) + " ) ");
+                            ddlBuilder.append(" ,\nCONSTRAINT " + getSQLIdentifierProcessor().quoteIdentifier(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + getSQLIdentifierProcessor().quoteIdentifier(constraintSet.getString(5)) + " ) ");
                         }
                     }
                     }
 
-                    String tableSql = SQL_SELECT_UT_TABLE_SCHEMA_UT + SUNDBSqlEscapes.escapeSqlLiteral(tableName) + "' AND UT.TABLE_SCHEMA = '"+ SUNDBSqlEscapes.escapeSqlLiteral(schemaName) +"'; ";
+                    String tableSql = SQL_SELECT_UT_TABLE_SCHEMA_UT + getSQLIdentifierProcessor().escapeString(tableName) + "' AND UT.TABLE_SCHEMA = '"+ getSQLIdentifierProcessor().escapeString(schemaName) +"'; ";
                     try (PreparedStatement tablespaceStatement = connection.prepareStatement(tableSql);
                          ResultSet tablespaceSet = tablespaceStatement.executeQuery()) {
                     while (tablespaceSet.next()) {
@@ -105,7 +111,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                             ddlBuilder.append(" \nNEXT " + tablespaceSet.getLong(9));
                             ddlBuilder.append(" \nMINSIZE " + tablespaceSet.getLong(10));
                             ddlBuilder.append(" \nMAXSIZE " + tablespaceSet.getLong(11));
-                            ddlBuilder.append(" \n) \nTABLESPACE " + SUNDBSqlEscapes.quoteIdentifier(tablespaceSet.getString(3)) + " ; ");
+                            ddlBuilder.append(" \n) \nTABLESPACE " + getSQLIdentifierProcessor().quoteIdentifier(tablespaceSet.getString(3)) + " ; ");
                         }
                     }
                     }
@@ -114,7 +120,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
                 Scale = 0;
                 Integer Scale1 = 0;
-                ddlBuilder.append(SUNDBSqlEscapes.quoteIdentifier(rsMetaData.getColumnName(i))).append(" ");
+                ddlBuilder.append(getSQLIdentifierProcessor().quoteIdentifier(rsMetaData.getColumnName(i))).append(" ");
                 ddlBuilder.append(rsMetaData.getColumnTypeName(i));
                 Scale1 = rsMetaData.getPrecision(i);
                 Scale = rsMetaData.getScale(i);
@@ -132,11 +138,11 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                 ++i;
             }
             }
-            String indexNameSql = SQL_SELECT_INDEX_SCHEMA_INDEX_NAME + SUNDBSqlEscapes.escapeSqlLiteral(schemaName) + "' and table_name= '" + SUNDBSqlEscapes.escapeSqlLiteral(tableName) + "'";
+            String indexNameSql = SQL_SELECT_INDEX_SCHEMA_INDEX_NAME + getSQLIdentifierProcessor().escapeString(schemaName) + "' and table_name= '" + getSQLIdentifierProcessor().escapeString(tableName) + "'";
             try (PreparedStatement indexNameStatement = connection.prepareStatement(indexNameSql);
                  ResultSet indexNameResultSet = indexNameStatement.executeQuery()) {
             while (indexNameResultSet.next()) {
-                String querySql = SQL_SELECT_COLS_INDEX_SCHEMA_COLS + SUNDBSqlEscapes.escapeSqlLiteral(tableName) + "' " + SQL_COLS_INDEX_NAME + SUNDBSqlEscapes.escapeSqlLiteral(indexNameResultSet.getString("INDEX_NAME")) + "' " + SQL_COLS_INDEX_SCHEMA+ SUNDBSqlEscapes.escapeSqlLiteral(schemaName) +"' "+ SQL_ORDER_COLS_COLUMN_POSITION;
+                String querySql = SQL_SELECT_COLS_INDEX_SCHEMA_COLS + getSQLIdentifierProcessor().escapeString(tableName) + "' " + SQL_COLS_INDEX_NAME + getSQLIdentifierProcessor().escapeString(indexNameResultSet.getString("INDEX_NAME")) + "' " + SQL_COLS_INDEX_SCHEMA+ getSQLIdentifierProcessor().escapeString(schemaName) +"' "+ SQL_ORDER_COLS_COLUMN_POSITION;
                 try (PreparedStatement indexStatement = connection.prepareStatement(querySql);
                      ResultSet indexResultSet = indexStatement.executeQuery()) {
                 ddlBuilder.append("\nCREATE ");
@@ -146,11 +152,11 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                     ddlBuilder.append("INDEX " + getIndexName(indexNameResultSet.getString("INDEX_SCHEMA"), indexNameResultSet.getString("INDEX_NAME")) + " ");
                 }
 
-                ddlBuilder.append(SQL_ON + SUNDBSqlEscapes.quoteIdentifier(indexNameResultSet.getString("TABLE_SCHEMA")) + "." + SUNDBSqlEscapes.quoteIdentifier(indexNameResultSet.getString("TABLE_NAME")) + " \n( ");
+                ddlBuilder.append(SQL_ON + getSQLIdentifierProcessor().quoteIdentifier(indexNameResultSet.getString("TABLE_SCHEMA")) + "." + getSQLIdentifierProcessor().quoteIdentifier(indexNameResultSet.getString("TABLE_NAME")) + " \n( ");
 
                 while (indexResultSet.next()) {
 
-                    ddlBuilder.append(SUNDBSqlEscapes.quoteIdentifier(indexResultSet.getString(5))).append(" ");
+                    ddlBuilder.append(getSQLIdentifierProcessor().quoteIdentifier(indexResultSet.getString(5))).append(" ");
                     ddlBuilder.append(indexResultSet.getString(6) + " ");
                     ddlBuilder.append(indexResultSet.getString(7));
                     if (!indexResultSet.isLast()) {
@@ -163,7 +169,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                         ddlBuilder.append(" \nNEXT " + indexResultSet.getLong(13));
                         ddlBuilder.append(" \nMINSIZE " + indexResultSet.getLong(14));
                         ddlBuilder.append(" \nMAXSIZE " + indexResultSet.getLong(15));
-                        ddlBuilder.append(" \n) \nTABLESPACE " + SUNDBSqlEscapes.quoteIdentifier(indexResultSet.getString(16)) + ";\n");
+                        ddlBuilder.append(" \n) \nTABLESPACE " + getSQLIdentifierProcessor().quoteIdentifier(indexResultSet.getString(16)) + ";\n");
                     }
                 }
                 }
@@ -176,7 +182,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String getIndexName(String indexSchema, String indexName) {
-        return SUNDBSqlEscapes.quoteIdentifier(indexSchema) + "." + SUNDBSqlEscapes.quoteIdentifier(indexName);
+        return getSQLIdentifierProcessor().quoteIdentifier(indexSchema) + "." + getSQLIdentifierProcessor().quoteIdentifier(indexName);
     }
 
 
@@ -189,7 +195,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-        String sql = String.format(ALL_PROCEDURES_SQL, SUNDBSqlEscapes.escapeSqlLiteral(userName), SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBObjectTypeEnum.FUNCTION.getObjectType());
+        String sql = String.format(ALL_PROCEDURES_SQL, getSQLIdentifierProcessor().escapeString(userName), getSQLIdentifierProcessor().escapeString(schemaName), SUNDBObjectTypeEnum.FUNCTION.getObjectType());
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Function function = new Function();
@@ -213,7 +219,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-        String sql = String.format(ALL_SOURCE_SQL, SUNDBObjectTypeEnum.FUNCTION.getObjectType(), SUNDBSqlEscapes.escapeSqlLiteral(userName), SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(functionName));
+        String sql = String.format(ALL_SOURCE_SQL, SUNDBObjectTypeEnum.FUNCTION.getObjectType(), getSQLIdentifierProcessor().escapeString(userName), getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(functionName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Function function = new Function();
             function.setDatabaseName(databaseName);
@@ -235,7 +241,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-        String sql = String.format(ALL_PROCEDURES_SQL, SUNDBSqlEscapes.escapeSqlLiteral(userName), SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBObjectTypeEnum.PROCEDURE.getObjectType());
+        String sql = String.format(ALL_PROCEDURES_SQL, getSQLIdentifierProcessor().escapeString(userName), getSQLIdentifierProcessor().escapeString(schemaName), SUNDBObjectTypeEnum.PROCEDURE.getObjectType());
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             ArrayList<Procedure> procedures = new ArrayList<>();
             Procedure procedure = new Procedure();
@@ -257,7 +263,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-        String sql = String.format(ALL_SOURCE_SQL, SUNDBObjectTypeEnum.PROCEDURE.getObjectType(), SUNDBSqlEscapes.escapeSqlLiteral(userName), SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(procedureName));
+        String sql = String.format(ALL_SOURCE_SQL, SUNDBObjectTypeEnum.PROCEDURE.getObjectType(), getSQLIdentifierProcessor().escapeString(userName), getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(procedureName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -295,7 +301,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(viewName));
+        String sql = String.format(VIEW_SQL, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -312,7 +318,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(INDEX_SQL, SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(tableName));
+        String sql = String.format(INDEX_SQL, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap();
             while (resultSet.next()) {
@@ -382,7 +388,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> SUNDBSqlEscapes.quoteIdentifier(name)).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
     }
 
 

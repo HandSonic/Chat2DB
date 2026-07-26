@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.sundb.enums.type;
 
-import ai.chat2db.plugin.sundb.SUNDBSqlEscapes;
+import ai.chat2db.plugin.sundb.SUNDBSqlGuards;
+import ai.chat2db.plugin.sundb.identifier.SUNDBIdentifierProcessor;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -12,7 +13,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.sundb.constant.SUNDBColumnTypeEnumConstants.*;
 public enum SUNDBColumnTypeEnum implements IColumnBuilder {
@@ -134,23 +134,6 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
     private static Map<String, SUNDBColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
 
-    // Two alternatives, fully anchored:
-    //  1. bare token [A-Za-z0-9_ .+-]+ with a (?!.*--) guard so no comment
-    //     sequence can appear — covers CURRENT_TIMESTAMP, SYSDATE, USER,
-    //     SEQ.NEXTVAL, -1, 1.5. No quotes, commas or parentheses, so the
-    //     value cannot smuggle literals, inject column defs, or close the
-    //     column definition early.
-    //  2. optionally keyword-prefixed single-quoted literal
-    //     (?:[A-Za-z]+ )?'(?:[^']|'')*' — covers string defaults like 'Y',
-    //     'O''Brien', '' and typed date/time literals like DATE '2024-01-01'.
-    //     Interior quotes must be doubled, which exactly mirrors SQL
-    //     string-literal tokenization, so anything accepted is parsed by the
-    //     DB as one inert string token; the keyword is letters-only and
-    //     cannot break out either. Parenthesized calls (TO_DATE(...),
-    //     SYS_GUID()) remain rejected: parens could close the column def.
-    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
-            "\\A(?:(?!.*--)[A-Za-z0-9_ .+-]+|(?:[A-Za-z]+ )?'(?:[^']|'')*')\\z");
-
     static {
         for (SUNDBColumnTypeEnum value : SUNDBColumnTypeEnum.values()) {
             COLUMN_TYPE_MAP.put(value.getColumnType().getTypeName(), value);
@@ -174,7 +157,7 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(SUNDBSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
         if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus()) &&
                 StringUtils.equalsIgnoreCase(column.getOldColumn().getColumnType(), column.getColumnType())
                 && Objects.equals(column.getOldColumn().getColumnSize(), column.getColumnSize())
@@ -203,7 +186,7 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
         if(!type.columnType.isSupportComments() || StringUtils.isEmpty(column.getComment())){
             return "";
         }
-        return StringUtils.join(SQL_COMMENT, SUNDBSqlEscapes.escapeSqlLiteral(column.getComment()), "'");
+        return StringUtils.join(SQL_COMMENT, SUNDBIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "'");
     }
 
 
@@ -253,21 +236,7 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", validateDefaultValue(column.getDefaultValue()));
-    }
-
-    private static String validateDefaultValue(String defaultValue) {
-        if (!DEFAULT_VALUE_PATTERN.matcher(defaultValue).matches()) {
-            throw new IllegalArgumentException("Unsupported DEFAULT expression: " + defaultValue);
-        }
-        return defaultValue;
-    }
-
-    private static String validateUnit(String unit) {
-        if (!"CHAR".equalsIgnoreCase(unit) && !"BYTE".equalsIgnoreCase(unit)) {
-            throw new IllegalArgumentException("Unsupported VARCHAR unit: " + unit);
-        }
-        return unit;
+        return StringUtils.join("DEFAULT ", SUNDBSqlGuards.requireDefaultValue(column.getDefaultValue()));
     }
 
     private String buildDataType(TableColumn column, SUNDBColumnTypeEnum type) {
@@ -278,7 +247,7 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
             if (column.getColumnSize() != null && StringUtils.isEmpty(column.getUnit())) {
                 script.append("(").append(column.getColumnSize()).append(")");
             } else if (column.getColumnSize() != null && !StringUtils.isEmpty(column.getUnit())) {
-                script.append("(").append(column.getColumnSize()).append(" ").append(validateUnit(column.getUnit())).append(")");
+                script.append("(").append(column.getColumnSize()).append(" ").append(SUNDBSqlGuards.requireUnit(column.getUnit())).append(")");
             }
             return script.toString();
         }
@@ -321,21 +290,21 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
-            script.append(" ").append(SQL_SET_UNUSED_COLUMN).append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getName()));
+            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
+            script.append(" ").append(SQL_SET_UNUSED_COLUMN).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
             return script.toString();
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
+            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
+            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
             script.append(" ").append(SQL_ALTER_COLUMN);
-            if (buildCreateColumnSql(tableColumn).trim().equals(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getName()))) {
+            if (buildCreateColumnSql(tableColumn).trim().equals(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()))) {
                 script.setLength(0);
             } else {
                 script.append(buildCreateColumnSql(tableColumn)).append(" \n");
@@ -344,8 +313,8 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
                 script.append(";");
-                script.append(SQL_ALTER_TABLE).append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
-                script.append(" ").append(SQL_RENAME_COLUMN).append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getOldName())).append(" TO ").append(SUNDBSqlEscapes.quoteIdentifier(tableColumn.getName()));
+                script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
+                script.append(" ").append(SQL_RENAME_COLUMN).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName())).append(" TO ").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
 
             }
             return script.toString();
