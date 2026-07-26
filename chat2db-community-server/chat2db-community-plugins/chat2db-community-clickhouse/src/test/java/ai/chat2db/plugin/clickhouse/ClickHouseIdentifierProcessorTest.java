@@ -5,6 +5,7 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.plugin.clickhouse.builder.ClickHouseSqlBuilder;
 import ai.chat2db.plugin.clickhouse.enums.type.ClickHouseColumnTypeEnum;
+import ai.chat2db.plugin.clickhouse.identifier.ClickHouseIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -13,29 +14,29 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ClickHouseSqlEscapesTest {
+class ClickHouseIdentifierProcessorTest {
 
     @Test
     void shouldDoubleSingleQuotesInLiterals() {
-        assertEquals("owner''s", ClickHouseSqlEscapes.escapeSqlLiteral("owner's"));
-        assertEquals("", ClickHouseSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("owner''s", ClickHouseIdentifierProcessor.INSTANCE.escapeString("owner's"));
+        assertEquals("", ClickHouseIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void shouldEscapeBackslashesInLiterals() {
-        assertEquals("a\\\\b''c", ClickHouseSqlEscapes.escapeSqlLiteral("a\\b'c"));
+        assertEquals("a\\\\b''c", ClickHouseIdentifierProcessor.INSTANCE.escapeString("a\\b'c"));
     }
 
     @Test
     void shouldDoubleBackticksInIdentifiers() {
-        assertEquals("`a``b`", ClickHouseSqlEscapes.quoteIdentifier("a`b"));
-        assertEquals("`plain`", ClickHouseSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("``", ClickHouseSqlEscapes.quoteIdentifier(null));
+        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("a`b"));
+        assertEquals("`plain`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("``", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(null));
     }
 
     @Test
     void shouldStripSurroundingBackticksBeforeDoubling() {
-        assertEquals("`a``b`", ClickHouseSqlEscapes.quoteIdentifier("`a`b`"));
+        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
     }
 
     @Test

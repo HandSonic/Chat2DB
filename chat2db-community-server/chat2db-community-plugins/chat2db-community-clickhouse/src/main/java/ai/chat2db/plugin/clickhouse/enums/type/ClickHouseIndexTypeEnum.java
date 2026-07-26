@@ -4,7 +4,7 @@ import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
-import ai.chat2db.plugin.clickhouse.ClickHouseSqlEscapes;
+import ai.chat2db.plugin.clickhouse.identifier.ClickHouseIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
@@ -90,7 +90,7 @@ public enum ClickHouseIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(ClickHouseSqlEscapes.quoteIdentifier(column.getColumnName()));
+                script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
                 script.append(",");
             }
         }
@@ -103,7 +103,7 @@ public enum ClickHouseIndexTypeEnum {
         if (this.equals(PRIMARY)) {
             return "";
         } else {
-            return ClickHouseSqlEscapes.quoteIdentifier(tableIndex.getName());
+            return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
         }
     }
 
@@ -112,10 +112,10 @@ public enum ClickHouseIndexTypeEnum {
             return "";
         }
         if (EditStatusEnum.DELETE.name().equals(tableIndex.getEditStatus())) {
-            return StringUtils.join("DROP INDEX ", ClickHouseSqlEscapes.quoteIdentifier(tableIndex.getOldName()));
+            return StringUtils.join("DROP INDEX ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
         }
         if (EditStatusEnum.MODIFY.name().equals(tableIndex.getEditStatus())) {
-            return StringUtils.join("DROP INDEX ", ClickHouseSqlEscapes.quoteIdentifier(tableIndex.getOldName()),
+            return StringUtils.join("DROP INDEX ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()),
                     ",\n ADD ", buildIndexScript(tableIndex));
         }
         if (EditStatusEnum.ADD.name().equals(tableIndex.getEditStatus())) {
