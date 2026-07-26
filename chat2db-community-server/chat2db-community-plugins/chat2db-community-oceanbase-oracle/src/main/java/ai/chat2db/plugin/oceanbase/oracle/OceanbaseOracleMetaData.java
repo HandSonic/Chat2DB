@@ -26,11 +26,11 @@ public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaDa
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(TABLE_DDL_SQL, tableName, schemaName);
-        String tableCommentSql = String.format(TABLE_COMMENT_SQL, schemaName, tableName);
-        String tableColumnCommentSql = String.format(TABLE_COLUMN_COMMENT_SQL, schemaName, tableName);
-        String PUIndexSql = String.format(PU_INDEX_NAME_SQL, schemaName, tableName);
-        String tableIndexNameSql = String.format(TABLE_INDEX_NAME_SQL, schemaName, tableName);
+        String sql = buildTableDdlSql(tableName, schemaName);
+        String tableCommentSql = buildTableCommentSql(schemaName, tableName);
+        String tableColumnCommentSql = buildTableColumnCommentSql(schemaName, tableName);
+        String PUIndexSql = buildPuIndexNameSql(schemaName, tableName);
+        String tableIndexNameSql = buildTableIndexNameSql(schemaName, tableName);
         StringBuilder ddlBuilder = new StringBuilder();
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             try {
@@ -85,7 +85,7 @@ public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaDa
             return indexNames;
         });
         for (String index : indexes) {
-            String tableIndexSql = String.format(TABLE_INDEX_DDL_SQL, index, schemaName);
+            String tableIndexSql = buildTableIndexDdlSql(index, schemaName);
             DefaultSQLExecutor.getInstance().execute(connection, tableIndexSql, resultSet -> {
                 while (resultSet.next()) {
                     String ddl = resultSet.getString("ddl");
@@ -96,6 +96,36 @@ public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaDa
             });
         }
         return ddlBuilder.toString();
+    }
+
+    static String buildTableDdlSql(String tableName, String schemaName) {
+        return String.format(TABLE_DDL_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName),
+                OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName));
+    }
+
+    static String buildTableCommentSql(String schemaName, String tableName) {
+        return String.format(TABLE_COMMENT_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
+                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+    }
+
+    static String buildTableColumnCommentSql(String schemaName, String tableName) {
+        return String.format(TABLE_COLUMN_COMMENT_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
+                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+    }
+
+    static String buildPuIndexNameSql(String schemaName, String tableName) {
+        return String.format(PU_INDEX_NAME_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
+                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+    }
+
+    static String buildTableIndexNameSql(String schemaName, String tableName) {
+        return String.format(TABLE_INDEX_NAME_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
+                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+    }
+
+    static String buildTableIndexDdlSql(String indexName, String schemaName) {
+        return String.format(TABLE_INDEX_DDL_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(indexName),
+                OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName));
     }
 
 
