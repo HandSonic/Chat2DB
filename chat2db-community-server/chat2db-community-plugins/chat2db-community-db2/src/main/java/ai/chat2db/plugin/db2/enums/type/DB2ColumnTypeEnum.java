@@ -171,11 +171,11 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
         }
     }
 
-    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("^[A-Za-z0-9_'+/: \\t.-]+$");
+    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("\\A[A-Za-z0-9_+/: \\t.-]+\\z");
 
-    private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
+    private static final Pattern UNIT_PATTERN = Pattern.compile("\\A[A-Za-z0-9_]+\\z");
 
-    private static final Pattern FALLBACK_COLUMN_TYPE_PATTERN = Pattern.compile("^[A-Za-z]+(\\(\\d+(,\\d+)?\\))?$");
+    private static final Pattern FALLBACK_COLUMN_TYPE_PATTERN = Pattern.compile("\\A[A-Za-z]+(\\(\\d+(,\\d+)?\\))?\\z");
 
     /**
      * Fallback for column types that are not exact enum matches (e.g. {@code VARCHAR(10)}).

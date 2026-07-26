@@ -230,4 +230,64 @@ class Db2SqlEscapesTest {
 
         assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
     }
+
+    @Test
+    void createColumnRejectsQuoteAndCommaBreakoutDefaultValues() {
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("INT");
+
+        column.setDefaultValue("0) --");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+
+        column.setDefaultValue("1, x INT");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+
+        column.setDefaultValue("'abc'");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+
+        column.setDefaultValue("x' OR '1'='1");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+    }
+
+    @Test
+    void validatorsRejectTrailingNewline() {
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("INT");
+        column.setDefaultValue("0\n");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+
+        TableColumn sized = new TableColumn();
+        sized.setName("c");
+        sized.setColumnType("VARCHAR(10)\n");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(sized));
+
+        TableColumn withUnit = new TableColumn();
+        withUnit.setName("c");
+        withUnit.setColumnType("VARCHAR");
+        withUnit.setColumnSize(10);
+        withUnit.setUnit("OCTETS\n");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(withUnit));
+
+        TableIndex index = new TableIndex();
+        index.setSchemaName("S");
+        index.setTableName("T");
+        index.setName("I");
+        ai.chat2db.community.domain.api.model.metadata.TableIndexColumn indexColumn =
+                new ai.chat2db.community.domain.api.model.metadata.TableIndexColumn();
+        indexColumn.setColumnName("c");
+        indexColumn.setAscOrDesc("ASC\n");
+        index.setColumnList(java.util.List.of(indexColumn));
+        assertThrows(IllegalArgumentException.class, () -> DB2IndexTypeEnum.NORMAL.buildIndexScript(index));
+    }
+
+    @Test
+    void getDdlTokenEscapesSingleQuotesInsideOptionString() {
+        String sql = String.format(ai.chat2db.plugin.db2.constant.DB2MetaDataConstants.GET_DDL_TOKEN,
+                Db2SqlEscapes.escapeSqlLiteral("o'brien"), Db2SqlEscapes.escapeSqlLiteral("t'; DROP TABLE t; --"));
+
+        assertTrue(sql.contains("-td \"o''brien\""), sql);
+        assertTrue(sql.contains("-t \"t''; DROP TABLE t; --\""), sql);
+    }
 }
