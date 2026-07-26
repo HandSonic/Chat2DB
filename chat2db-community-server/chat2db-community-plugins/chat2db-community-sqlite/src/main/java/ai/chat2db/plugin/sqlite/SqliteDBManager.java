@@ -42,7 +42,7 @@ public class SqliteDBManager extends DefaultDBManager implements IDbManager {
 
 
     public void exportTable(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_SQL_SQLITE_MASTER_TYPE, tableName);
+        String sql = String.format(SQL_SELECT_SQL_SQLITE_MASTER_TYPE, SqliteSqlEscapes.escapeSqlLiteral(tableName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -57,7 +57,7 @@ public class SqliteDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private String format(String tableName) {
-        return "\""+tableName+"\"";
+        return SqliteSqlEscapes.quoteIdentifier(tableName);
     }
 
     private void exportViews(Connection connection, String databaseName, AsyncContext asyncContext) throws SQLException {
@@ -69,7 +69,7 @@ public class SqliteDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportView(Connection connection, String viewName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_SQLITE_MASTER_TYPE_VIEW, viewName);
+        String sql = String.format(SQL_SELECT_SQLITE_MASTER_TYPE_VIEW, SqliteSqlEscapes.escapeSqlLiteral(viewName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -91,7 +91,7 @@ public class SqliteDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportTrigger(Connection connection, String triggerName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_SQLITE_MASTER_TYPE_TRIGGER, triggerName);
+        String sql = String.format(SQL_SELECT_SQLITE_MASTER_TYPE_TRIGGER, SqliteSqlEscapes.escapeSqlLiteral(triggerName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();

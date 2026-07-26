@@ -40,7 +40,7 @@ public class SqliteMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
         Table view = new Table();
-        String sql = String.format(VIEW_DDL_SQL, viewName);
+        String sql = String.format(VIEW_DDL_SQL, SqliteSqlEscapes.escapeSqlLiteral(viewName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 view.setDatabaseName(databaseName);
@@ -70,7 +70,7 @@ public class SqliteMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public Trigger trigger(Connection connection, String databaseName, String schemaName, String triggerName) {
         Trigger trigger = new Trigger();
-        String sql = String.format(TRIGGER_DDL_SQL, triggerName);
+        String sql = String.format(TRIGGER_DDL_SQL, SqliteSqlEscapes.escapeSqlLiteral(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 trigger.setTriggerName(triggerName);
@@ -89,7 +89,7 @@ public class SqliteMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='" + tableName + "'";
+        String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='" + SqliteSqlEscapes.escapeSqlLiteral(tableName) + "'";
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             try {
                 if (resultSet.next()) {
@@ -131,7 +131,7 @@ public class SqliteMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> SqliteSqlEscapes.quoteIdentifier(name)).collect(Collectors.joining("."));
     }
 
     @Override

@@ -4,6 +4,7 @@ import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
+import ai.chat2db.plugin.sqlite.SqliteSqlEscapes;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
@@ -72,7 +73,7 @@ public enum SqliteIndexTypeEnum {
 
             script.append(keyword).append(" ");
 
-            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(tableIndex.getTableName()).append(" ");
+            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(SqliteSqlEscapes.quoteIdentifier(tableIndex.getTableName())).append(" ");
 
             script.append(buildIndexColumn(tableIndex)).append(" ");
             return script.toString();
@@ -101,7 +102,7 @@ public enum SqliteIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append("\"").append(column.getColumnName()).append("\"").append(",");
+                script.append("\"").append(SqliteSqlEscapes.escapeIdentifier(column.getColumnName())).append("\"").append(",");
             }
         }
         script.deleteCharAt(script.length() - 1);
@@ -111,9 +112,9 @@ public enum SqliteIndexTypeEnum {
 
     private String buildIndexName(TableIndex tableIndex) {
         if (this.equals(PRIMARY_KEY)) {
-            return tableIndex.getTableName()+"_pk";
+            return SqliteSqlEscapes.quoteIdentifier(tableIndex.getTableName() + "_pk");
         } else {
-            return "\"" + tableIndex.getName() + "\"";
+            return SqliteSqlEscapes.quoteIdentifier(tableIndex.getName());
         }
     }
 
@@ -134,7 +135,7 @@ public enum SqliteIndexTypeEnum {
         if (SqliteIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join(SQL_DROP_INDEX, tableIndex.getOldName(), "\"");
+        return StringUtils.join(SQL_DROP_INDEX, SqliteSqlEscapes.escapeIdentifier(tableIndex.getOldName()), "\"");
     }
 
     public static List<IndexType> getIndexTypes() {
