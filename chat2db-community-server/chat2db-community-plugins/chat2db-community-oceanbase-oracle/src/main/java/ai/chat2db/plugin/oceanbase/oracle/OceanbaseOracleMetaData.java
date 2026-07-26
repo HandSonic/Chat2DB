@@ -1,9 +1,11 @@
 package ai.chat2db.plugin.oceanbase.oracle;
 
+import ai.chat2db.plugin.oceanbase.oracle.identifier.OceanbaseOracleIdentifierProcessor;
 import ai.chat2db.plugin.oracle.OracleMetaData;
 import ai.chat2db.community.tools.util.EasyStringUtils;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.DefaultSQLExecutor;
+import ai.chat2db.spi.ISQLIdentifierProcessor;
 import ai.chat2db.spi.util.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -18,10 +20,10 @@ import static ai.chat2db.plugin.oceanbase.constant.OceanbaseOracleMetaDataConsta
 @Slf4j
 public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaData {
 
-
-
-
-
+    @Override
+    public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
+        return OceanbaseOracleIdentifierProcessor.INSTANCE;
+    }
 
 
     @Override
@@ -99,33 +101,33 @@ public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaDa
     }
 
     static String buildTableDdlSql(String tableName, String schemaName) {
-        return String.format(TABLE_DDL_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName),
-                OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName));
+        return String.format(TABLE_DDL_SQL, OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(tableName),
+                OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(schemaName));
     }
 
     static String buildTableCommentSql(String schemaName, String tableName) {
-        return String.format(TABLE_COMMENT_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
-                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+        return String.format(TABLE_COMMENT_SQL, OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(schemaName),
+                OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(tableName));
     }
 
     static String buildTableColumnCommentSql(String schemaName, String tableName) {
-        return String.format(TABLE_COLUMN_COMMENT_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
-                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+        return String.format(TABLE_COLUMN_COMMENT_SQL, OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(schemaName),
+                OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(tableName));
     }
 
     static String buildPuIndexNameSql(String schemaName, String tableName) {
-        return String.format(PU_INDEX_NAME_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
-                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+        return String.format(PU_INDEX_NAME_SQL, OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(schemaName),
+                OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(tableName));
     }
 
     static String buildTableIndexNameSql(String schemaName, String tableName) {
-        return String.format(TABLE_INDEX_NAME_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName),
-                OceanbaseOracleSqlEscapes.escapeSqlLiteral(tableName));
+        return String.format(TABLE_INDEX_NAME_SQL, OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(schemaName),
+                OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(tableName));
     }
 
     static String buildTableIndexDdlSql(String indexName, String schemaName) {
-        return String.format(TABLE_INDEX_DDL_SQL, OceanbaseOracleSqlEscapes.escapeSqlLiteral(indexName),
-                OceanbaseOracleSqlEscapes.escapeSqlLiteral(schemaName));
+        return String.format(TABLE_INDEX_DDL_SQL, OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(indexName),
+                OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(schemaName));
     }
 
 

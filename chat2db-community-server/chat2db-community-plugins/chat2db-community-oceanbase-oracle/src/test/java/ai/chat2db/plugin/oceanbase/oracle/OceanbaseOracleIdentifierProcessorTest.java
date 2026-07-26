@@ -1,24 +1,25 @@
 package ai.chat2db.plugin.oceanbase.oracle;
 
+import ai.chat2db.plugin.oceanbase.oracle.identifier.OceanbaseOracleIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class OceanbaseOracleSqlEscapesTest {
+class OceanbaseOracleIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", OceanbaseOracleSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("plain", OceanbaseOracleSqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("", OceanbaseOracleSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("O''Brien", OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("plain", OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("", OceanbaseOracleIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"MY_TABLE\"", OceanbaseOracleSqlEscapes.quoteIdentifier("MY_TABLE"));
-        assertEquals("\"we\"\"ird\"", OceanbaseOracleSqlEscapes.quoteIdentifier("we\"ird"));
-        assertEquals("\"we\"\"ird\"", OceanbaseOracleSqlEscapes.quoteIdentifier("\"we\"ird\""));
+        assertEquals("\"MY_TABLE\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("MY_TABLE"));
+        assertEquals("\"we\"\"ird\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
+        assertEquals("\"we\"\"ird\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("\"we\"ird\""));
     }
 
     @Test
