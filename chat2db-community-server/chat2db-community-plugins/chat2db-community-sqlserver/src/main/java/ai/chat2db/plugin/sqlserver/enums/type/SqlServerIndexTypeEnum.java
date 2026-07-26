@@ -80,7 +80,7 @@ public enum SqlServerIndexTypeEnum {
             script.append(SQL_ALTER_TABLE)
                     .append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getTableName()))
                     .append("] ADD CONSTRAINT ")
-                    .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName() + "_pk"))
+                    .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName() + "_pk"))
                     .append(" ").append(keyword).append(" ").append(buildIndexColumn(tableIndex));
         } else {
             script.append(SQL_CREATE).append(keyword).append(" ");
@@ -96,7 +96,7 @@ public enum SqlServerIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
+                script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     script.append(" ").append(validateAscOrDesc(column.getAscOrDesc()));
                 }
@@ -116,7 +116,7 @@ public enum SqlServerIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {

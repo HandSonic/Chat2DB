@@ -75,9 +75,9 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         script.append(SQL_CREATE_TABLE);
         Boolean needFullTableName = tableBuilderConfig.getNeedFullTableName();
         if (Boolean.TRUE.equals(needFullTableName)) {
-            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
 
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
@@ -126,8 +126,8 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
     public String buildAITableSchema(Table table) {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getDatabaseName())).append(SQLConstants.DOT);
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
 
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
@@ -293,16 +293,16 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
     @Override
     protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
         if (StringUtils.isNotBlank(databaseName)) {
-            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(databaseName)).append('.');
+            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(databaseName)).append('.');
         }
         if (StringUtils.isNotBlank(schemaName)) {
-            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName)).append('.');
+            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)).append('.');
         }
         String unquotedTableName = tableName;
         if (unquotedTableName.length() >= 2 && unquotedTableName.startsWith(SQLConstants.OPEN_SQUARE_BRACKET) && unquotedTableName.endsWith(SQLConstants.CLOSE_SQUARE_BRACKET)) {
             unquotedTableName = unquotedTableName.substring(1, unquotedTableName.length() - 1).replace("]]", "]");
         }
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(unquotedTableName));
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(unquotedTableName));
     }
 
 
@@ -310,7 +310,7 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
     protected void buildColumns(List<String> columnList, StringBuilder script) {
         if (CollectionUtils.isNotEmpty(columnList)) {
             script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
-                    .append(columnList.stream().map(SqlServerIdentifierProcessor.INSTANCE::quoteIdentifier).collect(Collectors.joining(SQLConstants.COMMA)))
+                    .append(columnList.stream().map(SqlServerIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining(SQLConstants.COMMA)))
                     .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
         }
     }
@@ -345,11 +345,11 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         }
         String schemaName = modifyView.getSchemaName();
         if (StringUtils.isNotBlank(schemaName)) {
-            createViewSqlBuilder.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName)).append(SQLConstants.DOT);
+            createViewSqlBuilder.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)).append(SQLConstants.DOT);
         }
         String viewName = modifyView.getViewName();
         if (StringUtils.isNotBlank(viewName)) {
-            createViewSqlBuilder.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(viewName));
+            createViewSqlBuilder.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(viewName));
         } else {
             createViewSqlBuilder.append(UNDEFINED_KEYWORD);
         }

@@ -72,7 +72,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
 
 
     private String format(String objectName) {
-        return getSQLIdentifierProcessor().quoteIdentifier(objectName);
+        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
 
     }
 
@@ -139,7 +139,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                 if (StringUtils.isNotBlank(indexType)) {
                     clusteredMap.computeIfAbsent(constraintName, k -> indexType);
                 }
-                columnName = getSQLIdentifierProcessor().quoteIdentifier(columnName) + (isDesc ? " desc" : " asc");
+                columnName = SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(columnName) + (isDesc ? " desc" : " asc");
                 if ("PK".equals(constraintType)) {
                     PKConstraintsMap.computeIfAbsent(constraintName, k -> new ArrayList<>()).add(columnName);
                 } else if ("UQ".equals(constraintType)) {
@@ -151,7 +151,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                 if (MapUtils.isNotEmpty(PKConstraintsMap)) {
                     PKConstraintsMap.forEach((key, value) -> {
                         tempBuilder.append("constraint ")
-                                .append(getSQLIdentifierProcessor().quoteIdentifier(key))
+                                .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(key))
                                 .append("\n")
                                 .append("primary key ");
                         if (clusteredMap.containsKey(key)) {
@@ -167,7 +167,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                 if (MapUtils.isNotEmpty(UQConstraintsMap)) {
                     UQConstraintsMap.forEach((key, value) -> {
                         tempBuilder.append("constraint ")
-                                .append(getSQLIdentifierProcessor().quoteIdentifier(key))
+                                .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(key))
                                 .append("\n")
                                 .append("unique ");
                         if (clusteredMap.containsKey(key)) {
@@ -207,7 +207,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                             ddlBuilder.append(",\n");
                             isFirst = false;
                         }
-                        tempBuilder.append("constraint ").append(getSQLIdentifierProcessor().quoteIdentifier(constraintName)).append("\n")
+                        tempBuilder.append("constraint ").append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintName)).append("\n")
                                 .append("check ").append(constraintDefinition);
                         tempList.add(tempBuilder.toString());
                         tempBuilder.setLength(0);
@@ -374,18 +374,18 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                                             String referencedSchemaName, String referencedTableName,
                                             List<String> referencedColumnNames, int updateAction,
                                             int deleteAction) {
-        String referencedTable = SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(referencedTableName);
+        String referencedTable = SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(referencedTableName);
         if (StringUtils.isNotBlank(referencedSchemaName)) {
-            referencedTable = SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(referencedSchemaName) + "." + referencedTable;
+            referencedTable = SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(referencedSchemaName) + "." + referencedTable;
         }
-        return "constraint " + SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(constraintName) + "\n"
+        return "constraint " + SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintName) + "\n"
                 + "foreign key (" + quoteIdentifierList(columnNames) + ")\n"
                 + "references " + referencedTable + " (" + quoteIdentifierList(referencedColumnNames) + ")"
                 + buildReferentialActions(updateAction, deleteAction);
     }
 
     private static String quoteIdentifierList(List<String> identifiers) {
-        return identifiers.stream().map(SqlServerIdentifierProcessor.INSTANCE::quoteIdentifier)
+        return identifiers.stream().map(SqlServerIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
                 .collect(Collectors.joining(" , "));
     }
 
@@ -764,7 +764,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
     @Override
     public String getMetaDataName(String... names) {
         return Arrays.stream(names).filter(StringUtils::isNotBlank)
-                .map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+                .map(SqlServerIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
     @Override
@@ -820,7 +820,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         StringBuilder sqlBuilder = new StringBuilder(100);
         sqlBuilder.append(SQL_CREATE).append("view ");
         if (StringUtils.isNotBlank(schemaName)) {
-            sqlBuilder.append(getSQLIdentifierProcessor().quoteIdentifier(schemaName)).append(".");
+            sqlBuilder.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)).append(".");
         }
         sqlBuilder.append("[").append("undefined").append("]");
         sqlBuilder.append(" AS \n").append(sql).append(";");

@@ -140,7 +140,7 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
         SqlServerColumnTypeEnum type = this;
         StringBuilder script = new StringBuilder();
 
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -160,7 +160,7 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
         SqlServerColumnTypeEnum type = this;
         StringBuilder script = new StringBuilder();
 
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -182,7 +182,7 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
 
         StringBuilder script = new StringBuilder();
 
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -190,29 +190,29 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
 
         if (StringUtils.isNotBlank(column.getDefaultValue()) && column.getOldColumn().getDefaultValue() != null && !StringUtils.equalsIgnoreCase(column.getDefaultValue(), column.getOldColumn().getDefaultValue())) {
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(column));
-            script.append(" ").append(SQL_DROP_CONSTRAINT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getDefaultConstraintName()));
+            script.append(" ").append(SQL_DROP_CONSTRAINT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getDefaultConstraintName()));
 
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(column));
             script.append(" ").append("ADD ").append(buildDefaultValue(column, type)).append(" for ")
-                    .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" \ngo\n");
+                    .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" \ngo\n");
         }
 
         if (StringUtils.isNotBlank(column.getDefaultValue()) && column.getOldColumn().getDefaultValue() == null) {
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(column));
             script.append(" ").append("ADD ").append(buildDefaultValue(column, type)).append(" for ")
-                    .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" \ngo\n");
+                    .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" \ngo\n");
         }
 
 
         if (!Objects.equals(column.getSparse(), column.getOldColumn().getSparse())) {
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(column));
-            script.append(" ").append(SQL_ALTER_COLUMN).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()))
+            script.append(" ").append(SQL_ALTER_COLUMN).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
                     .append(" add ").append("SPARSE").append(" \ngo\n");
         }
 
         if (!Objects.equals(column.getCollationName(), column.getOldColumn().getCollationName())) {
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(column));
-            script.append(" ").append(SQL_ALTER_COLUMN).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()))
+            script.append(" ").append(SQL_ALTER_COLUMN).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
                     .append(" ").append("COLLATE ").append(SqlServerSqlGuards.validateCollation(column.getCollationName())).append(" \ngo\n");
         }
         return script.toString();
@@ -309,11 +309,11 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
     private String renameColumn(TableColumn tableColumn) {
         StringBuilder qualifiedColumnName = new StringBuilder();
         if (StringUtils.isNotBlank(tableColumn.getSchemaName())) {
-            qualifiedColumnName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append('.');
+            qualifiedColumnName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getSchemaName())).append('.');
         }
-        qualifiedColumnName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()))
+        qualifiedColumnName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getTableName()))
                 .append('.')
-                .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()));
+                .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()));
         return String.format(RENAME_COLUMN_SCRIPT,
                 SqlServerIdentifierProcessor.INSTANCE.escapeString(qualifiedColumnName.toString()),
                 SqlServerIdentifierProcessor.INSTANCE.escapeString(tableColumn.getName()));
@@ -322,9 +322,9 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
     private static String qualifiedTableName(TableColumn tableColumn) {
         StringBuilder tableName = new StringBuilder();
         if (StringUtils.isNotBlank(tableColumn.getSchemaName())) {
-            tableName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append('.');
+            tableName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getSchemaName())).append('.');
         }
-        return tableName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName())).toString();
+        return tableName.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getTableName())).toString();
     }
 
 
@@ -335,11 +335,11 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
             StringBuilder script = new StringBuilder();
             if (StringUtils.isNotBlank(tableColumn.getDefaultConstraintName())) {
                 script.append(SQL_ALTER_TABLE).append(qualifiedTableName(tableColumn));
-                script.append(" ").append(SQL_DROP_CONSTRAINT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getDefaultConstraintName()));
+                script.append(" ").append(SQL_DROP_CONSTRAINT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getDefaultConstraintName()));
                 script.append("\ngo\n");
             }
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(tableColumn));
-            script.append(" ").append(SQL_DROP_COLUMN).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            script.append(" ").append(SQL_DROP_COLUMN).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
             script.append("\ngo\n");
             return script.toString();
         }

@@ -19,6 +19,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +37,54 @@ class SqlServerIdentifierProcessorTest {
         assertEquals("[weird]]name]", SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier("weird]name"));
         assertEquals("a]]b", SqlServerIdentifierProcessor.escapeIdentifier("a]b"));
         assertEquals("", SqlServerIdentifierProcessor.escapeIdentifier(null));
+    }
+
+    @Test
+    void shouldPassThroughNullBlankAndPlainIdentifiersConditionally() {
+        SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifier(null));
+        assertEquals("", processor.quoteIdentifier(""));
+        assertEquals(" ", processor.quoteIdentifier(" "));
+        assertEquals("users", processor.quoteIdentifier("users"));
+        assertEquals("dbo", processor.quoteIdentifier("dbo"));
+        assertEquals("order_details2", processor.quoteIdentifier("order_details2"));
+    }
+
+    @Test
+    void shouldQuoteReservedKeywordsAndInvalidIdentifiersConditionally() {
+        SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
+        assertEquals("[SELECT]", processor.quoteIdentifier("SELECT"));
+        assertEquals("[select]", processor.quoteIdentifier("select"));
+        assertEquals("[USER]", processor.quoteIdentifier("USER"));
+        assertEquals("[weird name]", processor.quoteIdentifier("weird name"));
+        assertEquals("[users]", processor.quoteIdentifier("[users]"));
+        assertEquals("[a]]b]", processor.quoteIdentifier("a]b"));
+    }
+
+    @Test
+    void shouldDelegateVersionedOverloadToConditionalQuote() {
+        SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifier(null, null, null));
+        assertEquals("users", processor.quoteIdentifier("users", 15, 0));
+        assertEquals("[weird name]", processor.quoteIdentifier("weird name", 15, 0));
+    }
+
+    @Test
+    void shouldAlwaysQuoteWithQuoteIdentifierAlways() {
+        SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierAlways(null));
+        assertEquals("[users]", processor.quoteIdentifierAlways("users"));
+        assertEquals("[a]]b]", processor.quoteIdentifierAlways("a]b"));
+        assertEquals("[users]", processor.quoteIdentifierAlways("[users]"));
+        assertEquals("[]", processor.quoteIdentifierAlways(""));
+    }
+
+    @Test
+    void shouldAlwaysQuoteWithQuoteIdentifierIgnoreCase() {
+        SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierIgnoreCase(null));
+        assertEquals("[users]", processor.quoteIdentifierIgnoreCase("users"));
+        assertEquals("[MixedCase]", processor.quoteIdentifierIgnoreCase("MixedCase"));
     }
 
     @Test

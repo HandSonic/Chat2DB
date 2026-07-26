@@ -560,7 +560,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(unquoteIdentifier(identifier));
+        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(unquoteIdentifier(identifier));
     }
 
     static String unquoteIdentifier(String identifier) {

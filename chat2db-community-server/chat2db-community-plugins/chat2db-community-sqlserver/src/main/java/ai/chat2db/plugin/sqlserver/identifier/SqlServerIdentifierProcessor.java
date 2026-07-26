@@ -213,12 +213,23 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
     }
 
     /**
-     * Always quotes with square brackets, stripping one surrounding bracket pair
-     * and doubling every embedded closing bracket.
+     * Quotes conditionally per the SPI contract: {@code null} passes through,
+     * blank input is returned unchanged, and an identifier that is already a
+     * valid plain identifier and not a reserved keyword is returned unquoted.
+     * Anything else is wrapped with {@link #quoteIdentifierAlways(String)}.
      */
     @Override
     public String quoteIdentifier(String identifier) {
-        return "[" + escapeIdentifierContent(identifier) + "]";
+        if (identifier == null) {
+            return null;
+        }
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -226,9 +237,26 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         return quoteIdentifier(identifier);
     }
 
+    /**
+     * Always-quote variant that preserves the original identifier case, as
+     * required by the SPI for {@code quoteIdentifierIgnoreCase}.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditionally quotes with square brackets, stripping one surrounding
+     * bracket pair and doubling every embedded closing bracket. Reserved for
+     * DDL-generation call sites that must always emit quoted identifiers;
+     * {@code null} passes through.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        return "[" + escapeIdentifierContent(identifier) + "]";
     }
 
     /**
