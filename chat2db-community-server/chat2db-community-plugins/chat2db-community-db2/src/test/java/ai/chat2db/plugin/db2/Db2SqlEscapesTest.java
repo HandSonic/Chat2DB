@@ -174,4 +174,60 @@ class Db2SqlEscapesTest {
 
         assertEquals("CREATE TABLE \"n\"\"t\" LIKE \"s\"\"t\" INCLUDING INDEXES", sql);
     }
+
+    @Test
+    void dropAndTruncateTableQuoteQualifiedIdentifiers() {
+        ai.chat2db.spi.model.request.DropTableRequest drop = new ai.chat2db.spi.model.request.DropTableRequest();
+        drop.setSchemaName("s\"x");
+        drop.setTableName("t\"y");
+        assertEquals("DROP TABLE \"s\"\"x\".\"t\"\"y\"", new DB2SqlBuilder().buildDropTable(drop));
+
+        ai.chat2db.spi.model.request.TruncateTableRequest truncate = new ai.chat2db.spi.model.request.TruncateTableRequest();
+        truncate.setSchemaName("s");
+        truncate.setTableName("t\"z");
+        assertEquals("TRUNCATE TABLE \"s\".\"t\"\"z\"", new DB2SqlBuilder().buildTruncateTable(truncate));
+
+        assertEquals("TRUNCATE TABLE \"t\"\"z\"", new DB2DBManager().truncateTable(null, null, null, "t\"z"));
+    }
+
+    @Test
+    void indexColumnRejectsMaliciousSortDirection() {
+        TableIndex index = new TableIndex();
+        index.setSchemaName("S");
+        index.setTableName("T");
+        index.setName("I");
+        ai.chat2db.community.domain.api.model.metadata.TableIndexColumn column =
+                new ai.chat2db.community.domain.api.model.metadata.TableIndexColumn();
+        column.setColumnName("c");
+        column.setAscOrDesc("DESC); DROP TABLE t; --");
+        index.setColumnList(java.util.List.of(column));
+
+        assertThrows(IllegalArgumentException.class, () -> DB2IndexTypeEnum.NORMAL.buildIndexScript(index));
+    }
+
+    @Test
+    void createTableIncludesSizedVarcharColumn() {
+        Table table = new Table();
+        table.setSchemaName("S");
+        table.setName("T");
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("VARCHAR(10)");
+        table.setColumnList(java.util.List.of(column));
+        table.setIndexList(new ArrayList<>());
+
+        String sql = new DB2SqlBuilder().buildCreateTable(table, null);
+
+        assertTrue(sql.contains("\"c\" VARCHAR(10)"), sql);
+    }
+
+    @Test
+    void createColumnRejectsParenBreakoutDefaultValue() {
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("INT");
+        column.setDefaultValue("1), (evil INT DEFAULT (0");
+
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+    }
 }

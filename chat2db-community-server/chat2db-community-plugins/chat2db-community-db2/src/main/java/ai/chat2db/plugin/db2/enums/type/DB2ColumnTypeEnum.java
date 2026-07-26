@@ -5,7 +5,6 @@ import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.plugin.db2.Db2SqlEscapes;
-import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -113,7 +112,15 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
     private ColumnType columnType;
 
     public static DB2ColumnTypeEnum getByType(String dataType) {
-       return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
+        if (dataType == null) {
+            return null;
+        }
+        String normalized = dataType.trim();
+        int paren = normalized.indexOf('(');
+        if (paren >= 0) {
+            normalized = normalized.substring(0, paren);
+        }
+        return COLUMN_TYPE_MAP.get(normalized.toUpperCase());
     }
 
     private static Map<String, DB2ColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
@@ -164,7 +171,7 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
         }
     }
 
-    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("^[A-Za-z0-9_'().,+/: \\t-]+$");
+    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("^[A-Za-z0-9_'+/: \\t.-]+$");
 
     private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
 

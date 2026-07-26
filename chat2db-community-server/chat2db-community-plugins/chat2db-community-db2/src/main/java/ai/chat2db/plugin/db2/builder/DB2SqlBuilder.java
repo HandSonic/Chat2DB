@@ -173,4 +173,21 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
     public String buildExplain(String sql) {
         return SQL_EXPLAIN_PLAN_SET_QUERYNO_EQUAL_1_FOR + sql;
     }
+
+    @Override
+    public String buildDropTable(ai.chat2db.spi.model.request.DropTableRequest request) {
+        return SQLConstants.DROP_TABLE_SQL_PREFIX + quoteQualifiedName(request.getDatabaseName(), request.getSchemaName(), request.getTableName());
+    }
+
+    @Override
+    public String buildTruncateTable(ai.chat2db.spi.model.request.TruncateTableRequest request) {
+        return SQLConstants.TRUNCATE_TABLE_SQL_PREFIX + quoteQualifiedName(request.getDatabaseName(), request.getSchemaName(), request.getTableName());
+    }
+
+    private static String quoteQualifiedName(String... parts) {
+        return java.util.Arrays.stream(parts)
+                .filter(StringUtils::isNotBlank)
+                .map(Db2SqlEscapes::quoteIdentifier)
+                .collect(java.util.stream.Collectors.joining(SQLConstants.DOT));
+    }
 }

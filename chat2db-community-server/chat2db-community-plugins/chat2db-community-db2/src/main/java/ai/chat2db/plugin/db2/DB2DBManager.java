@@ -131,6 +131,11 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
     }
 
     @Override
+    public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
+        return "TRUNCATE TABLE " + Db2SqlEscapes.quoteIdentifier(tableName);
+    }
+
+    @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
         String sql = String.format(SQL_COPY_TABLE, Db2SqlEscapes.quoteIdentifier(newTableName), Db2SqlEscapes.quoteIdentifier(tableName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
