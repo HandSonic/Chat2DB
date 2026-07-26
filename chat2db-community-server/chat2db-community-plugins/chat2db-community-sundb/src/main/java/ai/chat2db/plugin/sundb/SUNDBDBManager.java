@@ -22,7 +22,7 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
 
 
     private String format(String tableName) {
-        return "\"" + tableName + "\"";
+        return SUNDBSqlEscapes.quoteIdentifier(tableName);
     }
 
 
@@ -45,7 +45,7 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportTables(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String sql =String.format(SQL_SELECT_TABLE_NAME_ALL_TABLES, schemaName);
+        String sql =String.format(SQL_SELECT_TABLE_NAME_ALL_TABLES, SUNDBSqlEscapes.escapeSqlLiteral(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 String tableName = resultSet.getString("TABLE_NAME");
@@ -62,13 +62,13 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
 
     private void exportTableColumnComment(Connection connection, String schemaName, String tableName, StringBuilder sqlBuilder) throws SQLException {
           String sql =String.format(SQL_SELECT_COLNAME_COMMENT_SYS_SYSCOLUMNCOMMENTS +
-                                            "where SCHNAME = '%s' and TVNAME = '%s'and TABLE_TYPE = 'TABLE';", schemaName,tableName);
+                                            "where SCHNAME = '%s' and TVNAME = '%s'and TABLE_TYPE = 'TABLE';", SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(tableName));
           try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
               while (resultSet.next()) {
                   String columnName = resultSet.getString("COLNAME");
                   String comment = resultSet.getString("COMMENT$");
                       sqlBuilder.append(SQL_COMMENT_COLUMN).append(format(schemaName)).append(".").append(format(tableName))
-                              .append(".").append(format(columnName)).append(" IS ").append("'").append(comment).append("';").append("\n");
+                              .append(".").append(format(columnName)).append(" IS ").append("'").append(SUNDBSqlEscapes.escapeSqlLiteral(comment)).append("';").append("\n");
               }
           }
     }
@@ -98,7 +98,7 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportProcedure(Connection connection, String schemaName, String procedureName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(ROUTINES_SQL,"PROC", schemaName,procedureName);
+        String sql = String.format(ROUTINES_SQL,"PROC", SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(procedureName));
         try (PreparedStatement statement = connection.prepareStatement(sql); ResultSet resultSet = statement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -114,7 +114,7 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportTrigger(Connection connection, String schemaName, String triggerName, StringBuilder sqlBuilder) throws SQLException {
-        String sql = String.format(TRIGGER_SQL, schemaName,triggerName);
+        String sql = String.format(TRIGGER_SQL, SUNDBSqlEscapes.escapeSqlLiteral(schemaName), SUNDBSqlEscapes.escapeSqlLiteral(triggerName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 sqlBuilder.append(resultSet.getString("TRIGGER_BODY")).append("\n");
@@ -130,7 +130,7 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
         }
         String schemaName = connectInfo.getSchemaName();
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_SET_SCHEMA, schemaName));
+            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_SET_SCHEMA, SUNDBSqlEscapes.escapeIdentifier(schemaName)));
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -138,16 +138,16 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE_EXISTS, schemaName, tableName);
+        return String.format(SQL_DROP_TABLE_EXISTS, SUNDBSqlEscapes.escapeIdentifier(schemaName), SUNDBSqlEscapes.escapeIdentifier(tableName));
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
         String sql;
         if(copyData){
-            sql = String.format(SQL_COPY_TABLE_DATA, newTableName, tableName);
+            sql = String.format(SQL_COPY_TABLE_DATA, SUNDBSqlEscapes.quoteIdentifier(newTableName), SUNDBSqlEscapes.quoteIdentifier(tableName));
         }else {
-            sql = String.format(SQL_COPY_TABLE_STRUCTURE, newTableName, tableName);
+            sql = String.format(SQL_COPY_TABLE_STRUCTURE, SUNDBSqlEscapes.quoteIdentifier(newTableName), SUNDBSqlEscapes.quoteIdentifier(tableName));
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }

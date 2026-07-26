@@ -2,6 +2,7 @@ package ai.chat2db.plugin.sundb.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
 
+import ai.chat2db.plugin.sundb.SUNDBSqlEscapes;
 import ai.chat2db.plugin.sundb.enums.type.SUNDBColumnTypeEnum;
 import ai.chat2db.plugin.sundb.enums.type.SUNDBIndexTypeEnum;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
@@ -34,7 +35,7 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
     public String buildCreateTable(Table table, TableBuilderConfig tableBuilderConfig) {
         StringBuilder script = new StringBuilder();
 
-        script.append(SQL_CREATE_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(table.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(table.getName()).append(VALUE_DOUBLE_QUOTE_OPEN_PAREN).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SQL_CREATE_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(table.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(table.getName())).append(VALUE_DOUBLE_QUOTE_OPEN_PAREN).append(SQLConstants.LINE_SEPARATOR);
 
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
@@ -78,13 +79,13 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
 
     private String buildTableComment(Table table) {
         StringBuilder script = new StringBuilder();
-        script.append(SQL_COMMENT_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(table.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(table.getName()).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(table.getComment()).append(SQLConstants.SINGLE_QUOTE);
+        script.append(SQL_COMMENT_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(table.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(table.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(SUNDBSqlEscapes.escapeSqlLiteral(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
         return script.toString();
     }
 
     private String buildComment(TableColumn column) {
         StringBuilder script = new StringBuilder();
-        script.append(SQL_COMMENT_COLUMN).append(SQLConstants.DOUBLE_QUOTE).append(column.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(column.getTableName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(column.getName()).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(column.getComment()).append(SQLConstants.SINGLE_QUOTE);
+        script.append(SQL_COMMENT_COLUMN).append(SQLConstants.DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(column.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(column.getTableName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(column.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(SUNDBSqlEscapes.escapeSqlLiteral(column.getComment())).append(SQLConstants.SINGLE_QUOTE);
         return script.toString();
     }
 
@@ -93,8 +94,8 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
 
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(oldTable.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(oldTable.getName()).append(SQLConstants.DOUBLE_QUOTE);
-            script.append(SQLConstants.SPACE).append(SQL_RENAME).append(SQLConstants.DOUBLE_QUOTE).append(newTable.getName()).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(oldTable.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(oldTable.getName())).append(SQLConstants.DOUBLE_QUOTE);
+            script.append(SQLConstants.SPACE).append(SQL_RENAME).append(SQLConstants.DOUBLE_QUOTE).append(SUNDBSqlEscapes.escapeIdentifier(newTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             script.append(SQLConstants.EMPTY).append(buildTableComment(newTable)).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
@@ -159,9 +160,9 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateSchema(Schema schema) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_SCHEMA + schema.getName() + SQLConstants.DOUBLE_QUOTE);
+        sqlBuilder.append(SQL_CREATE_SCHEMA + SUNDBSqlEscapes.escapeIdentifier(schema.getName()) + SQLConstants.DOUBLE_QUOTE);
         if (StringUtils.isNotBlank(schema.getOwner())) {
-            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(schema.getOwner());
+            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(SUNDBSqlEscapes.quoteIdentifier(schema.getOwner()));
         }
         return sqlBuilder.toString();
     }
