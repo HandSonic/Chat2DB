@@ -279,4 +279,28 @@ class ClickHouseSqlEscapesTest {
 
         assertTrue(sql.startsWith("`a` Array(Nullable(String))"), sql);
     }
+
+    @Test
+    void shouldRejectNegativeEnumValues() {
+        // Deliberate fail-closed trade-off: dashes are always rejected so that
+        // comment injection ("--") is impossible, at the cost of rejecting
+        // legal ClickHouse enum forms like Enum8('a' = -1).
+        TableColumn column = new TableColumn();
+        column.setName("e");
+        column.setColumnType("Enum8('a' = -1)");
+        assertThrows(IllegalArgumentException.class,
+                () -> ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column));
+    }
+
+    @Test
+    void shouldNotWrapAggregateFunctionInFallback() {
+        TableColumn column = new TableColumn();
+        column.setName("agg");
+        column.setColumnType("AggregateFunction(uniq, String)");
+        column.setNullable(1);
+
+        String sql = ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column);
+
+        assertTrue(sql.startsWith("`agg` AggregateFunction(uniq, String)"), sql);
+    }
 }

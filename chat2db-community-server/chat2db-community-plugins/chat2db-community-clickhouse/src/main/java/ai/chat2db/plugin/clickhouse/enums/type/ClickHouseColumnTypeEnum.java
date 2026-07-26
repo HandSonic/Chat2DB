@@ -120,7 +120,8 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     private static boolean isNullableWrappable(String columnType) {
         String upper = columnType.toUpperCase();
         return !upper.startsWith("ARRAY(") && !upper.startsWith("MAP(") && !upper.startsWith("TUPLE(")
-                && !upper.startsWith("NESTED(") && !upper.startsWith("NULLABLE(");
+                && !upper.startsWith("NESTED(") && !upper.startsWith("NULLABLE(")
+                && !upper.startsWith("AGGREGATEFUNCTION(") && !upper.startsWith("SIMPLEAGGREGATEFUNCTION(");
     }
 
     private static String buildFallbackDefaultValue(TableColumn column) {
