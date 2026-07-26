@@ -20,7 +20,9 @@ import ai.chat2db.community.domain.api.model.result.*;
 import ai.chat2db.community.domain.api.model.sql.*;
 import ai.chat2db.spi.model.value.*;
 import ai.chat2db.community.domain.api.model.view.*;
+import ai.chat2db.plugin.h2.identifier.H2IdentifierProcessor;
 import ai.chat2db.spi.DefaultSQLExecutor;
+import ai.chat2db.spi.ISQLIdentifierProcessor;
 import ai.chat2db.spi.util.SortUtils;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,11 @@ import org.apache.commons.lang3.StringUtils;
 import static ai.chat2db.plugin.h2.constant.H2MetaConstants.*;
 @Slf4j
 public class H2Meta extends DefaultMetaService implements IDbMetaData {
+
+    @Override
+    public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
+        return H2IdentifierProcessor.INSTANCE;
+    }
 
 
 
@@ -55,17 +62,17 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
                     String defaultValue = columns.getString("COLUMN_DEF");
                     String nullable = columns.getInt("NULLABLE") == ResultSetMetaData.columnNullable ? "NULL" : "NOT NULL";
                     StringBuilder columnDefinition = new StringBuilder();
-                    columnDefinition.append(H2SqlEscapes.quoteIdentifier(columnName)).append(" ")
-                        .append(H2SqlEscapes.requireSafeTypeName(columnType));
+                    columnDefinition.append(getSQLIdentifierProcessor().quoteIdentifier(columnName)).append(" ")
+                        .append(H2SqlGuards.requireSafeTypeName(columnType));
                     if (columnSize != 0) {
                         columnDefinition.append("(").append(columnSize).append(")");
                     }
                     columnDefinition.append(" ").append(nullable);
                     if (defaultValue != null) {
-                        columnDefinition.append(" DEFAULT ").append(H2SqlEscapes.escapeColumnDefault(defaultValue));
+                        columnDefinition.append(" DEFAULT ").append(H2SqlGuards.escapeColumnDefault(defaultValue));
                     }
                     if (remarks != null) {
-                        columnDefinition.append(SQL_COMMENT).append(H2SqlEscapes.escapeSqlLiteral(remarks)).append("'");
+                        columnDefinition.append(SQL_COMMENT).append(getSQLIdentifierProcessor().escapeString(remarks)).append("'");
                     }
                     columnDefinitions.add(columnDefinition.toString());
                 }
@@ -87,16 +94,16 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
             }
 
             StringBuilder createTableDDL = new StringBuilder(SQL_CREATE_TABLE);
-            createTableDDL.append(H2SqlEscapes.quoteIdentifier(tableName)).append(" (\n");
+            createTableDDL.append(getSQLIdentifierProcessor().quoteIdentifier(tableName)).append(" (\n");
             createTableDDL.append(String.join(",\n", columnDefinitions));
             createTableDDL.append("\n);\n");
             for (Map.Entry<String, List<String>> entry : indexMap.entrySet()) {
                 String indexName = entry.getKey();
                 List<String> columnList = entry.getValue();
-                String indexColumns = columnList.stream().map(H2SqlEscapes::quoteIdentifier)
+                String indexColumns = columnList.stream().map(getSQLIdentifierProcessor()::quoteIdentifier)
                     .collect(Collectors.joining(", "));
-                String createIndexDDL = String.format(SQL_CREATE_INDEX, H2SqlEscapes.quoteIdentifier(indexName),
-                    H2SqlEscapes.quoteIdentifier(tableName), indexColumns);
+                String createIndexDDL = String.format(SQL_CREATE_INDEX, getSQLIdentifierProcessor().quoteIdentifier(indexName),
+                    getSQLIdentifierProcessor().quoteIdentifier(tableName), indexColumns);
                 createTableDDL.append(createIndexDDL);
             }
             return createTableDDL.toString();
@@ -112,8 +119,8 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
     public Function function(Connection connection, @NotEmpty String databaseName, String schemaName,
         String functionName) {
 
-        String sql = String.format(ROUTINES_SQL, "FUNCTION", H2SqlEscapes.escapeSqlLiteral(databaseName),
-            H2SqlEscapes.escapeSqlLiteral(functionName));
+        String sql = String.format(ROUTINES_SQL, "FUNCTION", getSQLIdentifierProcessor().escapeString(databaseName),
+            getSQLIdentifierProcessor().escapeString(functionName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Function function = new Function();
             function.setDatabaseName(databaseName);
@@ -136,8 +143,8 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, H2SqlEscapes.escapeSqlLiteral(databaseName),
-            H2SqlEscapes.escapeSqlLiteral(schemaName));
+        String sql = String.format(TRIGGER_SQL_LIST, getSQLIdentifierProcessor().escapeString(databaseName),
+            getSQLIdentifierProcessor().escapeString(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -154,8 +161,8 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
         String triggerName) {
 
-        String sql = String.format(TRIGGER_SQL, H2SqlEscapes.escapeSqlLiteral(databaseName),
-            H2SqlEscapes.escapeSqlLiteral(triggerName));
+        String sql = String.format(TRIGGER_SQL, getSQLIdentifierProcessor().escapeString(databaseName),
+            getSQLIdentifierProcessor().escapeString(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Trigger trigger = new Trigger();
             trigger.setDatabaseName(databaseName);
@@ -171,8 +178,8 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
         String procedureName) {
-        String sql = String.format(ROUTINES_SQL, "PROCEDURE", H2SqlEscapes.escapeSqlLiteral(databaseName),
-            H2SqlEscapes.escapeSqlLiteral(procedureName));
+        String sql = String.format(ROUTINES_SQL, "PROCEDURE", getSQLIdentifierProcessor().escapeString(databaseName),
+            getSQLIdentifierProcessor().escapeString(procedureName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Procedure procedure = new Procedure();
             procedure.setDatabaseName(databaseName);
@@ -190,8 +197,8 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, H2SqlEscapes.escapeSqlLiteral(databaseName),
-            H2SqlEscapes.escapeSqlLiteral(schemaName), H2SqlEscapes.escapeSqlLiteral(viewName));
+        String sql = String.format(VIEW_SQL, getSQLIdentifierProcessor().escapeString(databaseName),
+            getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -211,7 +218,7 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(H2SqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override

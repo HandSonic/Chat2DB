@@ -9,8 +9,9 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
-import ai.chat2db.plugin.h2.H2SqlEscapes;
+import ai.chat2db.plugin.h2.identifier.H2IdentifierProcessor;
 import ai.chat2db.spi.constant.SQLConstants;
+import ai.chat2db.plugin.h2.H2SqlGuards;
 
 import ai.chat2db.spi.DefaultSqlBuilder;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
@@ -30,14 +31,14 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
 
     @Override
     public String quoteIdentifier(String identifier) {
-        return H2SqlEscapes.quoteIdentifier(identifier);
+        return H2IdentifierProcessor.INSTANCE.quoteIdentifier(identifier);
     }
 
     @Override
     public String quoteQualifiedIdentifier(String... identifiers) {
         return Arrays.stream(identifiers)
             .filter(StringUtils::isNotBlank)
-            .map(H2SqlEscapes::quoteIdentifier)
+            .map(H2IdentifierProcessor.INSTANCE::quoteIdentifier)
             .collect(Collectors.joining(SQLConstants.DOT));
     }
 
@@ -50,7 +51,7 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
     protected void buildColumns(List<String> columnList, StringBuilder script) {
         if (CollectionUtils.isNotEmpty(columnList)) {
             script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
-                .append(columnList.stream().map(H2SqlEscapes::quoteIdentifier)
+                .append(columnList.stream().map(H2IdentifierProcessor.INSTANCE::quoteIdentifier)
                     .collect(Collectors.joining(SQLConstants.COMMA)))
                 .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
         }
@@ -70,7 +71,7 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
             }
             script.append(SQLConstants.TAB).append(SQLConstants.SPACE)
                 .append(quoteIdentifier(column.getName())).append(SQLConstants.SPACE)
-                .append(H2SqlEscapes.requireSafeTypeName(column.getColumnType()));
+                .append(H2SqlGuards.requireSafeTypeName(column.getColumnType()));
             if (column.getColumnSize() != null) {
                 script.append(SQLConstants.OPEN_PARENTHESIS).append(column.getColumnSize());
                 if (column.getDecimalDigits() != null) {
@@ -106,7 +107,7 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
         return SQLConstants.COMMENT_ON_COLUMN_SQL_PREFIX
             + quoteIdentifier(column.getTableName()) + SQLConstants.DOT + quoteIdentifier(column.getName())
             + SQLConstants.SQL_IS_SINGLE_QUOTE
-            + H2SqlEscapes.escapeSqlLiteral(column.getComment())
+            + H2IdentifierProcessor.INSTANCE.escapeString(column.getComment())
             + SQLConstants.SINGLE_QUOTE_SEMICOLON_LINE_SEPARATOR;
     }
 
@@ -145,7 +146,7 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             script.append(SQLConstants.COMMENT_ON_TABLE_SQL_PREFIX).append(quoteIdentifier(newTable.getName()))
                 .append(SQLConstants.SQL_IS_SINGLE_QUOTE)
-                .append(H2SqlEscapes.escapeSqlLiteral(newTable.getComment()))
+                .append(H2IdentifierProcessor.INSTANCE.escapeString(newTable.getComment()))
                 .append(SQLConstants.SINGLE_QUOTE_SEMICOLON).append(SQLConstants.LINE_SEPARATOR);
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
@@ -171,12 +172,12 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return SQLConstants.ALTER_TABLE_SQL_PREFIX + quoteIdentifier(tableColumn.getTableName())
                 + " ADD COLUMN " + quoteIdentifier(tableColumn.getName())
-                + SQLConstants.SPACE + H2SqlEscapes.requireSafeTypeName(tableColumn.getColumnType()) + SQLConstants.SEMICOLON;
+                + SQLConstants.SPACE + H2SqlGuards.requireSafeTypeName(tableColumn.getColumnType()) + SQLConstants.SEMICOLON;
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             return SQLConstants.ALTER_TABLE_SQL_PREFIX + quoteIdentifier(tableColumn.getTableName())
                 + " MODIFY COLUMN " + quoteIdentifier(tableColumn.getName())
-                + SQLConstants.SPACE + H2SqlEscapes.requireSafeTypeName(tableColumn.getColumnType()) + SQLConstants.SEMICOLON;
+                + SQLConstants.SPACE + H2SqlGuards.requireSafeTypeName(tableColumn.getColumnType()) + SQLConstants.SEMICOLON;
         }
         if (tableColumn.getComment() != null) {
             return generateCommentSql(tableColumn);
@@ -266,10 +267,10 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
     @Override
     public String buildCreateSchema(Schema schema) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_SCHEMA + H2SqlEscapes.escapeIdentifier(schema.getName()) + SQLConstants.DOUBLE_QUOTE_SEMICOLON);
+        sqlBuilder.append(SQL_CREATE_SCHEMA + H2IdentifierProcessor.escapeIdentifier(schema.getName()) + SQLConstants.DOUBLE_QUOTE_SEMICOLON);
 
         if (StringUtils.isNotBlank(schema.getComment())) {
-            sqlBuilder.append(SQL_COMMENT_ON_SCHEMA_DOUBLE_QUOTE).append(H2SqlEscapes.escapeIdentifier(schema.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(H2SqlEscapes.escapeSqlLiteral(schema.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_COMMENT_ON_SCHEMA_DOUBLE_QUOTE).append(H2IdentifierProcessor.escapeIdentifier(schema.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(H2IdentifierProcessor.INSTANCE.escapeString(schema.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
 
         return sqlBuilder.toString();

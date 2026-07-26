@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.h2;
 
 import ai.chat2db.spi.IDbManager;
+import ai.chat2db.plugin.h2.identifier.H2IdentifierProcessor;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
 import ai.chat2db.spi.sql.Chat2DBContext;
@@ -29,7 +30,7 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
         if (asyncContext.isContainsData()) {
             template = template.replace("NODATA", "");
         }
-        String sql = String.format(template, H2SqlEscapes.escapeIdentifier(schemaName));
+        String sql = String.format(template, H2IdentifierProcessor.escapeIdentifier(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 String script = resultSet.getString("SCRIPT");
@@ -53,7 +54,7 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
         String schemaName = connectInfo.getSchemaName();
         try {
             DefaultSQLExecutor.getInstance().execute(connection,
-                String.format(SQL_SET_SCHEMA, H2SqlEscapes.escapeIdentifier(schemaName)));
+                String.format(SQL_SET_SCHEMA, H2IdentifierProcessor.escapeIdentifier(schemaName)));
         } catch (SQLException e) {
 
         }
@@ -62,6 +63,6 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE, H2SqlEscapes.escapeIdentifier(tableName));
+        return String.format(SQL_DROP_TABLE, H2IdentifierProcessor.escapeIdentifier(tableName));
     }
 }

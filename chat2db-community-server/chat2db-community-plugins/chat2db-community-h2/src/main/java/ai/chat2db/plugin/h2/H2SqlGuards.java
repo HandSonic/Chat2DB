@@ -2,17 +2,15 @@ package ai.chat2db.plugin.h2;
 
 import java.util.regex.Pattern;
 
+import ai.chat2db.plugin.h2.identifier.H2IdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Escaping helpers for H2 SQL generation.
- *
- * <p>Contract: callers MUST pass raw (unquoted, unescaped) names and values.
- * {@link #escapeIdentifier(String)} tolerates at most one surrounding pair of double quotes
- * for convenience, but passing an already-escaped identifier (e.g. {@code we""ird}) will
- * double-escape it and produce a wrong name. Never feed output of these helpers back in.</p>
+ * Validation helpers for non-escapable SQL positions in H2 DDL generation
+ * (column type names and column default expressions reported by JDBC metadata).
+ * Escaping itself lives in {@link H2IdentifierProcessor}.
  */
-public final class H2SqlEscapes {
+public final class H2SqlGuards {
 
     /**
      * Conservative allow-list for column type names reported by JDBC metadata
@@ -28,48 +26,13 @@ public final class H2SqlEscapes {
      */
     private static final Pattern SAFE_DEFAULT_EXPRESSION = Pattern.compile("[A-Za-z0-9_()., +\\-*/%]+");
 
-    private H2SqlEscapes() {
-    }
-
-    /**
-     * Escapes a raw string literal value for inclusion inside single quotes
-     * (single quotes are doubled, per the SQL standard which H2 follows).
-     * Returns an empty string for {@code null}.
-     */
-    public static String escapeSqlLiteral(String value) {
-        return value == null ? "" : StringUtils.replace(value, "'", "''");
-    }
-
-    /**
-     * Escapes a raw identifier for inclusion inside double quotes
-     * (embedded double quotes are doubled). One surrounding pair of double quotes
-     * is stripped first; do NOT pass already-escaped identifiers. Returns an empty
-     * string for {@code null}.
-     */
-    public static String escapeIdentifier(String identifier) {
-        if (identifier == null) {
-            return "";
-        }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "\"", "\"\"");
-    }
-
-    /**
-     * Returns the raw identifier wrapped in double quotes with embedded quotes doubled.
-     */
-    public static String quoteIdentifier(String identifier) {
-        return "\"" + escapeIdentifier(identifier) + "\"";
+    private H2SqlGuards() {
     }
 
     /**
      * Validates a column type name obtained from JDBC metadata before it is embedded
-     * into generated DDL. Returns the type name unchanged when it matches a conservative
+     * into generated DDL. Returns the type name unchanged when it matches the
      * allow-list; throws otherwise (fail closed).
-     *
-     * @throws IllegalArgumentException if the type name contains unexpected characters
      */
     public static String requireSafeTypeName(String typeName) {
         if (typeName != null && !SAFE_TYPE_NAME.matcher(typeName).matches()) {
@@ -101,12 +64,12 @@ public final class H2SqlEscapes {
             if (isWellFormedEscapedLiteral(inner)) {
                 return trimmed;
             }
-            return "'" + escapeSqlLiteral(inner) + "'";
+            return "'" + H2IdentifierProcessor.INSTANCE.escapeString(inner) + "'";
         }
         if (SAFE_DEFAULT_EXPRESSION.matcher(trimmed).matches()) {
             return trimmed;
         }
-        return "'" + escapeSqlLiteral(trimmed) + "'";
+        return "'" + H2IdentifierProcessor.INSTANCE.escapeString(trimmed) + "'";
     }
 
     /**
