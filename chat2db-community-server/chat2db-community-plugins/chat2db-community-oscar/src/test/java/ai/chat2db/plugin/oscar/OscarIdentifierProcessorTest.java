@@ -27,12 +27,47 @@ class OscarIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"plain\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+    void quoteIdentifierPassesThroughNullAndBlank() {
+        assertNull(OscarIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", OscarIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("  ", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("  "));
+        assertNull(OscarIdentifierProcessor.INSTANCE.quoteIdentifier(null, null, null));
+    }
+
+    @Test
+    void quoteIdentifierLeavesValidPlainIdentifiersUnquoted() {
+        assertEquals("plain", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("T1", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("T1"));
+        assertEquals("col_1", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("col_1"));
+        assertEquals("T1", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("T1", null, null));
+    }
+
+    @Test
+    void quoteIdentifierQuotesKeywordsAndInvalidIdentifiersWithDoubling() {
+        assertEquals("\"SELECT\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
+        assertEquals("\"select\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
         assertEquals("\"MyTable\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("\"MyTable\""));
         assertEquals("\"a\"\"b\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
         assertEquals("\"x\"\"; DROP TABLE t; --\"",
                 OscarIdentifierProcessor.INSTANCE.quoteIdentifier("x\"; DROP TABLE t; --"));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesUnconditionally() {
+        assertNull(OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("\"plain\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("\"SYSDBA\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("SYSDBA"));
+        assertEquals("\"MyTable\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"MyTable\""));
+        assertEquals("\"a\"\"b\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a\"b"));
+        assertEquals("\"x\"\"; DROP TABLE t; --\"",
+                OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("x\"; DROP TABLE t; --"));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+        assertNull(OscarIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"plain\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"SYSDBA\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("SYSDBA"));
     }
 
     @Test
@@ -47,8 +82,10 @@ class OscarIdentifierProcessorTest {
         assertEquals("\"a\"\"b\"", OscarUtils.quoteIdentifierIgnoreCase("a\"b"));
         assertEquals("\"x\"\"; DROP TABLE t; --\"",
                 OscarUtils.quoteIdentifierIgnoreCase("x\"; DROP TABLE t; --"));
-        assertEquals("SYSDBA", OscarUtils.quoteIdentifierIgnoreCase("SYSDBA"));
+        assertEquals("\"SYSDBA\"", OscarUtils.quoteIdentifierIgnoreCase("SYSDBA"));
         assertEquals("\"MyTable\"", OscarUtils.quoteIdentifierIgnoreCase("\"MyTable\""));
+        assertNull(OscarUtils.quoteIdentifierIgnoreCase(null));
+        assertEquals("", OscarUtils.quoteIdentifierIgnoreCase(""));
     }
 
     @Test
@@ -88,7 +125,7 @@ class OscarIdentifierProcessorTest {
         index.setColumnList(List.of(indexColumn));
         String sql = OscarIndexTypeEnum.NORMAL.buildIndexScript(index);
         assertTrue(sql.contains("\"idx\"\"; DROP TABLE t; --\""));
-        assertTrue(sql.contains("(C1 ASC)"));
+        assertTrue(sql.contains("(\"C1\" ASC)"));
     }
 
     @Test

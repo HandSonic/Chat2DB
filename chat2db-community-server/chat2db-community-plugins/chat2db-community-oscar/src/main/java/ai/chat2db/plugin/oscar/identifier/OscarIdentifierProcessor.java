@@ -31,17 +31,44 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
-        return quote(identifier, true);
+        return quoteIdentifier(identifier);
     }
 
+    /**
+     * SPI-facing conditional quoting: {@code null} passes through and blank
+     * returns unchanged; a valid plain identifier that is not a reserved keyword
+     * returns unquoted; anything else is wrapped via {@link #quoteIdentifierAlways}.
+     */
     @Override
     public String quoteIdentifier(String identifier) {
-        return quote(identifier, true);
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (!isQuoteIdentifier(identifier) && isValidIdentifier(identifier)
+                && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
+    /**
+     * Always-quote variant for DDL-generation paths: {@code null} passes through,
+     * everything else is wrapped in double quotes after stripping one surrounding
+     * quote pair and doubling every embedded double quote.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        return "\"" + escapeIdentifier(identifier) + "\"";
+    }
+
+    /**
+     * Always-quote SPI variant that preserves case (used by DDL-generation paths).
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quote(identifier, false);
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -62,31 +89,6 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
             return null;
         }
         return StringUtils.replace(str, "'", "''");
-    }
-
-    private String quote(String identifier, boolean quoteLowerCase) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
-        }
-        if (isQuoteIdentifier(identifier)) {
-            return quoteAlways(identifier);
-        }
-        if (isValidIdentifier(identifier)) {
-            if ((quoteLowerCase && containsLowerCase(identifier))
-                    || isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return quoteAlways(identifier);
-            }
-            return identifier;
-        }
-        return quoteAlways(identifier);
-    }
-
-    /**
-     * Quotes an identifier with double quotes: strips one surrounding double-quote
-     * pair, then doubles every embedded double quote.
-     */
-    private static String quoteAlways(String identifier) {
-        return "\"" + escapeIdentifier(identifier) + "\"";
     }
 
     /**
