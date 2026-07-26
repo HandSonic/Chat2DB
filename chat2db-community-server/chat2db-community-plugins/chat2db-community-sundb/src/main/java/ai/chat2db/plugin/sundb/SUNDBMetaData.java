@@ -63,7 +63,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
             int i = 1;
             while (true) {
                 if (i >= colCount) {
-                    ddlBuilder.append(rsMetaData.getColumnName(colCount) + " ");
+                    ddlBuilder.append(SUNDBSqlEscapes.quoteIdentifier(rsMetaData.getColumnName(colCount))).append(" ");
                     ddlBuilder.append(rsMetaData.getColumnTypeName(colCount));
                     Integer Precision = 0;
                     Scale = 0;
@@ -84,10 +84,10 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                          ResultSet constraintSet = constraintStatement.executeQuery()) {
                     while (constraintSet.next()) {
                         if (!constraintSet.isLast()) {
-                            ddlBuilder.append(" ,\nCONSTRAINT " + constraintSet.getString(3) + " " + constraintSet.getString(4) + " ( " + constraintSet.getString(5) + " ) ");
+                            ddlBuilder.append(" ,\nCONSTRAINT " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(5)) + " ) ");
                             ddlBuilder.append(", ");
                         } else {
-                            ddlBuilder.append(" ,\nCONSTRAINT " + constraintSet.getString(3) + " " + constraintSet.getString(4) + " ( " + constraintSet.getString(5) + " ) ");
+                            ddlBuilder.append(" ,\nCONSTRAINT " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + SUNDBSqlEscapes.quoteIdentifier(constraintSet.getString(5)) + " ) ");
                         }
                     }
                     }
@@ -105,7 +105,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                             ddlBuilder.append(" \nNEXT " + tablespaceSet.getLong(9));
                             ddlBuilder.append(" \nMINSIZE " + tablespaceSet.getLong(10));
                             ddlBuilder.append(" \nMAXSIZE " + tablespaceSet.getLong(11));
-                            ddlBuilder.append(" \n) \nTABLESPACE " + tablespaceSet.getString(3) + " ; ");
+                            ddlBuilder.append(" \n) \nTABLESPACE " + SUNDBSqlEscapes.quoteIdentifier(tablespaceSet.getString(3)) + " ; ");
                         }
                     }
                     }
@@ -114,7 +114,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
                 Scale = 0;
                 Integer Scale1 = 0;
-                ddlBuilder.append(rsMetaData.getColumnName(i) + " ");
+                ddlBuilder.append(SUNDBSqlEscapes.quoteIdentifier(rsMetaData.getColumnName(i))).append(" ");
                 ddlBuilder.append(rsMetaData.getColumnTypeName(i));
                 Scale1 = rsMetaData.getPrecision(i);
                 Scale = rsMetaData.getScale(i);
@@ -146,11 +146,11 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                     ddlBuilder.append("INDEX " + getIndexName(indexNameResultSet.getString("INDEX_SCHEMA"), indexNameResultSet.getString("INDEX_NAME")) + " ");
                 }
 
-                ddlBuilder.append(SQL_ON + indexNameResultSet.getString("TABLE_SCHEMA") + "." + indexNameResultSet.getString("TABLE_NAME") + " \n( ");
+                ddlBuilder.append(SQL_ON + SUNDBSqlEscapes.quoteIdentifier(indexNameResultSet.getString("TABLE_SCHEMA")) + "." + SUNDBSqlEscapes.quoteIdentifier(indexNameResultSet.getString("TABLE_NAME")) + " \n( ");
 
                 while (indexResultSet.next()) {
 
-                    ddlBuilder.append(indexResultSet.getString(5) + " ");
+                    ddlBuilder.append(SUNDBSqlEscapes.quoteIdentifier(indexResultSet.getString(5))).append(" ");
                     ddlBuilder.append(indexResultSet.getString(6) + " ");
                     ddlBuilder.append(indexResultSet.getString(7));
                     if (!indexResultSet.isLast()) {
@@ -163,7 +163,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                         ddlBuilder.append(" \nNEXT " + indexResultSet.getLong(13));
                         ddlBuilder.append(" \nMINSIZE " + indexResultSet.getLong(14));
                         ddlBuilder.append(" \nMAXSIZE " + indexResultSet.getLong(15));
-                        ddlBuilder.append(" \n) \nTABLESPACE " + indexResultSet.getString(16) + ";\n");
+                        ddlBuilder.append(" \n) \nTABLESPACE " + SUNDBSqlEscapes.quoteIdentifier(indexResultSet.getString(16)) + ";\n");
                     }
                 }
                 }
@@ -176,11 +176,7 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String getIndexName(String indexSchema, String indexName) {
-        if (indexName.contains("PRIMARY_KEY_INDEX")) {
-            return indexSchema + "." + indexName;
-        } else {
-            return indexSchema + ".\"" + SUNDBSqlEscapes.escapeIdentifier(indexName) + "\"";
-        }
+        return SUNDBSqlEscapes.quoteIdentifier(indexSchema) + "." + SUNDBSqlEscapes.quoteIdentifier(indexName);
     }
 
 

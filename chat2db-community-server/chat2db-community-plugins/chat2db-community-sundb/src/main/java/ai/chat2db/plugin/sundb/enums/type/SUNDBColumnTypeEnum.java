@@ -134,7 +134,11 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
     private static Map<String, SUNDBColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
 
-    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("[A-Za-z0-9_ .+()',-]+");
+    // No quotes, commas or parentheses: quotes would allow literal smuggling,
+    // commas would inject extra column definitions, and parentheses could close
+    // the column definition early (e.g. "0) --"). SUNDB/Oracle-style default
+    // functions (SYSDATE, CURRENT_TIMESTAMP, USER, SEQ.NEXTVAL) need no parens.
+    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("[A-Za-z0-9_ .+-]+");
 
     static {
         for (SUNDBColumnTypeEnum value : SUNDBColumnTypeEnum.values()) {

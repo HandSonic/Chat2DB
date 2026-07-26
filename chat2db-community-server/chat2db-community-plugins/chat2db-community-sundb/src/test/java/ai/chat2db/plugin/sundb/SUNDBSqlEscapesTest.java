@@ -141,11 +141,171 @@ class SUNDBSqlEscapesTest {
         valid.setDefaultValue("CURRENT_TIMESTAMP");
         assertTrue(SUNDBColumnTypeEnum.BOOLEAN.buildCreateColumnSql(valid).contains("DEFAULT CURRENT_TIMESTAMP"));
 
+        TableColumn validNegative = new TableColumn();
+        validNegative.setName("c1");
+        validNegative.setColumnType("INT");
+        validNegative.setDefaultValue("-1");
+        assertTrue(SUNDBColumnTypeEnum.INT.buildCreateColumnSql(validNegative).contains("DEFAULT -1"));
+
+        TableColumn validSequence = new TableColumn();
+        validSequence.setName("c1");
+        validSequence.setColumnType("INT");
+        validSequence.setDefaultValue("SEQ.NEXTVAL");
+        assertTrue(SUNDBColumnTypeEnum.INT.buildCreateColumnSql(validSequence).contains("DEFAULT SEQ.NEXTVAL"));
+
         TableColumn malicious = new TableColumn();
         malicious.setName("c1");
         malicious.setColumnType("BOOLEAN");
         malicious.setDefaultValue("1; DROP TABLE x--");
         assertThrows(IllegalArgumentException.class,
                 () -> SUNDBColumnTypeEnum.BOOLEAN.buildCreateColumnSql(malicious));
+    }
+
+    @Test
+    void buildCreateColumnSqlRejectsDefaultValuesThatReshapeDdl() {
+        String[] payloads = {
+                "0) --",          // closes the column definition, comments out the line remainder
+                "1, x INT",       // injects an extra column definition into CREATE TABLE
+                "'quoted'",       // string-literal smuggling
+                "now()",          // parentheses could close the column def; functions work without them
+                "0); DROP TABLE x--"
+        };
+        for (String payload : payloads) {
+            TableColumn column = new TableColumn();
+            column.setName("c1");
+            column.setColumnType("INT");
+            column.setDefaultValue(payload);
+            assertThrows(IllegalArgumentException.class,
+                    () -> SUNDBColumnTypeEnum.INT.buildCreateColumnSql(column),
+                    "payload should be rejected: " + payload);
+        }
+    }
+
+    @Test
+    void buildAlterTableRenameEscapesQuotedNames() {
+        ai.chat2db.community.domain.api.model.metadata.Table oldTable =
+                new ai.chat2db.community.domain.api.model.metadata.Table();
+        oldTable.setSchemaName("sch\"ema");
+        oldTable.setName("ta\"ble");
+        ai.chat2db.community.domain.api.model.metadata.Table newTable =
+                new ai.chat2db.community.domain.api.model.metadata.Table();
+        newTable.setSchemaName("sch\"ema");
+        newTable.setName("ne\"w");
+        newTable.setColumnList(List.of());
+        newTable.setIndexList(List.of());
+
+        String sql = new SUNDBSqlBuilder().buildAlterTable(oldTable, newTable);
+
+        assertTrue(sql.contains("ALTER TABLE \"sch\"\"ema\".\"ta\"\"ble\" RENAME TO \"ne\"\"w\""), sql);
+        assertFalse(sql.contains("\"ta\"ble\""), sql);
+    }
+
+    @Test
+    void copyTableQuotesIdentifiersInExecutedSql() throws Exception {
+        String[] capturedSql = new String[1];
+        java.sql.Connection connection = stubConnectionCapturingSql(capturedSql);
+
+        new SUNDBDBManager().copyTable(connection, "db", "sch", "ta\"ble", "ne\"w", true);
+
+        assertEquals("CREATE TABLE \"ne\"\"w\" AS SELECT * FROM \"ta\"\"ble\"", capturedSql[0]);
+        assertFalse(capturedSql[0].contains("ta\"ble\" AS"));
+    }
+
+    @Test
+    void exportTableColumnCommentEscapesLiteralsAndIdentifiers() throws Exception {
+        String[] capturedSql = new String[1];
+        java.util.Map<String, String> row = java.util.Map.of(
+                "COLNAME", "co\"l",
+                "COMMENT$", "O'Brien");
+        java.sql.Connection connection = stubConnectionWithOneRow(capturedSql, row);
+        StringBuilder sqlBuilder = new StringBuilder();
+
+        java.lang.reflect.Method method = SUNDBDBManager.class.getDeclaredMethod(
+                "exportTableColumnComment", java.sql.Connection.class, String.class, String.class, StringBuilder.class);
+        method.setAccessible(true);
+        method.invoke(new SUNDBDBManager(), connection, "sch'ema", "ta'ble", sqlBuilder);
+
+        assertTrue(capturedSql[0].contains("SCHNAME = 'sch''ema'"), capturedSql[0]);
+        assertTrue(capturedSql[0].contains("TVNAME = 'ta''ble'"), capturedSql[0]);
+        assertFalse(capturedSql[0].contains("SCHNAME = 'sch'ema'"), capturedSql[0]);
+        assertEquals("COMMENT ON COLUMN \"sch'ema\".\"ta'ble\".\"co\"\"l\" IS 'O''Brien';\n", sqlBuilder.toString());
+    }
+
+    @Test
+    void getIndexNameAlwaysQuotesSchemaAndName() throws Exception {
+        java.lang.reflect.Method method = SUNDBMetaData.class.getDeclaredMethod(
+                "getIndexName", String.class, String.class);
+        method.setAccessible(true);
+        SUNDBMetaData metaData = new SUNDBMetaData();
+
+        assertEquals("\"sch\"\"ema\".\"idx\"\"name\"", method.invoke(metaData, "sch\"ema", "idx\"name"));
+        // system-style primary key index names get the same quoting as normal names
+        assertEquals("\"sch\".\"T_PRIMARY_KEY_INDEX\"", method.invoke(metaData, "sch", "T_PRIMARY_KEY_INDEX"));
+    }
+
+    private static java.sql.Connection stubConnectionCapturingSql(String[] capturedSql) {
+        return stubConnection(capturedSql, null);
+    }
+
+    private static java.sql.Connection stubConnectionWithOneRow(String[] capturedSql, java.util.Map<String, String> row) {
+        return stubConnection(capturedSql, row);
+    }
+
+    private static java.sql.Connection stubConnection(String[] capturedSql, java.util.Map<String, String> row) {
+        return (java.sql.Connection) java.lang.reflect.Proxy.newProxyInstance(
+                SUNDBSqlEscapesTest.class.getClassLoader(),
+                new Class<?>[]{java.sql.Connection.class},
+                (proxy, method, args) -> {
+                    if ("prepareStatement".equals(method.getName())) {
+                        capturedSql[0] = (String) args[0];
+                        return stubPreparedStatement(row);
+                    }
+                    if ("close".equals(method.getName())) {
+                        return null;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+    }
+
+    private static java.sql.PreparedStatement stubPreparedStatement(java.util.Map<String, String> row) {
+        return (java.sql.PreparedStatement) java.lang.reflect.Proxy.newProxyInstance(
+                SUNDBSqlEscapesTest.class.getClassLoader(),
+                new Class<?>[]{java.sql.PreparedStatement.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "execute" -> {
+                        // no result set
+                        yield false;
+                    }
+                    case "executeQuery" -> {
+                        yield stubResultSet(row);
+                    }
+                    case "close" -> {
+                        yield null;
+                    }
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+    }
+
+    private static java.sql.ResultSet stubResultSet(java.util.Map<String, String> row) {
+        boolean[] consumed = new boolean[1];
+        return (java.sql.ResultSet) java.lang.reflect.Proxy.newProxyInstance(
+                SUNDBSqlEscapesTest.class.getClassLoader(),
+                new Class<?>[]{java.sql.ResultSet.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "next" -> {
+                        if (row != null && !consumed[0]) {
+                            consumed[0] = true;
+                            yield true;
+                        }
+                        yield false;
+                    }
+                    case "getString" -> {
+                        yield row.get((String) args[0]);
+                    }
+                    case "close" -> {
+                        yield null;
+                    }
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
     }
 }
