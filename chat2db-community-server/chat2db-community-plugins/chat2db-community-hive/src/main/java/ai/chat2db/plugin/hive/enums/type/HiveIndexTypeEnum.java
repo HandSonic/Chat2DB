@@ -95,7 +95,7 @@ public enum HiveIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
+                script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     script.append(" ").append(HiveSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
@@ -111,7 +111,7 @@ public enum HiveIndexTypeEnum {
         if(this.equals(PRIMARY_KEY)){
             return "";
         }else {
-            return HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+            return HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
         }
     }
 
@@ -132,7 +132,7 @@ public enum HiveIndexTypeEnum {
         if (HiveIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join("DROP INDEX ", HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+        return StringUtils.join("DROP INDEX ", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
     }
     public static List<IndexType> getIndexTypes() {
         return Arrays.asList(HiveIndexTypeEnum.values()).stream().map(HiveIndexTypeEnum::getIndexType).collect(java.util.stream.Collectors.toList());

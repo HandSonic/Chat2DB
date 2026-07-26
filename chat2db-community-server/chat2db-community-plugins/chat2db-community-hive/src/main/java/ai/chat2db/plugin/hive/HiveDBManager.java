@@ -22,7 +22,7 @@ public class HiveDBManager extends DefaultDBManager implements IDbManager {
             return;
         }
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, HiveIdentifierProcessor.INSTANCE.quoteIdentifier(database)));
+            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database)));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -30,15 +30,15 @@ public class HiveDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE_EXISTS, HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+        return String.format(SQL_DROP_TABLE_EXISTS, HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
-        String sql = String.format(SQL_COPY_TABLE, HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName), HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+        String sql = String.format(SQL_COPY_TABLE, HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName), HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         if(copyData){
-            sql = String.format(SQL_INSERT_TABLE_SELECT, HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName), HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+            sql = String.format(SQL_INSERT_TABLE_SELECT, HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName), HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         }
     }

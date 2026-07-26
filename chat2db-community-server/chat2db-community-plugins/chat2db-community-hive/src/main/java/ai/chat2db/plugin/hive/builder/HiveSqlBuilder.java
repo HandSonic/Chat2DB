@@ -32,9 +32,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getDatabaseName())) {
-            script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -94,20 +94,20 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         boolean isModify = false;
         script.append(SQL_ALTER_TABLE);
         if (StringUtils.isNotBlank(newTable.getDatabaseName())) {
-            script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQLConstants.TAB).append(SQL_RENAME).append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQLConstants.TAB).append(SQL_RENAME).append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
             isModify = true;
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             if (isModify) {
                 script.append(SQL_ALTER_TABLE);
                 if (StringUtils.isNotBlank(newTable.getDatabaseName())) {
-                    script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOT);
+                    script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getDatabaseName())).append(SQLConstants.DOT);
                 }
-                script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+                script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
             }
             script.append(SQLConstants.TAB).append(SQL_SET_TBLPROPERTIES_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(HiveIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(VALUE_SINGLE_QUOTE_CLOSE_PAREN_COMMA);
         }
@@ -163,7 +163,7 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE).append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName()));
+        sqlBuilder.append(SQL_CREATE_DATABASE).append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName()));
         if (StringUtils.isNotBlank(database.getComment())) {
             sqlBuilder.append(SQL_COMMENT_SINGLE_QUOTE).append(HiveIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE);
 

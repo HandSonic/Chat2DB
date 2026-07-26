@@ -91,7 +91,7 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -126,16 +126,16 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join("DROP COLUMN ", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMNS (", buildCreateColumnSql(tableColumn), ")");
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                return StringUtils.join("CHANGE COLUMN ", HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE COLUMN ", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
-                return StringUtils.join("CHANGE ", HiveIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE ", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             }
         }
         return "";
@@ -245,7 +245,7 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
         script.append(buildDataType(column, type)).append(" ");
         return script.toString();
     }

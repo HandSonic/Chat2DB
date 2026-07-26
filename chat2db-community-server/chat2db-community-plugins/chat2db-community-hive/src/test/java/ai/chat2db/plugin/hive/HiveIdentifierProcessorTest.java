@@ -29,13 +29,62 @@ class HiveIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDoublesEmbeddedBackticks() {
-        assertEquals("`plain`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        // valid plain identifiers pass through unquoted
+        assertEquals("plain", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("snake_case1", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("snake_case1"));
+        // null/blank pass through unchanged
+        assertNull(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", HiveIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        // non-plain identifiers are wrapped with embedded-backtick doubling
         assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name"));
         assertEquals("`a``; DROP TABLE b; --`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("a`; DROP TABLE b; --"));
-        // one surrounding backtick pair is stripped before doubling
-        assertEquals("`a``b`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
+        // already-quoted input round-trips through one strip + rewrap
         assertEquals("`quoted`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
+    }
+
+    @Test
+    void quoteIdentifierVersionedOverloadDelegatesToConditional() {
+        assertEquals("plain", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("plain", null, null));
+        assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name", 3, 1));
+        assertNull(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(null, null, null));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesUnconditionally() {
+        assertEquals("`plain`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("weird`name"));
+        assertEquals("`a``; DROP TABLE b; --`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a`; DROP TABLE b; --"));
+        // one surrounding backtick pair is stripped before doubling
+        assertEquals("`a``b`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
+        assertEquals("`quoted`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
+        // null/blank pass through unchanged
+        assertNull(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
+        assertEquals("`plain`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("weird`name"));
+        assertNull(HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+    }
+
+    @Test
+    void removeIdentifierQuoteRecognizesBackticks() {
+        assertEquals("quoted", HiveIdentifierProcessor.INSTANCE.removeIdentifierQuote("`quoted`"));
+        assertEquals("plain", HiveIdentifierProcessor.INSTANCE.removeIdentifierQuote("plain"));
+        assertEquals("", HiveIdentifierProcessor.INSTANCE.removeIdentifierQuote(""));
+        assertNull(HiveIdentifierProcessor.INSTANCE.removeIdentifierQuote(null));
+    }
+
+    @Test
+    void isQuoteIdentifierRecognizesBackticks() {
+        assertTrue(HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("`quoted`"));
+        assertTrue(HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("\"quoted\""));
+        assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("plain"));
+        assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier(null));
+        assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier(""));
     }
 
     @Test

@@ -82,7 +82,7 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifierIgnoreCase).collect(Collectors.joining("."));
     }
 
     @Override
@@ -271,7 +271,7 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     public static String format(String name) {
-        return HiveIdentifierProcessor.INSTANCE.quoteIdentifier(name);
+        return HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(name);
     }
 
 

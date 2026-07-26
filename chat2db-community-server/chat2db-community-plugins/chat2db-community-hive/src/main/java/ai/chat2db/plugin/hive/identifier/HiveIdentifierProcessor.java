@@ -3,27 +3,40 @@ package ai.chat2db.plugin.hive.identifier;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.regex.Pattern;
+
 /**
- * Hive dialect identifier processor: backtick-quoted identifiers with
- * embedded-backtick doubling, and backslash-then-single-quote doubling for
- * string literals (Hive treats backslash as an escape character). Shared
- * stateless instance available via {@link #INSTANCE} for call sites without
- * MetaData access.
+ * Hive dialect identifier processor. The SPI-facing {@link #quoteIdentifier(String)}
+ * is conditional: identifiers that are already valid plain identifiers (and not
+ * reserved keywords) are returned unquoted so completion/matching consumers keep
+ * working; anything else is wrapped in backticks. DDL-generation call sites that
+ * historically always quoted use {@link #quoteIdentifierAlways(String)} (or the
+ * SPI always-quote variant {@link #quoteIdentifierIgnoreCase(String)}), which
+ * strips one surrounding backtick pair and doubles every embedded backtick.
+ * String literals are escaped by doubling backslashes then single quotes (Hive
+ * treats backslash as an escape character). Shared stateless instance available
+ * via {@link #INSTANCE} for call sites without MetaData access.
  */
 public class HiveIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     public static final HiveIdentifierProcessor INSTANCE = new HiveIdentifierProcessor();
 
+    private static final Pattern BACKTICK_PATTERN = Pattern.compile("[`\"](.*?)[`\"]");
+
     /**
-     * Always quotes with backticks, stripping one surrounding backtick pair and
-     * doubling every embedded backtick. Blank input is returned unchanged.
+     * Conditional quoting for SPI/completion paths: null/blank pass through;
+     * valid plain identifiers that are not reserved keywords are returned
+     * unquoted; everything else is backtick-quoted like {@link #quoteIdentifierAlways}.
      */
     @Override
     public String quoteIdentifier(String identifier) {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        return "`" + escapeIdentifierContent(identifier) + "`";
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -31,9 +44,24 @@ public class HiveIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         return quoteIdentifier(identifier);
     }
 
+    /**
+     * SPI always-quote variant (preserve case, always quote).
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditional backtick quoting for DDL-generation paths: strips one
+     * surrounding backtick pair, then doubles every embedded backtick.
+     * Null/blank input is returned unchanged.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        return "`" + escapeIdentifierContent(identifier) + "`";
     }
 
     /**
@@ -47,6 +75,25 @@ public class HiveIdentifierProcessor extends DefaultSQLIdentifierProcessor {
             return null;
         }
         return str.replace("\\", "\\\\").replace("'", "''");
+    }
+
+    @Override
+    public String removeIdentifierQuote(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        return removePattern(identifier, BACKTICK_PATTERN);
+    }
+
+    @Override
+    public boolean isQuoteIdentifier(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return false;
+        }
+        if (identifier.startsWith("`") && identifier.endsWith("`")) {
+            return true;
+        }
+        return identifier.startsWith("\"") && identifier.endsWith("\"");
     }
 
     private static String escapeIdentifierContent(String identifier) {
