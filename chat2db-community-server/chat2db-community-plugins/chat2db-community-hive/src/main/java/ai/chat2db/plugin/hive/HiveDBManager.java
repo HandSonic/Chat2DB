@@ -21,7 +21,7 @@ public class HiveDBManager extends DefaultDBManager implements IDbManager {
             return;
         }
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, database));
+            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, HiveSqlEscapes.quoteIdentifier(database)));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -29,15 +29,15 @@ public class HiveDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE_EXISTS, tableName);
+        return String.format(SQL_DROP_TABLE_EXISTS, HiveSqlEscapes.quoteIdentifier(tableName));
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
-        String sql = String.format(SQL_COPY_TABLE, newTableName, tableName);
+        String sql = String.format(SQL_COPY_TABLE, HiveSqlEscapes.quoteIdentifier(newTableName), HiveSqlEscapes.quoteIdentifier(tableName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         if(copyData){
-            sql = String.format(SQL_INSERT_TABLE_SELECT, newTableName, tableName);
+            sql = String.format(SQL_INSERT_TABLE_SELECT, HiveSqlEscapes.quoteIdentifier(newTableName), HiveSqlEscapes.quoteIdentifier(tableName));
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         }
     }

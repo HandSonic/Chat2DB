@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.hive.enums.type;
 
+import ai.chat2db.plugin.hive.HiveSqlEscapes;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -89,7 +90,7 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("`").append(column.getName()).append("`").append(" ");
+        script.append(HiveSqlEscapes.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -110,30 +111,30 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         if(!type.getColumnType().isSupportCharset() || StringUtils.isEmpty(column.getCharSetName())){
             return "";
         }
-        return StringUtils.join("CHARACTER SET ",column.getCharSetName());
+        return StringUtils.join("CHARACTER SET ", HiveSqlEscapes.requireHiveName(column.getCharSetName(), "charset"));
     }
 
     private String buildCollation(TableColumn column, HiveColumnTypeEnum type) {
         if(!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())){
             return "";
         }
-        return StringUtils.join("COLLATE ",column.getCollationName());
+        return StringUtils.join("COLLATE ", HiveSqlEscapes.requireHiveName(column.getCollationName(), "collation"));
     }
 
     @Override
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, tableColumn.getName() + "`");
+            return StringUtils.join("DROP COLUMN ", HiveSqlEscapes.quoteIdentifier(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMNS (", buildCreateColumnSql(tableColumn), ")");
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                return StringUtils.join("CHANGE COLUMN `", tableColumn.getOldName(), "` ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE COLUMN ", HiveSqlEscapes.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
-                return StringUtils.join("CHANGE `", tableColumn.getOldName(), "` ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE ", HiveSqlEscapes.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             }
         }
         return "";
@@ -153,7 +154,7 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         if(!type.columnType.isSupportComments() || StringUtils.isEmpty(column.getComment())){
             return "";
         }
-        return StringUtils.join(SQL_COMMENT,column.getComment(),"'");
+        return StringUtils.join(SQL_COMMENT, HiveSqlEscapes.escapeSqlLiteral(column.getComment()),"'");
     }
 
     private String buildExt(TableColumn column, HiveColumnTypeEnum type) {
@@ -177,21 +178,21 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         }
 
         if(Arrays.asList(CHAR,VARCHAR,BINARY).contains(type)){
-            return StringUtils.join("DEFAULT '",column.getDefaultValue(),"'");
+            return StringUtils.join("DEFAULT '", HiveSqlEscapes.escapeSqlLiteral(column.getDefaultValue()),"'");
         }
 
         if(Arrays.asList(DATE).contains(type)){
-            return StringUtils.join("DEFAULT '",column.getDefaultValue(),"'");
+            return StringUtils.join("DEFAULT '", HiveSqlEscapes.escapeSqlLiteral(column.getDefaultValue()),"'");
         }
 
         if(Arrays.asList(TIMESTAMP).contains(type)){
             if("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())){
                 return StringUtils.join("DEFAULT ",column.getDefaultValue());
             }
-            return StringUtils.join("DEFAULT '",column.getDefaultValue(),"'");
+            return StringUtils.join("DEFAULT '", HiveSqlEscapes.escapeSqlLiteral(column.getDefaultValue()),"'");
         }
 
-        return StringUtils.join("DEFAULT ",column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", HiveSqlEscapes.requireNumericDefault(column.getDefaultValue()));
     }
 
     private String buildNullable(TableColumn column,HiveColumnTypeEnum type) {
@@ -243,7 +244,7 @@ public enum HiveColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("`").append(column.getName()).append("`").append(" ");
+        script.append(HiveSqlEscapes.quoteIdentifier(column.getName())).append(" ");
         script.append(buildDataType(column, type)).append(" ");
         return script.toString();
     }

@@ -76,7 +76,7 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(name -> "`" + name + "`").collect(Collectors.joining("."));
+        return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(HiveSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override
@@ -101,7 +101,7 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<TableColumn> columns(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(SELECT_TAB_COLS, databaseName, tableName);
+        String sql = String.format(SELECT_TAB_COLS, format(databaseName), format(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             List<TableColumn> tableColumns = new ArrayList<>();
             Map<String, String> detailTableInfo = new HashMap<>();
@@ -265,14 +265,14 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     public static String format(String name) {
-        return "`" + name + "`";
+        return HiveSqlEscapes.quoteIdentifier(name);
     }
 
 
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, databaseName, viewName);
+        String sql = String.format(VIEW_SQL, format(databaseName), format(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
