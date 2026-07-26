@@ -2,6 +2,8 @@ package ai.chat2db.plugin.sqlserver.constant;
 
 import ai.chat2db.community.tools.util.EasyStringUtils;
 
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
+
 
 public class SQLConstant {
     public static final String TABLE_COMMENT_TEMPLATE = "exec sp_addextendedproperty 'MS_Description',N'%s','SCHEMA',N'%s','TABLE',N'%s' \ngo\n";
@@ -10,19 +12,19 @@ public class SQLConstant {
     public static final String CONSTRAINT_COMMENT_TEMPLATE = "exec sp_addextendedproperty 'MS_Description',N'%s','SCHEMA',N'%s','TABLE',N'%s','CONSTRAINT',N'%s' \ngo\n";
 
     public static String buildTableComment(String tableComment, String schemaName, String tableName) {
-        return String.format(TABLE_COMMENT_TEMPLATE, EasyStringUtils.escapeString(tableComment), schemaName, tableName);
+        return String.format(TABLE_COMMENT_TEMPLATE, EasyStringUtils.escapeString(tableComment), escapeStringLiteral(schemaName), escapeStringLiteral(tableName));
     }
 
     public static String buildIndexComment(String indexComment, String schemaName, String tableName, String indexName) {
-        return String.format(INDEX_COMMENT_TEMPLATE, EasyStringUtils.escapeString(indexComment), schemaName, tableName, indexName);
+        return String.format(INDEX_COMMENT_TEMPLATE, EasyStringUtils.escapeString(indexComment), escapeStringLiteral(schemaName), escapeStringLiteral(tableName), escapeStringLiteral(indexName));
     }
 
     public static String buildColumnComment(String columnComment, String schemaName, String tableName, String columnName) {
-        return String.format(COLUMN_COMMENT_TEMPLATE, EasyStringUtils.escapeString(columnComment), schemaName, tableName, columnName);
+        return String.format(COLUMN_COMMENT_TEMPLATE, EasyStringUtils.escapeString(columnComment), escapeStringLiteral(schemaName), escapeStringLiteral(tableName), escapeStringLiteral(columnName));
     }
 
     public static String buildConstraintComment(String constraintComment, String schemaName, String tableName, String constraintName) {
-        return String.format(CONSTRAINT_COMMENT_TEMPLATE, EasyStringUtils.escapeString(constraintComment), schemaName, tableName, constraintName);
+        return String.format(CONSTRAINT_COMMENT_TEMPLATE, EasyStringUtils.escapeString(constraintComment), escapeStringLiteral(schemaName), escapeStringLiteral(tableName), escapeStringLiteral(constraintName));
     }
     public static final String VIEWS_DDL_SQL = "SELECT TABLE_NAME, VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS " +
             "WHERE TABLE_SCHEMA = ? AND TABLE_CATALOG = ?; ";

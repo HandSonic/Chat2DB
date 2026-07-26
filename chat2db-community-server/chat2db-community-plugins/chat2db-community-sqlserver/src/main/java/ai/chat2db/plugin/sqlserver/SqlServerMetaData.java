@@ -46,6 +46,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.sqlserver.constant.SQLConstant.*;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
 import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
 import static ai.chat2db.spi.util.SortUtils.sortDatabase;
 
@@ -469,9 +470,9 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
     @Override
     public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName) {
         List<Table> tables = new ArrayList<>();
-        String sql = String.format(SELECT_TABLES_SQL, schemaName);
+        String sql = String.format(SELECT_TABLES_SQL, escapeStringLiteral(schemaName));
         if (StringUtils.isNotBlank(tableName)) {
-            sql += " AND t.name = '" + tableName + "'";
+            sql += " AND t.name = '" + escapeStringLiteral(tableName) + "'";
         } else {
             sql += " ORDER BY t.name";
         }
@@ -540,7 +541,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         String sql = String.format(
                 ROUTINES_DDL_SQL,
                 "'SQL_SCALAR_FUNCTION', 'SQL_INLINE_TABLE_VALUED_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'",
-                functionName
+                escapeStringLiteral(functionName)
         );
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Function function = new Function();
@@ -639,7 +640,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", procedureName);
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", escapeStringLiteral(procedureName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
                     Procedure procedure = new Procedure();
                     procedure.setDatabaseName(databaseName);
@@ -824,7 +825,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         StringBuilder sqlBuilder = new StringBuilder(100);
         sqlBuilder.append(SQL_CREATE).append("view ");
         if (StringUtils.isNotBlank(schemaName)) {
-            sqlBuilder.append("[").append(schemaName).append("]").append(".");
+            sqlBuilder.append(quoteIdentifierPart(schemaName)).append(".");
         }
         sqlBuilder.append("[").append("undefined").append("]");
         sqlBuilder.append(" AS \n").append(sql).append(";");

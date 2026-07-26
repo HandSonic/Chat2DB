@@ -16,6 +16,7 @@ import java.util.Objects;
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerColumnTypeEnumConstants.*;
 import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
 import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.validateCollation;
 public enum SqlServerColumnTypeEnum implements IColumnBuilder {
 
     BIGINT("BIGINT", false, false, true, false, false, false, true, true),
@@ -213,7 +214,7 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
         if (!Objects.equals(column.getCollationName(), column.getOldColumn().getCollationName())) {
             script.append(SQL_ALTER_TABLE).append(qualifiedTableName(column));
             script.append(" ").append(SQL_ALTER_COLUMN).append(quoteIdentifierPart(column.getName()))
-                    .append(" ").append("COLLATE ").append(column.getCollationName()).append(" \ngo\n");
+                    .append(" ").append("COLLATE ").append(validateCollation(column.getCollationName())).append(" \ngo\n");
         }
         return script.toString();
     }
@@ -230,7 +231,7 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
         if (!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())) {
             return "";
         }
-        return StringUtils.join("COLLATE ", column.getCollationName());
+        return StringUtils.join("COLLATE ", validateCollation(column.getCollationName()));
     }
 
 

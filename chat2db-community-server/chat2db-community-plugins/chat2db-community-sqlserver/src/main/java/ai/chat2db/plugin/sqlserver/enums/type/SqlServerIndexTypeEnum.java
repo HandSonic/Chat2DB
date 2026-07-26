@@ -10,6 +10,8 @@ import java.util.Arrays;
 import java.util.List;
 
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerIndexTypeEnumConstants.*;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeIdentifier;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
 public enum SqlServerIndexTypeEnum {
 
     PRIMARY_KEY("Primary", "PRIMARY KEY"),
@@ -77,13 +79,13 @@ public enum SqlServerIndexTypeEnum {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
             script.append(SQL_ALTER_TABLE)
-                    .append(tableIndex.getSchemaName()).append("].[").append(tableIndex.getTableName())
+                    .append(escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(escapeIdentifier(tableIndex.getTableName()))
                     .append("] ADD CONSTRAINT ")
-                    .append("[").append(tableIndex.getTableName()).append("_pk").append("]")
+                    .append(quoteIdentifierPart(tableIndex.getTableName() + "_pk"))
                     .append(" ").append(keyword).append(" ").append(buildIndexColumn(tableIndex));
         } else {
             script.append(SQL_CREATE).append(keyword).append(" ");
-            script.append(buildIndexName(tableIndex)).append("\n ON [").append(tableIndex.getSchemaName()).append("].[").append(tableIndex.getTableName()).append("] ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append("\n ON [").append(escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(escapeIdentifier(tableIndex.getTableName())).append("] ").append(buildIndexColumn(tableIndex));
         }
         script.append("\ngo");
         return script.toString();
@@ -95,9 +97,9 @@ public enum SqlServerIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append("[").append(column.getColumnName()).append("]");
+                script.append(quoteIdentifierPart(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
-                    script.append(" ").append(column.getAscOrDesc());
+                    script.append(" ").append(validateAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
             }
@@ -107,8 +109,15 @@ public enum SqlServerIndexTypeEnum {
         return script.toString();
     }
 
+    private static String validateAscOrDesc(String ascOrDesc) {
+        if (!"ASC".equalsIgnoreCase(ascOrDesc) && !"DESC".equalsIgnoreCase(ascOrDesc)) {
+            throw new IllegalArgumentException("Invalid SQL Server index column sort order: " + ascOrDesc);
+        }
+        return ascOrDesc;
+    }
+
     private String buildIndexName(TableIndex tableIndex) {
-        return "[" + tableIndex.getName() + "]";
+        return quoteIdentifierPart(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -126,12 +135,12 @@ public enum SqlServerIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (SqlServerIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            return StringUtils.join(SQL_ALTER_TABLE, tableIndex.getSchemaName(), "].[", tableIndex.getTableName(), "] DROP CONSTRAINT ", buildIndexName(tableIndex), "\ngo");
+            return StringUtils.join(SQL_ALTER_TABLE, escapeIdentifier(tableIndex.getSchemaName()), "].[", escapeIdentifier(tableIndex.getTableName()), "] DROP CONSTRAINT ", buildIndexName(tableIndex), "\ngo");
         }
         StringBuilder script = new StringBuilder();
         script.append(SQL_DROP_INDEX);
         script.append(buildIndexName(tableIndex));
-        script.append(SQL_ON).append(tableIndex.getSchemaName()).append("].[").append(tableIndex.getTableName()).append("] \ngo");
+        script.append(SQL_ON).append(escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(escapeIdentifier(tableIndex.getTableName())).append("] \ngo");
 
         return script.toString();
     }

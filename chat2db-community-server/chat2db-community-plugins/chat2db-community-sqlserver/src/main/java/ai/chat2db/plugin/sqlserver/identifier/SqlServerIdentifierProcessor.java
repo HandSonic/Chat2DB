@@ -208,7 +208,7 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         if (isValidIdentifier(identifier) || !isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
             return identifier;
         }
-        return "[" + identifier + "]";
+        return "[" + identifier.replace("]", "]]") + "]";
     }
 
     @Override
@@ -216,7 +216,7 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
             return identifier;
         }
-        return "[" + identifier + "]";
+        return "[" + identifier.replace("]", "]]") + "]";
     }
 
     @Override

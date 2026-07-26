@@ -26,6 +26,8 @@ import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.sqlserver.constant.SQLConstant.*;
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerDBManagerConstants.*;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeIdentifier;
+import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
 import static cn.hutool.core.date.DatePattern.NORM_DATETIME_PATTERN;
 
 @Slf4j
@@ -82,7 +84,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         String tableDDL = Chat2DBContext.getDbMetaData().tableDDL(connection,
                 new TableMetadataRequest(databaseName, schemaName, tableName));
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_DROP_TABLE_EXISTS).append("[").append(tableName).append("]").append(";").append("\ngo\n")
+        sqlBuilder.append(SQL_DROP_TABLE_EXISTS).append(quoteIdentifier(tableName)).append(";").append("\ngo\n")
                 .append(tableDDL);
         asyncContext.write(sqlBuilder.toString());
         if (asyncContext.isContainsData()) {
@@ -103,7 +105,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append(SQL_DROP_VIEW_EXISTS)
-                        .append("[").append(resultSet.getString("TABLE_NAME")).append("]")
+                        .append(quoteIdentifier(resultSet.getString("TABLE_NAME")))
                         .append(";\n").append("go").append("\n")
                         .append(resultSet.getString("VIEW_DEFINITION")).append(";").append("\n")
                         .append("go").append("\n");
@@ -124,11 +126,11 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportFunction(Connection connection, String functionName, AsyncContext asyncContext) {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'", functionName);
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'", escapeStringLiteral(functionName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(String.format(DROP_FUNCTION_SQL, functionName, functionName));
+                sqlBuilder.append(String.format(DROP_FUNCTION_SQL, escapeStringLiteral(functionName), escapeIdentifier(functionName)));
                 sqlBuilder.append(resultSet.getString("definition"))
                         .append("\n").append("go").append("\n");
                 asyncContext.write(sqlBuilder.toString());
@@ -147,11 +149,11 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportProcedure(Connection connection, String procedureName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", procedureName);
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", escapeStringLiteral(procedureName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(String.format(DROP_PROCEDURE_SQL, procedureName, procedureName));
+                sqlBuilder.append(String.format(DROP_PROCEDURE_SQL, escapeStringLiteral(procedureName), escapeIdentifier(procedureName)));
                 sqlBuilder.append(resultSet.getString("definition")).append("\n").append("go").append("\n");
                 asyncContext.write(sqlBuilder.toString());
 
@@ -172,7 +174,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     @Override
     public void connectDatabase(Connection connection, String database) {
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, database));
+            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, escapeIdentifier(database)));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
