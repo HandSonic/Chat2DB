@@ -303,4 +303,15 @@ class PostgreSQLIdentifierProcessorTest {
         assertEquals("'{\"a\":\"b\"}'::json", PostgreSQLDmlValueTemplate.wrapJson("{\"a\":\"b\"}"));
         assertEquals("'x''y'::jsonb", PostgreSQLDmlValueTemplate.wrapJsonb("x'y"));
     }
+
+    @Test
+    void conditionalQuoteKeepsMixedCaseQuoted() {
+        PostgreSQLIdentifierProcessor processor = new PostgreSQLIdentifierProcessor();
+        // PostgreSQL folds unquoted identifiers to lowercase: mixed-case names must stay quoted.
+        assertEquals("\"MyTable\"", processor.quoteIdentifier("MyTable"));
+        assertEquals("mytable", processor.quoteIdentifier("mytable"));
+        assertEquals("plain_name", processor.quoteIdentifier("plain_name"));
+        org.junit.jupiter.api.Assertions.assertNull(processor.quoteIdentifier(null));
+        assertEquals("\"SELECT\"", processor.quoteIdentifier("SELECT"));
+    }
 }

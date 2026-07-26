@@ -121,7 +121,9 @@ public class PostgreSQLIdentifierProcessor extends DefaultSQLIdentifierProcessor
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+        // PostgreSQL folds unquoted identifiers to lowercase, so mixed-case names must stay quoted.
+        if (isValidIdentifier(identifier) && !containsUpperCase(identifier)
+                && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
             return identifier;
         }
         return quoteIdentifierAlways(identifier);
