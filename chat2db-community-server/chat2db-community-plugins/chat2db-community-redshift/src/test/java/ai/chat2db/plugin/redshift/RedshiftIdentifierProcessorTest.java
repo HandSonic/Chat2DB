@@ -31,12 +31,51 @@ class RedshiftIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierWrapsAndEscapes() {
-        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("foo"));
-        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("\"foo\""));
+    void quoteIdentifierReturnsPlainIdentifiersUnquoted() {
+        assertEquals("foo", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("foo"));
+        assertEquals("orders_2", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("orders_2"));
+    }
+
+    @Test
+    void quoteIdentifierQuotesWhenNotPlain() {
         assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
-        assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("\"has space\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
+        assertEquals("\"2leading\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("2leading"));
+    }
+
+    @Test
+    void quoteIdentifierRequotesAlreadyQuotedInput() {
+        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("\"foo\""));
+    }
+
+    @Test
+    void quoteIdentifierPassesThroughNullAndBlank() {
         assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+    }
+
+    @Test
+    void versionedQuoteIdentifierDelegatesToConditional() {
+        assertEquals("foo", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("foo", null, null));
+        assertEquals("\"has space\"",
+                RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("has space", 1, 0));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("foo"));
+        assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("we\"ird"));
+        assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(""));
+        assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysWrapsAndEscapes() {
+        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("foo"));
+        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"foo\""));
+        assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
+        assertEquals("\"\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
     }
 
     @Test

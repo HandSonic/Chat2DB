@@ -38,8 +38,8 @@ public class RedshiftMetaData extends PostgreSQLMetaData implements IDbMetaData 
     }
 
     static String buildShowCreateTableSql(String schemaName, String tableName) {
-        return "SHOW CREATE TABLE " + RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName) + "."
-                + RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return "SHOW CREATE TABLE " + RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "."
+                + RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     @Override
