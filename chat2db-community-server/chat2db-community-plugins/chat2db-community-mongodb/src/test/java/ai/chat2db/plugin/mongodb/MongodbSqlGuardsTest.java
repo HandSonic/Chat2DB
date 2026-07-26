@@ -12,38 +12,38 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class MongodbSqlEscapesTest {
+class MongodbSqlGuardsTest {
 
     @Test
     void requireMongoNameAcceptsLegitimateNames() {
-        assertEquals("mydb", MongodbSqlEscapes.requireMongoName("mydb", "database name"));
-        assertEquals("my_db-1$A", MongodbSqlEscapes.requireMongoName("my_db-1$A", "collection name"));
+        assertEquals("mydb", MongodbSqlGuards.requireMongoName("mydb", "database name"));
+        assertEquals("my_db-1$A", MongodbSqlGuards.requireMongoName("my_db-1$A", "collection name"));
     }
 
     @Test
     void requireMongoNameRejectsInjection() {
         assertThrows(IllegalArgumentException.class,
-            () -> MongodbSqlEscapes.requireMongoName("a.b", "collection name"));
+            () -> MongodbSqlGuards.requireMongoName("a.b", "collection name"));
         assertThrows(IllegalArgumentException.class,
-            () -> MongodbSqlEscapes.requireMongoName("a b", "collection name"));
+            () -> MongodbSqlGuards.requireMongoName("a b", "collection name"));
         assertThrows(IllegalArgumentException.class,
-            () -> MongodbSqlEscapes.requireMongoName("x; db.dropDatabase(); //", "database name"));
+            () -> MongodbSqlGuards.requireMongoName("x; db.dropDatabase(); //", "database name"));
         assertThrows(IllegalArgumentException.class,
-            () -> MongodbSqlEscapes.requireMongoName("x\")}", "collection name"));
+            () -> MongodbSqlGuards.requireMongoName("x\")}", "collection name"));
         assertThrows(IllegalArgumentException.class,
-            () -> MongodbSqlEscapes.requireMongoName("", "collection name"));
+            () -> MongodbSqlGuards.requireMongoName("", "collection name"));
         assertThrows(IllegalArgumentException.class,
-            () -> MongodbSqlEscapes.requireMongoName(null, "collection name"));
+            () -> MongodbSqlGuards.requireMongoName(null, "collection name"));
     }
 
     @Test
     void escapeJsonStringEscapesQuotesBackslashAndControls() {
-        assertEquals("plain", MongodbSqlEscapes.escapeJsonString("plain"));
-        assertEquals("a\\\"b", MongodbSqlEscapes.escapeJsonString("a\"b"));
-        assertEquals("a\\\\b", MongodbSqlEscapes.escapeJsonString("a\\b"));
-        assertEquals("a\\nb", MongodbSqlEscapes.escapeJsonString("a\nb"));
-        assertEquals("\\u0001", MongodbSqlEscapes.escapeJsonString("\u0001"));
-        assertNull(MongodbSqlEscapes.escapeJsonString(null));
+        assertEquals("plain", MongodbSqlGuards.escapeJsonString("plain"));
+        assertEquals("a\\\"b", MongodbSqlGuards.escapeJsonString("a\"b"));
+        assertEquals("a\\\\b", MongodbSqlGuards.escapeJsonString("a\\b"));
+        assertEquals("a\\nb", MongodbSqlGuards.escapeJsonString("a\nb"));
+        assertEquals("\\u0001", MongodbSqlGuards.escapeJsonString("\u0001"));
+        assertNull(MongodbSqlGuards.escapeJsonString(null));
     }
 
     @Test

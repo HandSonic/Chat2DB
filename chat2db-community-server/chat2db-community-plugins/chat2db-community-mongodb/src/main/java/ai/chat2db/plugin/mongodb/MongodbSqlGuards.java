@@ -3,15 +3,15 @@ package ai.chat2db.plugin.mongodb;
 import java.util.regex.Pattern;
 
 /**
- * Neutralization helpers for values interpolated into Mongo shell command text (#1914).
- * Shell commands are not plain SQL: database/collection names are validated against a strict
- * allowlist, and string values inside JSON documents are JSON-escaped.
+ * Validation and JSON-escaping guards for values interpolated into Mongo shell command
+ * text (#1914). Shell commands are not plain SQL: database/collection names are validated
+ * against a strict allowlist, and string values inside JSON documents are JSON-escaped.
  */
-public final class MongodbSqlEscapes {
+public final class MongodbSqlGuards {
 
     private static final Pattern MONGO_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_$-]+$");
 
-    private MongodbSqlEscapes() {
+    private MongodbSqlGuards() {
     }
 
     /**
