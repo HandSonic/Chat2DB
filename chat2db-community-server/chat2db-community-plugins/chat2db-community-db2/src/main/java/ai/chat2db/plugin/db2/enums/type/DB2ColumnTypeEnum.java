@@ -4,6 +4,7 @@ import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
+import ai.chat2db.plugin.db2.Db2SqlEscapes;
 import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
@@ -11,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.db2.constant.DB2ColumnTypeEnumConstants.*;
 public enum DB2ColumnTypeEnum implements IColumnBuilder {
@@ -139,7 +141,7 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(column.getName()).append("\"").append(" ");
+        script.append("\"").append(Db2SqlEscapes.escapeIdentifier(column.getName())).append("\"").append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -162,6 +164,25 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
         }
     }
 
+    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("^[A-Za-z0-9_'().,+/: \\t-]+$");
+
+    private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
+
+    private static String validateDefaultValue(String defaultValue) {
+        if (!DEFAULT_VALUE_PATTERN.matcher(defaultValue).matches() || defaultValue.contains("--")
+                || defaultValue.contains("/*")) {
+            throw new IllegalArgumentException("Invalid DB2 default value: " + defaultValue);
+        }
+        return defaultValue;
+    }
+
+    private static String validateUnit(String unit) {
+        if (!UNIT_PATTERN.matcher(unit).matches()) {
+            throw new IllegalArgumentException("Invalid DB2 length unit: " + unit);
+        }
+        return unit;
+    }
+
     private String buildDefaultValue(TableColumn column, DB2ColumnTypeEnum type) {
         if (!type.getColumnType().isSupportDefaultValue() || StringUtils.isEmpty(column.getDefaultValue())) {
             return "";
@@ -175,7 +196,7 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", validateDefaultValue(column.getDefaultValue()));
     }
 
     private String buildDataType(TableColumn column, DB2ColumnTypeEnum type) {
@@ -186,7 +207,7 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
             if (column.getColumnSize() != null && StringUtils.isEmpty(column.getUnit())) {
                 script.append("(").append(column.getColumnSize()).append(")");
             } else if (column.getColumnSize() != null && !StringUtils.isEmpty(column.getUnit())) {
-                script.append("(").append(column.getColumnSize()).append(" ").append(column.getUnit()).append(")");
+                script.append("(").append(column.getColumnSize()).append(" ").append(validateUnit(column.getUnit())).append(")");
             }
             return script.toString();
         }
@@ -211,25 +232,25 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(tableColumn.getName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
+            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getName())).append("\"");
             return script.toString();
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
             script.append(" ").append("MODIFY (").append(buildCreateColumnSql(tableColumn)).append(") \n");
 
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
                 script.append(";");
-                script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(tableColumn.getOldName()).append("\"").append(" TO ").append("\"").append(tableColumn.getName()).append("\"");
+                script.append(SQL_ALTER_TABLE).append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
+                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getOldName())).append("\"").append(" TO ").append("\"").append(Db2SqlEscapes.escapeIdentifier(tableColumn.getName())).append("\"");
 
             }
             return script.toString();

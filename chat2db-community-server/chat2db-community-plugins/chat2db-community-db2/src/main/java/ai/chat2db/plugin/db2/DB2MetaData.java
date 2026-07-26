@@ -60,7 +60,7 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String ddlTokenSql = String.format(GET_DDL_TOKEN, schemaName, tableName);
+        String ddlTokenSql = String.format(GET_DDL_TOKEN, Db2SqlEscapes.escapeSqlLiteral(schemaName), Db2SqlEscapes.escapeSqlLiteral(tableName));
         log.info("ddlSql : {}", ddlTokenSql);
 
         log.info("try to execute PROC");
@@ -133,7 +133,7 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(IDX_SQL, tableName, schemaName);
+        String sql = String.format(IDX_SQL, Db2SqlEscapes.escapeSqlLiteral(tableName), Db2SqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap();
             while (resultSet.next()) {
@@ -178,7 +178,7 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_DDL_SQL, schemaName, viewName);
+        String sql = String.format(VIEW_DDL_SQL, Db2SqlEscapes.escapeSqlLiteral(schemaName), Db2SqlEscapes.escapeSqlLiteral(viewName));
         Table table = new Table();
         table.setDatabaseName(databaseName);
         table.setSchemaName(schemaName);
@@ -199,7 +199,7 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
         function.setDatabaseName(databaseName);
         function.setSchemaName(schemaName);
         function.setFunctionName(functionName);
-        String sql = String.format(ROUTINE_DDL_SQL, schemaName, functionName, 'F');
+        String sql = String.format(ROUTINE_DDL_SQL, Db2SqlEscapes.escapeSqlLiteral(schemaName), Db2SqlEscapes.escapeSqlLiteral(functionName), 'F');
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 function.setFunctionBody(resultSet.getString("TEXT") + ";");
@@ -214,7 +214,7 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
         procedure.setDatabaseName(databaseName);
         procedure.setSchemaName(schemaName);
         procedure.setProcedureName(procedureName);
-        String sql = String.format(ROUTINE_DDL_SQL, schemaName, procedureName, 'P');
+        String sql = String.format(ROUTINE_DDL_SQL, Db2SqlEscapes.escapeSqlLiteral(schemaName), Db2SqlEscapes.escapeSqlLiteral(procedureName), 'P');
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 procedure.setProcedureBody(resultSet.getString("TEXT") + ";");
@@ -249,7 +249,7 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(Db2SqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override

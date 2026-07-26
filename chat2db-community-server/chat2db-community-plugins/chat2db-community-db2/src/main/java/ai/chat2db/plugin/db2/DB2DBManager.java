@@ -60,7 +60,7 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
             DefaultSQLExecutor.getInstance().execute(connection, SQLConstant.TABLE_DDL_FUNCTION_SQL, resultSet -> null);
         } catch (Exception e) {
         }
-        String sql = String.format(SQL_SELECT_GENERATE_TABLE_DDL_SQL, schemaName, schemaName, tableName, tableName);
+        String sql = String.format(SQL_SELECT_GENERATE_TABLE_DDL_SQL, Db2SqlEscapes.quoteIdentifier(schemaName), Db2SqlEscapes.escapeSqlLiteral(schemaName), Db2SqlEscapes.escapeSqlLiteral(tableName), Db2SqlEscapes.quoteIdentifier(tableName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -75,7 +75,7 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
 
 
     private void exportViews(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_TEXT_SYSCAT_VIEWS_VIEWSCHEMA, schemaName);
+        String sql = String.format(SQL_SELECT_TEXT_SYSCAT_VIEWS_VIEWSCHEMA, Db2SqlEscapes.escapeSqlLiteral(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -87,7 +87,7 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportProceduresAndFunctions(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_TEXT_SYSCAT_ROUTINES_ROUTINESCHEMA, schemaName);
+        String sql = String.format(SQL_SELECT_TEXT_SYSCAT_ROUTINES_ROUTINESCHEMA, Db2SqlEscapes.escapeSqlLiteral(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -100,7 +100,7 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
 
 
     private void exportTriggers(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_SYSCAT_TRIGGERS_TRIGSCHEMA, schemaName);
+        String sql = String.format(SQL_SELECT_SYSCAT_TRIGGERS_TRIGSCHEMA, Db2SqlEscapes.escapeSqlLiteral(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -119,7 +119,7 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
         }
         String schemaName = connectInfo.getSchemaName();
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_SET_SCHEMA, schemaName));
+            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_SET_SCHEMA, Db2SqlEscapes.escapeIdentifier(schemaName)));
         } catch (SQLException e) {
 
         }
@@ -127,15 +127,15 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE, tableName);
+        return String.format(SQL_DROP_TABLE, Db2SqlEscapes.quoteIdentifier(tableName));
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
-        String sql = String.format(SQL_COPY_TABLE, newTableName, tableName);
+        String sql = String.format(SQL_COPY_TABLE, Db2SqlEscapes.quoteIdentifier(newTableName), Db2SqlEscapes.quoteIdentifier(tableName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         if(copyData){
-            sql = String.format(SQL_INSERT_TABLE_SELECT, newTableName, tableName);
+            sql = String.format(SQL_INSERT_TABLE_SELECT, Db2SqlEscapes.quoteIdentifier(newTableName), Db2SqlEscapes.quoteIdentifier(tableName));
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         }
     }
