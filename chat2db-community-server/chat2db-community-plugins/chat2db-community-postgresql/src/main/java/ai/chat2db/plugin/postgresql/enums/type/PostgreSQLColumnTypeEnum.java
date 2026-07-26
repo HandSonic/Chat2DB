@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.postgresql.enums.type;
 
+import ai.chat2db.plugin.postgresql.PostgreSqlEscapes;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -110,7 +111,7 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(column.getName()).append("\"").append(" ");
+        script.append(PostgreSqlEscapes.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -132,7 +133,7 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(column.getName()).append("\"").append(" ");
+        script.append(PostgreSqlEscapes.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -153,13 +154,13 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
         if (!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())) {
             return "";
         }
-        return StringUtils.join("\"", column.getCollationName(), "\"");
+        return PostgreSqlEscapes.quoteIdentifier(column.getCollationName());
     }
 
     @Override
     public String buildModifyColumn(TableColumn column) {
         if (EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, column.getName() + "\"");
+            return StringUtils.join(SQL_DROP_COLUMN, PostgreSqlEscapes.quoteIdentifier(column.getName()));
         } else if (EditStatusEnum.ADD.name().equals(column.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(column));
         } else if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus())) {
@@ -177,24 +178,24 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
                 if (!sameType || sizeChanged || scaleChanged) {
                     String newDataTypeClause = buildDataType(column, this);
                     script.append(SQL_ALTER_COLUMN)
-                            .append(column.getName())
-                            .append("\" TYPE ")
+                            .append(PostgreSqlEscapes.quoteIdentifier(column.getName()))
+                            .append(" TYPE ")
                             .append(newDataTypeClause);
-                    script.append(" USING \"")
-                            .append(column.getName())
-                            .append("\"::")
+                    script.append(" USING ")
+                            .append(PostgreSqlEscapes.quoteIdentifier(column.getName()))
+                            .append("::")
                             .append(newDataTypeClause)
                             .append(",\n");
                 }
             } else {
                 String newDataTypeClause = buildDataType(column, this);
                 script.append(SQL_ALTER_COLUMN)
-                        .append(column.getName())
-                        .append("\" TYPE ")
+                        .append(PostgreSqlEscapes.quoteIdentifier(column.getName()))
+                        .append(" TYPE ")
                         .append(newDataTypeClause)
-                        .append(" USING \"")
-                        .append(column.getName())
-                        .append("\"::")
+                        .append(" USING ")
+                        .append(PostgreSqlEscapes.quoteIdentifier(column.getName()))
+                        .append("::")
                         .append(newDataTypeClause)
                         .append(",\n");
             }
@@ -207,12 +208,12 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
             if (oldColumn != null) {
                 Integer oldNullable = oldColumn.getNullable();
                 if (oldNullable != null && newNullable != null && !oldNullable.equals(newNullable)) {
-                    script.append("\tALTER COLUMN \"").append(columnName).append("\" ")
+                    script.append("\tALTER COLUMN ").append(PostgreSqlEscapes.quoteIdentifier(columnName)).append(" ")
                             .append(shouldDropNotNull ? "DROP" : "SET").append(" NOT NULL ,\n");
                 }
             } else {
                 if (newNullable != null) {
-                    script.append("\tALTER COLUMN \"").append(columnName).append("\" ")
+                    script.append("\tALTER COLUMN ").append(PostgreSqlEscapes.quoteIdentifier(columnName)).append(" ")
                             .append(shouldDropNotNull ? "DROP" : "SET").append(" NOT NULL ,\n");
                 }
             }
@@ -230,8 +231,8 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
 
             if (shouldAppendDefault) {
                 script.append(SQL_ALTER_COLUMN)
-                        .append(column.getName())
-                        .append("\" SET ")
+                        .append(PostgreSqlEscapes.quoteIdentifier(column.getName()))
+                        .append(" SET ")
                         .append(defaultValue)
                         .append(",\n");
             }
@@ -253,8 +254,8 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
             return "";
         }
         if (column.getOldColumn() == null || !StringUtils.equals(column.getOldColumn().getComment(), column.getComment())) {
-            return StringUtils.join(SQL_COMMENT_COLUMN, " \"", column.getTableName(),
-                    "\".\"", column.getName(), "\" IS '", column.getComment(), "';");
+            return StringUtils.join(SQL_COMMENT_COLUMN, " ", PostgreSqlEscapes.quoteIdentifier(column.getTableName()),
+                    ".", PostgreSqlEscapes.quoteIdentifier(column.getName()), " IS '", PostgreSqlEscapes.escapeSqlLiteral(column.getComment()), "';");
         }
         return "";
     }
@@ -273,17 +274,17 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
         }
 
         if (Arrays.asList(CHAR, VARCHAR).contains(type)) {
-            return StringUtils.join("DEFAULT '", column.getDefaultValue(), "'");
+            return StringUtils.join("DEFAULT '", PostgreSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(TIMESTAMP, TIME, TIMETZ, TIMESTAMPTZ, DATE).contains(type)) {
             if ("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())) {
                 return StringUtils.join("DEFAULT ", column.getDefaultValue());
             }
-            return StringUtils.join("DEFAULT '", column.getDefaultValue(), "'");
+            return StringUtils.join("DEFAULT '", PostgreSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
         }
 
-        return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", PostgreSqlEscapes.requireDefaultExpression(column.getDefaultValue()));
     }
 
     private String buildNullable(TableColumn column, PostgreSQLColumnTypeEnum type) {

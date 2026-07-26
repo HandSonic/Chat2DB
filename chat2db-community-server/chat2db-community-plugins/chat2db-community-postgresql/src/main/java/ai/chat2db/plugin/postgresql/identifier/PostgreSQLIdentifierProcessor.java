@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.postgresql.identifier;
 
+import ai.chat2db.plugin.postgresql.PostgreSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
@@ -99,11 +100,11 @@ public class PostgreSQLIdentifierProcessor extends DefaultSQLIdentifierProcessor
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
         if (isValidIdentifier(identifier)) {
             if (containsUpperCase(identifier) || isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
-                return StringUtils.wrap(identifier, '"');
+                return wrapWithDoubleQuotes(identifier);
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return wrapWithDoubleQuotes(identifier);
 
     }
 
@@ -115,22 +116,26 @@ public class PostgreSQLIdentifierProcessor extends DefaultSQLIdentifierProcessor
         }
         if (isValidIdentifier(identifier)) {
             if (containsUpperCase(identifier) || isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(identifier, '"');
+                return wrapWithDoubleQuotes(identifier);
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return wrapWithDoubleQuotes(identifier);
     }
 
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
         if (isValidIdentifier(identifier)) {
             if (isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(identifier, '"');
+                return wrapWithDoubleQuotes(identifier);
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return wrapWithDoubleQuotes(identifier);
+    }
+
+    private static String wrapWithDoubleQuotes(String identifier) {
+        return StringUtils.wrap(PostgreSqlEscapes.escapeIdentifier(identifier), '"');
     }
 
     @Override

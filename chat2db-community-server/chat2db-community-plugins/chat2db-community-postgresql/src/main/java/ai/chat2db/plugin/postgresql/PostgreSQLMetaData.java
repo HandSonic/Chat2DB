@@ -27,7 +27,6 @@ import ai.chat2db.community.domain.api.model.view.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.DefaultSQLExecutor;
 import ai.chat2db.spi.util.SortUtils;
-import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.extern.slf4j.Slf4j;
@@ -93,7 +92,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, schemaName);
+        String sql = String.format(TRIGGER_SQL_LIST, PostgreSqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -108,11 +107,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
 
     protected String format(String objectName) {
-        if (StringUtils.isBlank(objectName)) {
-            return objectName;
-        } else {
-            return SqlUtils.quoteObjectName(objectName);
-        }
+        return PostgreSqlEscapes.quoteIdentifier(objectName);
     }
 
     @Override
@@ -197,7 +192,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     boolean isParentTable = resultSet.getBoolean("is_parent_table");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(" partition of ").append(SqlUtils.quoteObjectName(parentTableName)).append("\n");
+                        ddlBuilder.append("\n").append(" partition of ").append(format(parentTableName)).append("\n");
                         if (!constraintsBuilder.isEmpty()) {
                             ddlBuilder.append("(\n")
                                     .append(constraintsBuilder)
@@ -474,7 +469,8 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
                     String parentTableName = resultSet.getString("PARENT_TABLE");
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(SQL_CREATE_TABLE).append(format(subName)).append("\n")
+                        // sub_name and PARENT_TABLE are quote_ident() output: already safely quoted
+                        ddlBuilder.append("\n").append(SQL_CREATE_TABLE).append(subName).append("\n")
                                 .append("partition of ").append(parentTableName).append("\n")
                                 .append(partitionDefinition.toLowerCase()).append(";\n");
                     }
@@ -576,7 +572,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, schemaName, viewName);
+        String sql = String.format(VIEW_SQL, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -593,7 +589,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
                            String triggerName) {
 
-        String sql = String.format(TRIGGER_SQL, schemaName, triggerName);
+        String sql = String.format(TRIGGER_SQL, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Trigger trigger = new Trigger();
             trigger.setDatabaseName(databaseName);
@@ -625,7 +621,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
 
-        String constraintSql = String.format(SELECT_KEY_INDEX, schemaName, tableName);
+        String constraintSql = String.format(SELECT_KEY_INDEX, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(tableName));
         Map<String, String> constraintMap = new HashMap();
         LinkedHashMap<String, TableIndex> foreignMap = new LinkedHashMap();
         DefaultSQLExecutor.getInstance().execute(connection, constraintSql, resultSet -> {
@@ -655,7 +651,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
             return null;
         });
 
-        String sql = String.format(SELECT_TABLE_INDEX, schemaName, tableName);
+        String sql = String.format(SELECT_TABLE_INDEX, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap(foreignMap);
 
@@ -752,7 +748,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(PostgreSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override
