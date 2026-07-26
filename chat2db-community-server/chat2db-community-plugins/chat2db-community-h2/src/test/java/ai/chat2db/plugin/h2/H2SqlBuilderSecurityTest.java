@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class H2SqlBuilderSecurityTest {
 
@@ -175,6 +176,33 @@ class H2SqlBuilderSecurityTest {
             builder.buildTruncateTable(truncate));
         assertEquals("SELECT * FROM \"D\"\"; X\".\"S\"\"; X\"." + EVIL_QUOTED,
             builder.buildSelectTable("D\"; X", "S\"; X", EVIL));
+    }
+
+    @Test
+    void buildCreateTableRejectsHostileColumnType() {
+        Table table = new Table();
+        table.setName("T");
+        TableColumn column = new TableColumn();
+        column.setName("C");
+        column.setColumnType("INTEGER); DROP TABLE U; --");
+        column.setNullable(0);
+        table.setColumnList(List.of(column));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> builder.buildCreateTable(table, TableBuilderConfig.defaultConfig()));
+    }
+
+    @Test
+    void buildAlterTableRejectsHostileColumnType() {
+        Table oldTable = new Table();
+        oldTable.setName("T");
+        Table newTable = new Table();
+        newTable.setName("T");
+        newTable.setColumnList(List.of(column("C", "ADD")));
+        newTable.getColumnList().get(0).setColumnType("INTEGER; DROP TABLE U; --");
+        newTable.setIndexList(List.of());
+
+        assertThrows(IllegalArgumentException.class, () -> builder.buildAlterTable(oldTable, newTable));
     }
 
     @Test

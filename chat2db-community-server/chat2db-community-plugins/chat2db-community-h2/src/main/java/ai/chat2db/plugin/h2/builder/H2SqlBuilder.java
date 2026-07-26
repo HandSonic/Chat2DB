@@ -70,7 +70,7 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
             }
             script.append(SQLConstants.TAB).append(SQLConstants.SPACE)
                 .append(quoteIdentifier(column.getName())).append(SQLConstants.SPACE)
-                .append(column.getColumnType());
+                .append(H2SqlEscapes.requireSafeTypeName(column.getColumnType()));
             if (column.getColumnSize() != null) {
                 script.append(SQLConstants.OPEN_PARENTHESIS).append(column.getColumnSize());
                 if (column.getDecimalDigits() != null) {
@@ -171,12 +171,12 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return SQLConstants.ALTER_TABLE_SQL_PREFIX + quoteIdentifier(tableColumn.getTableName())
                 + " ADD COLUMN " + quoteIdentifier(tableColumn.getName())
-                + SQLConstants.SPACE + tableColumn.getColumnType() + SQLConstants.SEMICOLON;
+                + SQLConstants.SPACE + H2SqlEscapes.requireSafeTypeName(tableColumn.getColumnType()) + SQLConstants.SEMICOLON;
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             return SQLConstants.ALTER_TABLE_SQL_PREFIX + quoteIdentifier(tableColumn.getTableName())
                 + " MODIFY COLUMN " + quoteIdentifier(tableColumn.getName())
-                + SQLConstants.SPACE + tableColumn.getColumnType() + SQLConstants.SEMICOLON;
+                + SQLConstants.SPACE + H2SqlEscapes.requireSafeTypeName(tableColumn.getColumnType()) + SQLConstants.SEMICOLON;
         }
         if (tableColumn.getComment() != null) {
             return generateCommentSql(tableColumn);
