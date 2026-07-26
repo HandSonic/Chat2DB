@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.snowflake.enums.type;
 
+import ai.chat2db.plugin.snowflake.SnowflakeSqlEscapes;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
@@ -83,7 +84,7 @@ public enum SnowflakeIndexTypeEnum {
         if(StringUtils.isBlank(tableIndex.getComment())){
             return "";
         }else {
-            return StringUtils.join(SQL_COMMENT,tableIndex.getComment(),"'");
+            return StringUtils.join(SQL_COMMENT,SnowflakeSqlEscapes.escapeSqlLiteral(tableIndex.getComment()),"'");
         }
 
     }
@@ -93,9 +94,9 @@ public enum SnowflakeIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
-                script.append("\"").append(column.getColumnName()).append("\"");
+                script.append(SnowflakeSqlEscapes.quoteIdentifier(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
-                    script.append(" ").append(column.getAscOrDesc());
+                    script.append(" ").append(SnowflakeSqlEscapes.requireAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
             }
@@ -109,7 +110,7 @@ public enum SnowflakeIndexTypeEnum {
         if(this.equals(PRIMARY_KEY)){
             return "";
         }else {
-            return "\""+tableIndex.getName()+"\"";
+            return SnowflakeSqlEscapes.quoteIdentifier(tableIndex.getName());
         }
     }
 
@@ -130,7 +131,7 @@ public enum SnowflakeIndexTypeEnum {
         if (SnowflakeIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join(SQL_DROP_INDEX, tableIndex.getOldName(),"\"");
+        return StringUtils.join(SQL_DROP_INDEX, SnowflakeSqlEscapes.escapeIdentifier(tableIndex.getOldName()),"\"");
     }
     public static List<IndexType> getIndexTypes() {
         return Arrays.asList(SnowflakeIndexTypeEnum.values()).stream().map(SnowflakeIndexTypeEnum::getIndexType).collect(java.util.stream.Collectors.toList());

@@ -52,14 +52,16 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
         ConnectInfo connectInfo = Chat2DBContext.getConnectInfo();
         if (ObjectUtils.anyNull(connectInfo) || StringUtils.isEmpty(connectInfo.getSchemaName())) {
             try {
-                DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, database));
+                DefaultSQLExecutor.getInstance().execute(connection,
+                        String.format(SQL_USE_DATABASE, SnowflakeSqlEscapes.escapeIdentifier(database)));
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
         } else {
             try {
                 DefaultSQLExecutor.getInstance().execute(connection,
-                        String.format(SQL_USE_SCHEMA, database, connectInfo.getSchemaName()));
+                        String.format(SQL_USE_SCHEMA, SnowflakeSqlEscapes.escapeIdentifier(database),
+                                SnowflakeSqlEscapes.requireSnowflakeName(connectInfo.getSchemaName(), "schema name")));
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -72,7 +74,7 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
     }
 
     public static String format(String tableName) {
-        return IDENTIFIER_QUOTE + tableName + IDENTIFIER_QUOTE;
+        return SnowflakeSqlEscapes.quoteIdentifier(tableName);
     }
 
 }
