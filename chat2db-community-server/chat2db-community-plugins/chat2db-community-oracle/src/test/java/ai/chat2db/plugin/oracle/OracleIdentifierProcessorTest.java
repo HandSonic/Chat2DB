@@ -19,10 +19,58 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OracleIdentifierProcessorTest {
+
+    @Test
+    void quoteIdentifierPassesThroughNullAndBlank() {
+        assertNull(OracleIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertNull(OracleIdentifierProcessor.INSTANCE.quoteIdentifier(null, 12, 2));
+        assertNull(OracleIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+        assertEquals("", OracleIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals(" ", OracleIdentifierProcessor.INSTANCE.quoteIdentifier(" "));
+        assertEquals(" ", OracleIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(" "));
+    }
+
+    @Test
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        OracleIdentifierProcessor processor = OracleIdentifierProcessor.INSTANCE;
+        // plain uppercase identifier: returned unquoted
+        assertEquals("EMPLOYEES", processor.quoteIdentifier("EMPLOYEES"));
+        // lowercase: quoted to preserve case
+        assertEquals("\"employees\"", processor.quoteIdentifier("employees"));
+        // reserved keyword: quoted
+        assertEquals("\"SELECT\"", processor.quoteIdentifier("SELECT"));
+        assertEquals("\"TABLE\"", processor.quoteIdentifier("TABLE", 12, 2));
+        // invalid characters: quoted with embedded quotes doubled
+        assertEquals("\"A\"\"B\"", processor.quoteIdentifier("A\"B"));
+        assertEquals("\"WE IRD\"", processor.quoteIdentifier("WE IRD"));
+        // already-quoted input is unwrapped once, not double-wrapped
+        assertEquals("\"ALREADY\"", processor.quoteIdentifier("\"ALREADY\""));
+        // versioned overload delegates to the single-arg conditional variant
+        assertEquals(processor.quoteIdentifier("employees"), processor.quoteIdentifier("employees", 19, 0));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCasePreservesCaseAndIsConditional() {
+        OracleIdentifierProcessor processor = OracleIdentifierProcessor.INSTANCE;
+        assertEquals("employees", processor.quoteIdentifierIgnoreCase("employees"));
+        assertEquals("EMPLOYEES", processor.quoteIdentifierIgnoreCase("EMPLOYEES"));
+        assertEquals("\"select\"", processor.quoteIdentifierIgnoreCase("select"));
+        assertEquals("\"A\"\"B\"", processor.quoteIdentifierIgnoreCase("A\"B"));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysWrapsUnconditionallyForDdlPaths() {
+        assertNull(OracleIdentifierProcessor.quoteIdentifierAlways(null));
+        assertEquals("\"EMPLOYEES\"", OracleIdentifierProcessor.quoteIdentifierAlways("EMPLOYEES"));
+        assertEquals("\"employees\"", OracleIdentifierProcessor.quoteIdentifierAlways("employees"));
+        assertEquals("\"A\"\"B\"", OracleIdentifierProcessor.quoteIdentifierAlways("A\"B"));
+        assertEquals("\"ALREADY\"", OracleIdentifierProcessor.quoteIdentifierAlways("\"ALREADY\""));
+    }
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {

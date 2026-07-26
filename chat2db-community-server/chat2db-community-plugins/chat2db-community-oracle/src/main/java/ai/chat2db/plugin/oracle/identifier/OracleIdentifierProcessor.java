@@ -137,20 +137,17 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
-        if (isValidIdentifier(identifier)) {
-            if (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
-                return StringUtils.wrap(escapeIdentifier(identifier), '"');
-            }
-            return identifier;
-        }
-        return StringUtils.wrap(escapeIdentifier(identifier), '"');
-
+        return quoteIdentifier(identifier);
     }
 
     @Override
     public String quoteIdentifier(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
         if (isValidIdentifier(identifier)) {
-            if (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            if (StringUtils.isNotBlank(identifier)
+                    && (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), null, null))) {
                 return StringUtils.wrap(escapeIdentifier(identifier), '"');
             }
             return identifier;
@@ -160,8 +157,11 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
         if (isValidIdentifier(identifier)) {
-            if (isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            if (StringUtils.isNotBlank(identifier) && isReservedKeyword(identifier.toUpperCase(), null, null)) {
                 return StringUtils.wrap(escapeIdentifier(identifier), '"');
             }
             return identifier;
@@ -213,6 +213,9 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
      * it), generated DDL quotes every identifier; this keeps that position byte-identical.
      */
     public static String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
         return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
 
