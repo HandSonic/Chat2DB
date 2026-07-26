@@ -243,4 +243,23 @@ class MysqlSqlEscapesTest {
         assertEquals("`a``b`", processor.quoteIdentifier("a`b"));
         assertEquals("plain_name", processor.quoteIdentifier("plain_name"));
     }
+
+    @Test
+    void truncateTableEscapesBacktickIdentifier() {
+        MysqlDBManager manager = new MysqlDBManager();
+        assertEquals("TRUNCATE TABLE `a``b`",
+                manager.truncateTable(null, null, null, "a`b"));
+        assertEquals("TRUNCATE TABLE `a``; DROP TABLE b; --`",
+                manager.truncateTable(null, null, null, "a`; DROP TABLE b; --"));
+    }
+
+    @Test
+    void copyTableSqlEscapesBothIdentifiers() {
+        assertEquals("CREATE TABLE `n``t` AS SELECT * FROM `o``t`",
+                MysqlDBManager.buildCopyTableSql("o`t", "n`t", true));
+        assertEquals("CREATE TABLE `n``t` AS SELECT * FROM `o``t` WHERE 1=0",
+                MysqlDBManager.buildCopyTableSql("o`t", "n`t", false));
+        assertEquals("CREATE TABLE `c` AS SELECT * FROM `a``; DROP TABLE b; --`",
+                MysqlDBManager.buildCopyTableSql("a`; DROP TABLE b; --", "c", true));
+    }
 }

@@ -19,10 +19,13 @@ import java.sql.PreparedStatement;
 import java.util.Date;
 
 import static cn.hutool.core.date.DatePattern.NORM_DATETIME_PATTERN;
+import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_COPY_TABLE_DATA_TEMPLATE;
+import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_COPY_TABLE_STRUCTURE_TEMPLATE;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_DROP_PROCEDURE_TEMPLATE;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_DROP_TABLE_TEMPLATE;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_DROP_VIEW_TEMPLATE;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_SELECT_DATABASE_TEMPLATE;
+import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_TRUNCATE_TABLE_TEMPLATE;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_SET_FOREIGN_KEY_CHECKS_DISABLED;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_SET_FOREIGN_KEY_CHECKS_ENABLED;
 import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_SHOW_CREATE_FUNCTION_TEMPLATE;
@@ -238,6 +241,21 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         return String.format(SQL_DROP_TABLE_TEMPLATE, format(tableName));
+    }
+
+    @Override
+    public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
+        return String.format(SQL_TRUNCATE_TABLE_TEMPLATE, format(tableName));
+    }
+
+    @Override
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) {
+        DefaultSQLExecutor.getInstance().execute(connection, buildCopyTableSql(tableName, newTableName, copyData), resultSet -> null);
+    }
+
+    static String buildCopyTableSql(String tableName, String newTableName, boolean copyData) {
+        String template = copyData ? SQL_COPY_TABLE_DATA_TEMPLATE : SQL_COPY_TABLE_STRUCTURE_TEMPLATE;
+        return String.format(template, format(newTableName), format(tableName));
     }
 
     public static String format(String tableName) {
