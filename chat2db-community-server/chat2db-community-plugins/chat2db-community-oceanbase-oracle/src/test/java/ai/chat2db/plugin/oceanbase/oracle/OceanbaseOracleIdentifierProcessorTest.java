@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class OceanbaseOracleIdentifierProcessorTest {
 
@@ -16,10 +17,48 @@ class OceanbaseOracleIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"MY_TABLE\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("MY_TABLE"));
+    void quoteIdentifierPassesThroughNullAndBlank() {
+        assertNull(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("  ", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("  "));
+    }
+
+    @Test
+    void quoteIdentifierLeavesPlainIdentifiersUnquoted() {
+        assertEquals("MY_TABLE", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("MY_TABLE"));
+        assertEquals("my_table", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("my_table"));
+        assertEquals("COL_1", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("COL_1"));
+    }
+
+    @Test
+    void quoteIdentifierQuotesReservedKeywordsAndSpecialChars() {
+        assertEquals("\"TABLE\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("TABLE"));
+        assertEquals("\"select\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
+        assertEquals("\"has space\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
         assertEquals("\"we\"\"ird\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
         assertEquals("\"we\"\"ird\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("\"we\"ird\""));
+    }
+
+    @Test
+    void versionedQuoteIdentifierDelegatesToConditional() {
+        assertEquals("MY_TABLE", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("MY_TABLE", 4, 2));
+        assertEquals("\"TABLE\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier("TABLE", null, null));
+        assertNull(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifier(null, null, null));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesUnconditionally() {
+        assertNull(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("\"MY_TABLE\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways("MY_TABLE"));
+        assertEquals("\"we\"\"ird\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
+        assertEquals("\"we\"\"ird\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"we\"ird\""));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
+        assertNull(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"MY_TABLE\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("MY_TABLE"));
+        assertEquals("\"my_table\"", OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("my_table"));
     }
 
     @Test
