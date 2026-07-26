@@ -29,7 +29,7 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
         connectInfo.setSchemaName(null);
         Connection connection = super.getConnection(connectInfo);
         if (StringUtils.isNotBlank(schemaName)) {
-            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, schemaName);
+            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, KingBaseSqlEscapes.escapeIdentifier(schemaName));
             try {
                 DefaultSQLExecutor.getInstance().execute(connection, sql);
             } catch (SQLException e) {
@@ -56,7 +56,7 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "drop table if exists " +tableName;
+        String sql = "drop table if exists " + KingBaseSqlEscapes.quoteIdentifier(tableName);
         return sql;
     }
 
@@ -64,9 +64,9 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
         String sql = "";
         if(copyData){
-            sql = "CREATE TABLE " + newTableName + " AS TABLE " + tableName + " WITH DATA";
+            sql = "CREATE TABLE " + KingBaseSqlEscapes.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSqlEscapes.quoteIdentifier(tableName) + " WITH DATA";
         }else {
-            sql = "CREATE TABLE " + newTableName + " AS TABLE " + tableName + " WITH NO DATA";
+            sql = "CREATE TABLE " + KingBaseSqlEscapes.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSqlEscapes.quoteIdentifier(tableName) + " WITH NO DATA";
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }

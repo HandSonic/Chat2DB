@@ -22,7 +22,6 @@ import ai.chat2db.spi.model.value.*;
 import ai.chat2db.community.domain.api.model.view.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.DefaultSQLExecutor;
-import ai.chat2db.spi.util.SqlUtils;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -83,7 +82,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
         if (StringUtils.isBlank(objectName)) {
             return objectName;
         } else {
-            return SqlUtils.quoteObjectName(objectName);
+            return KingBaseSqlEscapes.quoteIdentifier(objectName);
         }
     }
 
@@ -139,7 +138,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                         constraintsBuilder.append(",\n");
                     }
                     constraintsBuilder.append("\t").append(" constraint ")
-                            .append(constraintName)
+                            .append(KingBaseSqlEscapes.quoteIdentifier(constraintName))
                             .append(" ")
                             .append(constraintDefinition.toLowerCase());
                 }
@@ -158,7 +157,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     boolean isParentTable = resultSet.getBoolean("is_parent_table");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(" partition of ").append(SqlUtils.quoteObjectName(parentTableName)).append("\n");
+                        ddlBuilder.append("\n").append(" partition of ").append(KingBaseSqlEscapes.quoteIdentifier(parentTableName)).append("\n");
                         if (!constraintsBuilder.isEmpty()) {
                             ddlBuilder.append("(\n")
                                     .append(constraintsBuilder)
@@ -182,7 +181,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     tableOwnerBuilder.append(SQL_ALTER_TABLE)
                             .append(format(table_name))
                             .append(" owner to ")
-                            .append(owner)
+                            .append(KingBaseSqlEscapes.quoteIdentifier(owner))
                             .append(";").append("\n");
                 }
             }
@@ -201,7 +200,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                                 .append(SQL_ON)
                                 .append(formatTableName)
                                 .append(" to ")
-                                .append(grantee)
+                                .append(KingBaseSqlEscapes.quoteIdentifier(grantee))
                                 .append(";").append("\n");
                     }
                 }
@@ -428,7 +427,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String parentTableName = resultSet.getString("PARENT_TABLE");
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(SQL_CREATE_TABLE).append(format(subName)).append("\n")
+                        ddlBuilder.append("\n").append(SQL_CREATE_TABLE).append(subName).append("\n")
                                 .append("partition of ").append(parentTableName).append("\n")
                                 .append(partitionDefinition.toLowerCase()).append(";\n");
                     }
@@ -472,7 +471,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
             String comment = table.getComment();
             if (StringUtils.isNotBlank(comment)) {
                 ddlBuilder.append("\n").append(SQL_COMMENT_TABLE).append(formatTableName).append(" is ")
-                        .append("'").append(comment).append("'")
+                        .append("'").append(KingBaseSqlEscapes.escapeSqlLiteral(comment)).append("'")
                         .append(";\n");
             }
         }
@@ -625,7 +624,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(KingBaseSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override

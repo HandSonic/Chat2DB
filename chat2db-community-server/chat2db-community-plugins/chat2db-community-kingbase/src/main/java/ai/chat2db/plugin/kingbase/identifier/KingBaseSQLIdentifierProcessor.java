@@ -14,7 +14,7 @@ public class KingBaseSQLIdentifierProcessor  extends DefaultSQLIdentifierProcess
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return StringUtils.wrap(StringUtils.replace(identifier, "\"", "\"\""), '"');
     }
 
 }
