@@ -2,6 +2,7 @@ package ai.chat2db.plugin.clickhouse.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
 
+import ai.chat2db.plugin.clickhouse.ClickHouseSqlEscapes;
 import ai.chat2db.plugin.clickhouse.enums.type.ClickHouseColumnTypeEnum;
 import ai.chat2db.plugin.clickhouse.enums.type.ClickHouseIndexTypeEnum;
 import ai.chat2db.spi.DefaultSqlBuilder;
@@ -27,19 +28,14 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getDatabaseName())) {
-            script.append(SQLConstants.BACK_QUOTE).append(table.getDatabaseName()).append(SQLConstants.BACK_QUOTE).append(SQLConstants.DOT);
+            script.append(ClickHouseSqlEscapes.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(SQLConstants.BACK_QUOTE).append(table.getName()).append(SQLConstants.BACK_QUOTE).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(ClickHouseSqlEscapes.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
             }
-            ClickHouseColumnTypeEnum typeEnum = ClickHouseColumnTypeEnum.getByType(column.getColumnType());
-            if (typeEnum == null){
-                script.append(SQLConstants.TAB).append(buildDefaultCreateColumnSql(column)).append(SQLConstants.COMMA_LINE_SEPARATOR);
-            }else {
-                script.append(SQLConstants.TAB).append(typeEnum.buildCreateColumnSql(column)).append(SQLConstants.COMMA_LINE_SEPARATOR);
-            }
+            script.append(SQLConstants.TAB).append(ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column)).append(SQLConstants.COMMA_LINE_SEPARATOR);
         }
         for (TableIndex tableIndex : table.getIndexList()) {
             if (StringUtils.isBlank(tableIndex.getName()) || StringUtils.isBlank(tableIndex.getType())) {
@@ -56,7 +52,7 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
 
 
         if (StringUtils.isNotBlank(table.getEngine())) {
-            script.append(SQLConstants.ENGINE_SQL).append(table.getEngine()).append(SQLConstants.LINE_SEPARATOR);
+            script.append(SQLConstants.ENGINE_SQL).append(validateEngine(table.getEngine())).append(SQLConstants.LINE_SEPARATOR);
         }
         for (TableIndex tableIndex : table.getIndexList()) {
             if (StringUtils.isBlank(tableIndex.getName()) || StringUtils.isBlank(tableIndex.getType())) {
@@ -69,7 +65,7 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         }
 
         if (StringUtils.isNotBlank(table.getComment())) {
-            script.append(SQL_COMMENT).append(table.getComment()).append(SQLConstants.SINGLE_QUOTE);
+            script.append(SQL_COMMENT).append(ClickHouseSqlEscapes.escapeSqlLiteral(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
         }
 
         script.append(SQLConstants.SEMICOLON);
@@ -82,12 +78,12 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_ALTER_TABLE);
         if (StringUtils.isNotBlank(oldTable.getDatabaseName())) {
-            script.append(SQLConstants.BACK_QUOTE).append(oldTable.getDatabaseName()).append(SQLConstants.BACK_QUOTE).append(SQLConstants.DOT);
+            script.append(ClickHouseSqlEscapes.quoteIdentifier(oldTable.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(SQLConstants.BACK_QUOTE).append(oldTable.getName()).append(SQLConstants.BACK_QUOTE).append(SQLConstants.LINE_SEPARATOR);
+        script.append(ClickHouseSqlEscapes.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
 
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
-            script.append(SQLConstants.TAB).append(SQL_MODIFY_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(newTable.getComment()).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
+            script.append(SQLConstants.TAB).append(SQL_MODIFY_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(ClickHouseSqlEscapes.escapeSqlLiteral(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
@@ -142,11 +138,18 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE + database.getName() + SQLConstants.BACK_QUOTE);
+        sqlBuilder.append(SQL_CREATE_DATABASE).append(ClickHouseSqlEscapes.quoteIdentifier(database.getName()));
         if(StringUtils.isNotBlank(database.getComment())){
-            sqlBuilder.append(SQL_SEMICOLON_ALTER_DATABASE).append(database.getName()).append(SQL_COMMENT).append(database.getComment()).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_SEMICOLON_ALTER_DATABASE).append(ClickHouseSqlEscapes.quoteIdentifier(database.getName())).append(SQL_COMMENT).append(ClickHouseSqlEscapes.escapeSqlLiteral(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
         return sqlBuilder.toString();
+    }
+
+    private static String validateEngine(String engine) {
+        if (!engine.matches("[A-Za-z0-9_]+(\\s*\\([^;)]*\\))?")) {
+            throw new IllegalArgumentException("Invalid ClickHouse engine: " + engine);
+        }
+        return engine;
     }
 
 }

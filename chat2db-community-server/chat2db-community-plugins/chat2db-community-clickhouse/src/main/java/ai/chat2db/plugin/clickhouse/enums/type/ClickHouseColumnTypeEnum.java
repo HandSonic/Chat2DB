@@ -1,10 +1,10 @@
 package ai.chat2db.plugin.clickhouse.enums.type;
 
+import ai.chat2db.plugin.clickhouse.ClickHouseSqlEscapes;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
-import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -74,7 +74,39 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     }
 
     public static ClickHouseColumnTypeEnum getByType(String dataType) {
-       return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
+        if (dataType == null) {
+            return null;
+        }
+        String normalized = dataType.trim();
+        if (normalized.indexOf('(') >= 0) {
+            // Parameterized forms (Decimal(10,2), Array(...), Enum8('a','b'), ...)
+            // go through the validated fallback so the arguments are preserved
+            // and checked instead of silently dropped.
+            return null;
+        }
+        return COLUMN_TYPE_MAP.get(normalized.toUpperCase());
+    }
+
+    /**
+     * Builds the column definition for any declared column type, falling back
+     * to a fail-closed validated expression for types outside the enum.
+     */
+    public static String buildCreateColumnSqlSafely(TableColumn column) {
+        ClickHouseColumnTypeEnum type = getByType(column.getColumnType());
+        if (type == null) {
+            return buildValidatedFallbackColumn(column);
+        }
+        return type.buildCreateColumnSql(column);
+    }
+
+    private static String buildValidatedFallbackColumn(TableColumn column) {
+        StringBuilder script = new StringBuilder();
+        script.append(ClickHouseSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(ClickHouseSqlEscapes.requireColumnTypeExpression(column.getColumnType())).append(" ");
+        if (StringUtils.isNotBlank(column.getComment())) {
+            script.append("COMMENT '").append(ClickHouseSqlEscapes.escapeSqlLiteral(column.getComment())).append("' ");
+        }
+        return script.toString();
     }
 
     public static List<ColumnType> getTypes() {
@@ -89,13 +121,13 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
 
     @Override
     public String buildCreateColumnSql(TableColumn column) {
-        ClickHouseColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType());
+        ClickHouseColumnTypeEnum type = getByType(column.getColumnType());
         if (type == null) {
-            return buildDefaultColumn(column,true);
+            return buildValidatedFallbackColumn(column);
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("`").append(column.getName()).append("`").append(" ");
+        script.append(ClickHouseSqlEscapes.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildNullableAndDataType(column, type)).append(" ");
 
@@ -110,7 +142,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, tableColumn.getName() + "`");
+            return StringUtils.join("DROP COLUMN ", ClickHouseSqlEscapes.quoteIdentifier(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
@@ -118,8 +150,8 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             String modifyColumn = "";
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                modifyColumn = StringUtils.join(SQL_RENAME_COLUMN, tableColumn.getOldName(), "` TO `", tableColumn.getName(),
-                        "`, ", buildCreateColumnSql(tableColumn));
+                modifyColumn = StringUtils.join("RENAME COLUMN ", ClickHouseSqlEscapes.quoteIdentifier(tableColumn.getOldName()), " TO ", ClickHouseSqlEscapes.quoteIdentifier(tableColumn.getName()),
+                        ", ", buildCreateColumnSql(tableColumn));
             }
             return StringUtils.join(modifyColumn, "MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
         }
@@ -130,7 +162,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         if (!type.columnType.isSupportComments() || StringUtils.isEmpty(column.getComment())) {
             return "";
         }
-        return StringUtils.join(SQL_COMMENT_2, column.getComment(), "'");
+        return StringUtils.join(SQL_COMMENT_2, ClickHouseSqlEscapes.escapeSqlLiteral(column.getComment()), "'");
     }
 
     private String buildDefaultValue(TableColumn column, ClickHouseColumnTypeEnum type) {
@@ -147,21 +179,33 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         }
 
         if (Arrays.asList(Enum8,Enum16).contains(type)) {
-            return StringUtils.join("DEFAULT '", column.getDefaultValue(), "'");
+            return StringUtils.join("DEFAULT '", ClickHouseSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(Date).contains(type)) {
-            return StringUtils.join("DEFAULT '", column.getDefaultValue(), "'");
+            return StringUtils.join("DEFAULT '", ClickHouseSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(DateTime).contains(type)) {
             if ("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())) {
                 return StringUtils.join("DEFAULT ", column.getDefaultValue());
             }
-            return StringUtils.join("DEFAULT '", column.getDefaultValue(), "'");
+            return StringUtils.join("DEFAULT '", ClickHouseSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
         }
 
-        return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", validateDefaultExpression(column.getDefaultValue()));
+    }
+
+    private static String validateDefaultExpression(String defaultValue) {
+        String trimmed = defaultValue.trim();
+        // Quoted string literals stay literals; the content is escaped before re-quoting.
+        if (trimmed.length() >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+            return "'" + ClickHouseSqlEscapes.escapeSqlLiteral(trimmed.substring(1, trimmed.length() - 1)) + "'";
+        }
+        if (!trimmed.matches("[-+]?(\\d+(\\.\\d+)?|[A-Za-z_][A-Za-z0-9_]*(\\s*\\([^;)]*\\))?)")) {
+            throw new IllegalArgumentException("Invalid ClickHouse default expression: " + defaultValue);
+        }
+        return trimmed;
     }
 
     private String buildNullableAndDataType(TableColumn column, ClickHouseColumnTypeEnum type) {
@@ -201,16 +245,16 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     }
 
     public String buildColumn(TableColumn column) {
-        ClickHouseColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType());
+        ClickHouseColumnTypeEnum type = getByType(column.getColumnType());
         if (type == null) {
             return "";
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("`").append(column.getName()).append("`").append(" ");
+        script.append(ClickHouseSqlEscapes.quoteIdentifier(column.getName())).append(" ");
         script.append(buildDataType(column, type)).append(" ");
         if (StringUtils.isNoneBlank(column.getComment())) {
-            script.append(SQL_COMMENT).append(" ").append("'").append(column.getComment()).append("'").append(" ");
+            script.append(SQL_COMMENT).append(" ").append("'").append(ClickHouseSqlEscapes.escapeSqlLiteral(column.getComment())).append("'").append(" ");
         }
         return script.toString();
     }

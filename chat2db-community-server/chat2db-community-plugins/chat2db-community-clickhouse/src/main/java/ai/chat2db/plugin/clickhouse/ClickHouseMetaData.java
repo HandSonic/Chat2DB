@@ -39,7 +39,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
     private static final Logger log = LoggerFactory.getLogger(ClickHouseMetaData.class);
 
     public static String format(String tableName) {
-        return "`" + tableName + "`";
+        return ClickHouseSqlEscapes.quoteIdentifier(tableName);
     }
 
     @Override
@@ -86,7 +86,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public List<Table> views(Connection connection, String databaseName, String schemaName) {
-        String sql = "select name from system.`tables` WHERE `database`='" + schemaName + "' and engine='View'";
+        String sql = "select name from system.`tables` WHERE `database`='" + ClickHouseSqlEscapes.escapeSqlLiteral(schemaName) + "' and engine='View'";
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             List<Table> tables = new ArrayList<>();
             try {
@@ -139,7 +139,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, schemaName);
+        String sql = String.format(TRIGGER_SQL_LIST, ClickHouseSqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -156,7 +156,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
                            String triggerName) {
 
-        String sql = String.format(TRIGGER_SQL, schemaName, triggerName);
+        String sql = String.format(TRIGGER_SQL, ClickHouseSqlEscapes.escapeSqlLiteral(schemaName), ClickHouseSqlEscapes.escapeSqlLiteral(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Trigger trigger = new Trigger();
             trigger.setDatabaseName(databaseName);
@@ -172,7 +172,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String sql = String.format(ROUTINES_SQL, "PROCEDURE", schemaName, procedureName);
+        String sql = String.format(ROUTINES_SQL, "PROCEDURE", ClickHouseSqlEscapes.escapeSqlLiteral(schemaName), ClickHouseSqlEscapes.escapeSqlLiteral(procedureName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Procedure procedure = new Procedure();
             procedure.setDatabaseName(databaseName);
@@ -189,7 +189,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public List<TableColumn> columns(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(SELECT_TABLE_COLUMNS, tableName, schemaName);
+        String sql = String.format(SELECT_TABLE_COLUMNS, ClickHouseSqlEscapes.escapeSqlLiteral(tableName), ClickHouseSqlEscapes.escapeSqlLiteral(schemaName));
         List<TableColumn> tableColumns = new ArrayList<>();
 
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
@@ -245,7 +245,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, schemaName, viewName);
+        String sql = String.format(VIEW_SQL, ClickHouseSqlEscapes.escapeSqlLiteral(schemaName), ClickHouseSqlEscapes.escapeSqlLiteral(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -298,7 +298,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "`" + name + "`").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(ClickHouseSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
 
     }
 
