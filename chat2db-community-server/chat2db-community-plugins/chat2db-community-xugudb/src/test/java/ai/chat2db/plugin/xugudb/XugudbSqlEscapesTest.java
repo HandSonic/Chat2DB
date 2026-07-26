@@ -9,6 +9,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.xugudb.builder.XUGUDBSqlBuilder;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBColumnTypeEnum;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBIndexTypeEnum;
+import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -137,6 +138,71 @@ class XugudbSqlEscapesTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> XUGUDBIndexTypeEnum.NORMAL.buildIndexScript(tableIndex));
+    }
+
+    @Test
+    void selectTableNeutralizesMaliciousSchemaName() {
+        String sql = builder.dql().buildSelectTable(null, "evil\";DROP TABLE t;--", "sample_table");
+
+        assertEquals("SELECT * FROM \"evil\"\";DROP TABLE t;--\".\"sample_table\"", sql);
+    }
+
+    @Test
+    void insertNeutralizesMaliciousTableAndColumnNames() {
+        SingleInsertSqlRequest request = SingleInsertSqlRequest.builder()
+                .schemaName("app\";DROP TABLE t;--")
+                .tableName("tab\";DROP TABLE t;--")
+                .columnList(List.of("col\"; DROP TABLE t; --"))
+                .valueList(List.of("1"))
+                .build();
+
+        String sql = builder.dml().buildInsert(request);
+
+        assertTrue(sql.contains("INSERT INTO \"app\"\";DROP TABLE t;--\".\"tab\"\";DROP TABLE t;--\""), sql);
+        assertTrue(sql.contains("(\"col\"\"; DROP TABLE t; --\")"), sql);
+        assertFalse(sql.contains("INTO \"app\";"), sql);
+    }
+
+    @Test
+    void columnCommentLiteralIsEscapedEndToEnd() {
+        TableColumn col = column("id", "INTEGER");
+        col.setComment("x'; DROP TABLE t; --");
+        Table table = Table.builder()
+                .schemaName("app")
+                .name("sample_table")
+                .columnList(List.of(col))
+                .indexList(List.of())
+                .build();
+
+        String sql = builder.buildCreateTable(table, TableBuilderConfig.defaultConfig());
+
+        assertTrue(sql.contains("IS 'x''; DROP TABLE t; --'"), sql);
+        assertFalse(sql.contains("IS 'x';"), sql);
+    }
+
+    @Test
+    void fallbackColumnEscapesNameAndRejectsMaliciousType() {
+        TableColumn weirdName = column("na\"me", "FOOTYPE");
+        assertTrue(XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(weirdName).startsWith("\"na\"\"me\" FOOTYPE"));
+
+        TableColumn maliciousType = column("id", "INT); DROP TABLE t; --");
+        assertThrows(IllegalArgumentException.class,
+                () -> XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(maliciousType));
+    }
+
+    @Test
+    void validatorsReturnTrimmedValues() {
+        TableColumn numeric = column("id", "INTEGER");
+        numeric.setDefaultValue("  0  ");
+        String columnSql = XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(numeric);
+        assertTrue(columnSql.contains("DEFAULT 0 "), columnSql);
+        assertFalse(columnSql.contains("DEFAULT  0"), columnSql);
+
+        TableColumn varchar = column("name_col", "VARCHAR");
+        varchar.setColumnSize(10);
+        varchar.setUnit(" BYTE ");
+        String varcharSql = XUGUDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(varchar);
+        assertTrue(varcharSql.contains("(10 BYTE)"), varcharSql);
     }
 
     private static TableColumn column(String name, String type) {

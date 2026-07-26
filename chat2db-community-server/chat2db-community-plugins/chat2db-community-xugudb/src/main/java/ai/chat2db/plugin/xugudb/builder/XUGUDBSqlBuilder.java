@@ -15,7 +15,10 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.xugudb.constant.XUGUDBSqlBuilderConstants.*;
 public class XUGUDBSqlBuilder extends DefaultSqlBuilder {
@@ -160,5 +163,39 @@ public class XUGUDBSqlBuilder extends DefaultSqlBuilder {
         }
 
         return sqlBuilder.toString();
+    }
+
+    @Override
+    public String quoteIdentifier(String identifier) {
+        return XugudbSqlEscapes.quoteIdentifier(identifier);
+    }
+
+    @Override
+    public String quoteQualifiedIdentifier(String... identifiers) {
+        return Arrays.stream(identifiers)
+                .filter(StringUtils::isNotBlank)
+                .map(XugudbSqlEscapes::quoteIdentifier)
+                .collect(Collectors.joining(SQLConstants.DOT));
+    }
+
+    @Override
+    public String buildSelectTable(String databaseName, String schemaName, String tableName) {
+        return SQLConstants.SELECT_ALL_FROM_SQL_PREFIX + quoteQualifiedIdentifier(databaseName, schemaName, tableName);
+    }
+
+    @Override
+    protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
+        script.append(quoteQualifiedIdentifier(databaseName, schemaName, tableName));
+    }
+
+    @Override
+    protected void buildColumns(List<String> columnList, StringBuilder script) {
+        if (columnList != null && !columnList.isEmpty()) {
+            script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
+                    .append(columnList.stream()
+                            .map(XugudbSqlEscapes::quoteIdentifier)
+                            .collect(Collectors.joining(SQLConstants.COMMA)))
+                    .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
+        }
     }
 }

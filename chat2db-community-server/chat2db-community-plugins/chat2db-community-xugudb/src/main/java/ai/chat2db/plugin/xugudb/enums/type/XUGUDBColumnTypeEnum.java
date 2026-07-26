@@ -119,7 +119,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
     public String buildCreateColumnSql(TableColumn column) {
         XUGUDBColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
         if (type == null) {
-            return buildDefaultColumn(column, false);
+            return buildFallbackColumn(column);
         }
         StringBuilder script = new StringBuilder();
 
@@ -163,6 +163,16 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
         script.append(") \n");
 
         return isModify ? script.toString() : "";
+    }
+
+    private static final Pattern FALLBACK_TYPE_PATTERN = Pattern.compile("\\A[A-Za-z]+(\\(\\d+(,\\d+)?\\))?\\z");
+
+    private static String buildFallbackColumn(TableColumn column) {
+        String columnType = column.getColumnType() == null ? "" : column.getColumnType().trim();
+        if (!FALLBACK_TYPE_PATTERN.matcher(columnType).matches()) {
+            throw new IllegalArgumentException("Unsupported column type: " + column.getColumnType());
+        }
+        return XugudbSqlEscapes.quoteIdentifier(column.getName()) + " " + columnType;
     }
 
     private String buildAutoIncrement(TableColumn column, XUGUDBColumnTypeEnum type) {
@@ -220,17 +230,19 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
     private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z]+$");
 
     private static String validateDefaultValue(String defaultValue) {
-        if (!DEFAULT_VALUE_PATTERN.matcher(defaultValue.trim()).matches()) {
+        String trimmed = defaultValue.trim();
+        if (!DEFAULT_VALUE_PATTERN.matcher(trimmed).matches()) {
             throw new IllegalArgumentException("Unsupported column default value: " + defaultValue);
         }
-        return defaultValue;
+        return trimmed;
     }
 
     private static String validateUnit(String unit) {
-        if (!UNIT_PATTERN.matcher(unit.trim()).matches()) {
+        String trimmed = unit.trim();
+        if (!UNIT_PATTERN.matcher(trimmed).matches()) {
             throw new IllegalArgumentException("Unsupported length unit: " + unit);
         }
-        return unit;
+        return trimmed;
     }
 
     private String buildDataType(TableColumn column, XUGUDBColumnTypeEnum type) {
