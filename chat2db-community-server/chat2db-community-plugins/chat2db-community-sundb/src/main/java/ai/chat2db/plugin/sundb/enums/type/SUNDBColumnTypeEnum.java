@@ -134,11 +134,18 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
     private static Map<String, SUNDBColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
 
-    // No quotes, commas or parentheses: quotes would allow literal smuggling,
-    // commas would inject extra column definitions, and parentheses could close
-    // the column definition early (e.g. "0) --"). SUNDB/Oracle-style default
-    // functions (SYSDATE, CURRENT_TIMESTAMP, USER, SEQ.NEXTVAL) need no parens.
-    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("[A-Za-z0-9_ .+-]+");
+    // Two alternatives, fully anchored:
+    //  1. bare token [A-Za-z0-9_ .+-]+ with a (?!.*--) guard so no comment
+    //     sequence can appear — covers CURRENT_TIMESTAMP, SYSDATE, USER,
+    //     SEQ.NEXTVAL, -1, 1.5. No quotes, commas or parentheses, so the
+    //     value cannot smuggle literals, inject column defs, or close the
+    //     column definition early.
+    //  2. anchored single-quoted literal '(?:[^']|'')*' — covers legitimate
+    //     string defaults like 'Y', '0', 'O''Brien', '1970-01-01', ''.
+    //     Doubling is the only quote escape, so the literal cannot terminate
+    //     early; anything after the closing quote fails the \z anchor.
+    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
+            "\\A(?:(?!.*--)[A-Za-z0-9_ .+-]+|'(?:[^']|'')*')\\z");
 
     static {
         for (SUNDBColumnTypeEnum value : SUNDBColumnTypeEnum.values()) {

@@ -162,13 +162,31 @@ class SUNDBSqlEscapesTest {
     }
 
     @Test
+    void buildCreateColumnSqlAcceptsStringLiteralDefaults() {
+        String[] valid = {"'Y'", "'0'", "'O''Brien'", "'1970-01-01'", "''"};
+        for (String literal : valid) {
+            TableColumn column = new TableColumn();
+            column.setName("c1");
+            column.setColumnType("VARCHAR");
+            column.setDefaultValue(literal);
+            assertTrue(SUNDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(column).contains("DEFAULT " + literal),
+                    "literal should be accepted: " + literal);
+        }
+    }
+
+    @Test
     void buildCreateColumnSqlRejectsDefaultValuesThatReshapeDdl() {
         String[] payloads = {
                 "0) --",          // closes the column definition, comments out the line remainder
+                "0 --",           // comment sequence in a bare token
                 "1, x INT",       // injects an extra column definition into CREATE TABLE
-                "'quoted'",       // string-literal smuggling
                 "now()",          // parentheses could close the column def; functions work without them
-                "0); DROP TABLE x--"
+                "0); DROP TABLE x--",
+                "'abc",           // unbalanced quote
+                "'a' 'b'",        // literal concatenation smuggling
+                "'a'||'b'",       // concatenation operator
+                "'a'--",          // comment after literal
+                "'a'; DROP TABLE x--"
         };
         for (String payload : payloads) {
             TableColumn column = new TableColumn();
