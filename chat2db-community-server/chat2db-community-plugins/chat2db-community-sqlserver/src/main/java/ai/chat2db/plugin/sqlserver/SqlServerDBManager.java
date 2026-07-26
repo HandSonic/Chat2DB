@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.sqlserver;
 
 import ai.chat2db.spi.IDbManager;
+import ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierProcessor;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
 import ai.chat2db.spi.sql.Chat2DBContext;
@@ -26,8 +27,6 @@ import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.sqlserver.constant.SQLConstant.*;
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerDBManagerConstants.*;
-import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeIdentifier;
-import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
 import static cn.hutool.core.date.DatePattern.NORM_DATETIME_PATTERN;
 
 @Slf4j
@@ -126,11 +125,11 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportFunction(Connection connection, String functionName, AsyncContext asyncContext) {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'", escapeStringLiteral(functionName));
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'", SqlServerIdentifierProcessor.INSTANCE.escapeString(functionName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(String.format(DROP_FUNCTION_SQL, escapeStringLiteral(functionName), escapeIdentifier(functionName)));
+                sqlBuilder.append(String.format(DROP_FUNCTION_SQL, SqlServerIdentifierProcessor.INSTANCE.escapeString(functionName), SqlServerIdentifierProcessor.escapeIdentifier(functionName)));
                 sqlBuilder.append(resultSet.getString("definition"))
                         .append("\n").append("go").append("\n");
                 asyncContext.write(sqlBuilder.toString());
@@ -149,11 +148,11 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportProcedure(Connection connection, String procedureName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", escapeStringLiteral(procedureName));
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", SqlServerIdentifierProcessor.INSTANCE.escapeString(procedureName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(String.format(DROP_PROCEDURE_SQL, escapeStringLiteral(procedureName), escapeIdentifier(procedureName)));
+                sqlBuilder.append(String.format(DROP_PROCEDURE_SQL, SqlServerIdentifierProcessor.INSTANCE.escapeString(procedureName), SqlServerIdentifierProcessor.escapeIdentifier(procedureName)));
                 sqlBuilder.append(resultSet.getString("definition")).append("\n").append("go").append("\n");
                 asyncContext.write(sqlBuilder.toString());
 
@@ -174,7 +173,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     @Override
     public void connectDatabase(Connection connection, String database) {
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, escapeIdentifier(database)));
+            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, SqlServerIdentifierProcessor.escapeIdentifier(database)));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -561,8 +560,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        String value = unquoteIdentifier(identifier);
-        return "[" + value.replace("]", "]]") + "]";
+        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier(unquoteIdentifier(identifier));
     }
 
     static String unquoteIdentifier(String identifier) {

@@ -8,8 +8,17 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerIdentifierProcessorConstants.*;
+
+/**
+ * SQL Server dialect identifier processor: bracket-quoted identifiers with
+ * embedded {@code ]} doubling, and single-quote doubling for string literals
+ * (SQL Server does not treat backslash as an escape character, so backslashes
+ * are never doubled). Shared stateless instance available via {@link #INSTANCE}
+ * for call sites without MetaData access.
+ */
 public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
+    public static final SqlServerIdentifierProcessor INSTANCE = new SqlServerIdentifierProcessor();
 
     public static final Set<String> SQL_SERVER_RESERVED_KEYWORDS = new HashSet<>();
 
@@ -203,20 +212,53 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         return SQL_SERVER_RESERVED_KEYWORDS.contains(identifier);
     }
 
+    /**
+     * Always quotes with square brackets, stripping one surrounding bracket pair
+     * and doubling every embedded closing bracket.
+     */
     @Override
-    public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
-        if (isValidIdentifier(identifier) || !isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
-            return identifier;
-        }
-        return "[" + identifier.replace("]", "]]") + "]";
+    public String quoteIdentifier(String identifier) {
+        return "[" + escapeIdentifierContent(identifier) + "]";
     }
 
     @Override
-    public String quoteIdentifier(String identifier) {
-        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
-            return identifier;
+    public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
+        return quoteIdentifier(identifier);
+    }
+
+    @Override
+    public String quoteIdentifierIgnoreCase(String identifier) {
+        return quoteIdentifier(identifier);
+    }
+
+    /**
+     * Escapes a value interpolated into a single-quoted SQL string literal by
+     * doubling every single quote. Backslashes are literal in Transact-SQL and
+     * are therefore left untouched.
+     */
+    @Override
+    public String escapeString(String str) {
+        return str == null ? "" : StringUtils.replace(str, "'", "''");
+    }
+
+    private static String escapeIdentifierContent(String identifier) {
+        if (identifier == null) {
+            return "";
         }
-        return "[" + identifier.replace("]", "]]") + "]";
+        String stripped = identifier;
+        if (stripped.length() >= 2 && stripped.startsWith("[") && stripped.endsWith("]")) {
+            stripped = stripped.substring(1, stripped.length() - 1);
+        }
+        return StringUtils.replace(stripped, "]", "]]");
+    }
+
+    /**
+     * Escapes identifier content for a position already surrounded by square
+     * brackets: strips one surrounding bracket pair, then doubles every embedded
+     * closing bracket.
+     */
+    public static String escapeIdentifier(String identifier) {
+        return escapeIdentifierContent(identifier);
     }
 
     @Override

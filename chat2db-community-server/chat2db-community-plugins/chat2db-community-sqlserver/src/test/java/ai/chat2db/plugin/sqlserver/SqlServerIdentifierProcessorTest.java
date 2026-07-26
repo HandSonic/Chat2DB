@@ -11,34 +11,31 @@ import ai.chat2db.plugin.sqlserver.builder.SqlServerSqlBuilder;
 import ai.chat2db.plugin.sqlserver.constant.SQLConstant;
 import ai.chat2db.plugin.sqlserver.enums.type.SqlServerColumnTypeEnum;
 import ai.chat2db.plugin.sqlserver.enums.type.SqlServerIndexTypeEnum;
+import ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeIdentifier;
-import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.escapeStringLiteral;
-import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.quoteIdentifierPart;
-import static ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierUtils.validateCollation;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SqlServerSqlEscapesTest {
+class SqlServerIdentifierProcessorTest {
 
     @Test
     void shouldDoubleSingleQuotesInStringLiterals() {
-        assertEquals("O''Brien", escapeStringLiteral("O'Brien"));
-        assertEquals("", escapeStringLiteral(null));
-        assertEquals("plain", escapeStringLiteral("plain"));
+        assertEquals("O''Brien", SqlServerIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("", SqlServerIdentifierProcessor.INSTANCE.escapeString(null));
+        assertEquals("plain", SqlServerIdentifierProcessor.INSTANCE.escapeString("plain"));
     }
 
     @Test
     void shouldDoubleClosingBracketsInQuotedIdentifiers() {
-        assertEquals("[weird]]name]", quoteIdentifierPart("weird]name"));
-        assertEquals("a]]b", escapeIdentifier("a]b"));
-        assertEquals("", escapeIdentifier(null));
+        assertEquals("[weird]]name]", SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier("weird]name"));
+        assertEquals("a]]b", SqlServerIdentifierProcessor.escapeIdentifier("a]b"));
+        assertEquals("", SqlServerIdentifierProcessor.escapeIdentifier(null));
     }
 
     @Test
@@ -128,7 +125,7 @@ class SqlServerSqlEscapesTest {
 
     @Test
     void shouldAcceptLegitCollationAndRejectInjection() {
-        assertEquals("Latin1_General_100_CI_AS_KS_WS_SC", validateCollation("Latin1_General_100_CI_AS_KS_WS_SC"));
+        assertEquals("Latin1_General_100_CI_AS_KS_WS_SC", SqlServerSqlGuards.validateCollation("Latin1_General_100_CI_AS_KS_WS_SC"));
 
         SqlServerSqlBuilder builder = new SqlServerSqlBuilder();
         Database database = new Database();
