@@ -61,7 +61,7 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
             DefaultSQLExecutor.getInstance().execute(connection, SQLConstant.TABLE_DDL_FUNCTION_SQL, resultSet -> null);
         } catch (Exception e) {
         }
-        String sql = String.format(SQL_SELECT_GENERATE_TABLE_DDL_SQL, Db2IdentifierProcessor.INSTANCE.quoteIdentifier(schemaName), Db2IdentifierProcessor.INSTANCE.escapeString(schemaName), Db2IdentifierProcessor.INSTANCE.escapeString(tableName), Db2IdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+        String sql = String.format(SQL_SELECT_GENERATE_TABLE_DDL_SQL, Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName), Db2IdentifierProcessor.INSTANCE.escapeString(schemaName), Db2IdentifierProcessor.INSTANCE.escapeString(tableName), Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -128,20 +128,20 @@ public class DB2DBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE, Db2IdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+        return String.format(SQL_DROP_TABLE, Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
     }
 
     @Override
     public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return "TRUNCATE TABLE " + Db2IdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return "TRUNCATE TABLE " + Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
-        String sql = String.format(SQL_COPY_TABLE, Db2IdentifierProcessor.INSTANCE.quoteIdentifier(newTableName), Db2IdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+        String sql = String.format(SQL_COPY_TABLE, Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName), Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         if(copyData){
-            sql = String.format(SQL_INSERT_TABLE_SELECT, Db2IdentifierProcessor.INSTANCE.quoteIdentifier(newTableName), Db2IdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+            sql = String.format(SQL_INSERT_TABLE_SELECT, Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName), Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         }
     }

@@ -187,7 +187,7 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
     private static String quoteQualifiedName(String... parts) {
         return java.util.Arrays.stream(parts)
                 .filter(StringUtils::isNotBlank)
-                .map(Db2IdentifierProcessor.INSTANCE::quoteIdentifier)
+                .map(Db2IdentifierProcessor.INSTANCE::quoteIdentifierAlways)
                 .collect(java.util.stream.Collectors.joining(SQLConstants.DOT));
     }
 }

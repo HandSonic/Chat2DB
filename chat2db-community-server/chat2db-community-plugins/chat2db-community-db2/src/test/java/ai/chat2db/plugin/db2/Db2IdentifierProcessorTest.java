@@ -34,6 +34,43 @@ class Db2IdentifierProcessorTest {
     }
 
     @Test
+    void quoteIdentifierPassesThroughNullAndBlank() {
+        assertEquals(null, Db2IdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", Db2IdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("  ", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("  "));
+    }
+
+    @Test
+    void quoteIdentifierLeavesValidPlainIdentifierUnquoted() {
+        assertEquals("plain", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("T1_COL", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("T1_COL"));
+        assertEquals("plain", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("plain", 11, 5));
+    }
+
+    @Test
+    void quoteIdentifierQuotesNonPlainIdentifiers() {
+        assertEquals("\"has space\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
+        assertEquals("\"1abc\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("1abc"));
+        assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
+        assertEquals("\"already\"\" quoted\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("\"already\" quoted\""));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesUnconditionally() {
+        assertEquals(null, Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("\"plain\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("a\"b"));
+        assertEquals("\"abc\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"abc\""));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+        assertEquals(null, Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"plain\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a\"b"));
+    }
+
+    @Test
     void createSchemaNeutralizesMaliciousNameAndComment() {
         Schema schema = new Schema();
         schema.setName("bad\"name");
@@ -171,7 +208,7 @@ class Db2IdentifierProcessorTest {
     @Test
     void copyTableQuotesBothIdentifiers() {
         String sql = String.format(ai.chat2db.plugin.db2.constant.DB2DBManagerConstants.SQL_COPY_TABLE,
-                Db2IdentifierProcessor.INSTANCE.quoteIdentifier("n\"t"), Db2IdentifierProcessor.INSTANCE.quoteIdentifier("s\"t"));
+                Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("n\"t"), Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("s\"t"));
 
         assertEquals("CREATE TABLE \"n\"\"t\" LIKE \"s\"\"t\" INCLUDING INDEXES", sql);
     }

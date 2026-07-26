@@ -13,12 +13,23 @@ public class Db2IdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public static final Db2IdentifierProcessor INSTANCE = new Db2IdentifierProcessor();
 
     /**
-     * Always quotes with double quotes, stripping one surrounding quote pair and
-     * doubling every embedded double quote.
+     * SPI-facing conditional quoting: null passes through, blank is returned
+     * unchanged, an identifier that is already a valid plain identifier (and not
+     * a reserved keyword) is returned unquoted; anything else is wrapped with
+     * double quotes via {@link #quoteIdentifierAlways(String)}.
      */
     @Override
     public String quoteIdentifier(String identifier) {
-        return "\"" + escapeIdentifierContent(identifier) + "\"";
+        if (identifier == null) {
+            return null;
+        }
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -26,9 +37,24 @@ public class Db2IdentifierProcessor extends DefaultSQLIdentifierProcessor {
         return quoteIdentifier(identifier);
     }
 
+    /**
+     * Unconditional quoting for DDL-generation call sites: null passes through,
+     * anything else is wrapped with double quotes, stripping one surrounding
+     * quote pair and doubling every embedded double quote.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        return "\"" + escapeIdentifierContent(identifier) + "\"";
+    }
+
+    /**
+     * Explicit always-quote SPI variant: preserves case and always quotes.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
     }
 
     /**
