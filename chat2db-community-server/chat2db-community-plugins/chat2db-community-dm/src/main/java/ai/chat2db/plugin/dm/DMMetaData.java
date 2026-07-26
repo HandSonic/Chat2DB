@@ -50,13 +50,13 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String format(String tableName) {
-        return "\"" + tableName + "\"";
+        return DMSqlEscapes.quoteIdentifier(tableName);
     }
 
     protected static String tableDDL = "SELECT dbms_metadata.get_ddl('TABLE', '%s','%s') as ddl FROM dual ;";
 
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String tableDDLSql = String.format(tableDDL, tableName, schemaName);
+        String tableDDLSql = String.format(tableDDL, DMSqlEscapes.escapeSqlLiteral(tableName), DMSqlEscapes.escapeSqlLiteral(schemaName));
         StringBuilder ddlBuilder = new StringBuilder();
         DefaultSQLExecutor.getInstance().execute(connection, tableDDLSql, resultSet -> {
             if (resultSet.next()) {
@@ -69,7 +69,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
             String tableComment = tables.get(0).getComment();
             if (StringUtils.isNotBlank(tableComment)) {
                 ddlBuilder.append(SQL_COMMENT_TABLE).append(format(schemaName)).append(".").append(format(tableName))
-                        .append(" IS '").append(tableComment.replace("'", "''")).append("'").append(";").append("\n");
+                        .append(" IS '").append(DMSqlEscapes.escapeSqlLiteral(tableComment)).append("'").append(";").append("\n");
             }
         }
         List<TableColumn> columns = this.columns(connection, databaseName, schemaName, tableName);
@@ -80,7 +80,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
                 if (StringUtils.isNotBlank(comment)) {
                     ddlBuilder.append(SQL_COMMENT_COLUMN).append(format(schemaName)).append(".").append(format(tableName))
                             .append(".").append(format(columnName)).append(" IS ")
-                            .append("'").append(comment.replace("'", "''"))
+                            .append("'").append(DMSqlEscapes.escapeSqlLiteral(comment))
                             .append("';").append("\n");
                 }
             }
@@ -115,7 +115,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
             if (StringUtils.isNotBlank(indexName) && !isPrimaryKey && !isUniqueConstraint) {
                 String sql = "select DBMS_METADATA.GET_DDL('INDEX','%s') as INDEX_DDL";
                 try {
-                    DefaultSQLExecutor.getInstance().execute(connection, String.format(sql, indexName), resultSet -> {
+                    DefaultSQLExecutor.getInstance().execute(connection, String.format(sql, DMSqlEscapes.escapeSqlLiteral(indexName)), resultSet -> {
                         if (resultSet.next()) {
                             ddlBuilder.append(resultSet.getString("INDEX_DDL")).append("\n");
                         }
@@ -151,7 +151,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
     public Function function(Connection connection, @NotEmpty String databaseName, String schemaName,
                              String functionName) {
 
-        String sql = String.format(ROUTINES_SQL, "PROC", schemaName, functionName);
+        String sql = String.format(ROUTINES_SQL, "PROC", DMSqlEscapes.escapeSqlLiteral(schemaName), DMSqlEscapes.escapeSqlLiteral(functionName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -171,7 +171,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String sql = String.format(ROUTINES_SQL, "PROC", schemaName, procedureName);
+        String sql = String.format(ROUTINES_SQL, "PROC", DMSqlEscapes.escapeSqlLiteral(schemaName), DMSqlEscapes.escapeSqlLiteral(procedureName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -193,7 +193,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, schemaName);
+        String sql = String.format(TRIGGER_SQL_LIST, DMSqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -210,7 +210,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
                            String triggerName) {
 
-        String sql = String.format(TRIGGER_SQL, schemaName, triggerName);
+        String sql = String.format(TRIGGER_SQL, DMSqlEscapes.escapeSqlLiteral(schemaName), DMSqlEscapes.escapeSqlLiteral(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Trigger trigger = new Trigger();
             trigger.setDatabaseName(databaseName);
@@ -227,7 +227,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, schemaName, viewName);
+        String sql = String.format(VIEW_SQL, DMSqlEscapes.escapeSqlLiteral(schemaName), DMSqlEscapes.escapeSqlLiteral(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -244,7 +244,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(INDEX_SQL, schemaName, tableName);
+        String sql = String.format(INDEX_SQL, DMSqlEscapes.escapeSqlLiteral(schemaName), DMSqlEscapes.escapeSqlLiteral(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap();
             while (resultSet.next()) {
@@ -324,7 +324,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> DMSqlEscapes.quoteIdentifier(name)).collect(Collectors.joining("."));
     }
 
 
