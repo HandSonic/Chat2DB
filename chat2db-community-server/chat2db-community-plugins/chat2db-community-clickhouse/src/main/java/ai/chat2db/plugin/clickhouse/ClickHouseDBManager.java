@@ -38,7 +38,7 @@ public class ClickHouseDBManager extends DefaultDBManager implements IDbManager 
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(SQL_DROP_FUNCTION_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(resultSet.getString("name"))).append(";")
+                sqlBuilder.append(SQL_DROP_FUNCTION_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(resultSet.getString("name"))).append(";")
                         .append("\n")
                         .append(resultSet.getString("create_query")).append(";").append("\n");
                 asyncContext.write(sqlBuilder.toString());
@@ -57,17 +57,17 @@ public class ClickHouseDBManager extends DefaultDBManager implements IDbManager 
                 String tableOrViewName = resultSet.getString("name");
                 if (Objects.equals("View", tableType)) {
                     StringBuilder sqlBuilder = new StringBuilder();
-                    sqlBuilder.append(SQL_DROP_VIEW_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(databaseName)).append(".").append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableOrViewName))
+                    sqlBuilder.append(SQL_DROP_VIEW_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(databaseName)).append(".").append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableOrViewName))
                             .append(";").append("\n").append(ddl).append(";").append("\n");
                     asyncContext.write(sqlBuilder.toString());
                 } else if (Objects.equals("Dictionary", tableType)) {
                     StringBuilder sqlBuilder = new StringBuilder();
-                    sqlBuilder.append(SQL_DROP_DICTIONARY_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(databaseName)).append(".").append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableOrViewName))
+                    sqlBuilder.append(SQL_DROP_DICTIONARY_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(databaseName)).append(".").append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableOrViewName))
                             .append(";").append("\n").append(ddl).append(";").append("\n");
                     asyncContext.write(sqlBuilder.toString());
                 } else {
                     StringBuilder sqlBuilder = new StringBuilder();
-                    sqlBuilder.append(SQL_DROP_TABLE_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(databaseName)).append(".").append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableOrViewName))
+                    sqlBuilder.append(SQL_DROP_TABLE_EXISTS).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(databaseName)).append(".").append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableOrViewName))
                             .append(";").append("\n").append(ddl).append(";").append("\n");
                     asyncContext.write(sqlBuilder.toString());
                     if (asyncContext.isContainsData() && dataFlag) {
@@ -120,10 +120,10 @@ public class ClickHouseDBManager extends DefaultDBManager implements IDbManager 
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
-        String sql = "CREATE TABLE " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + "";
+        String sql = "CREATE TABLE " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " AS " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + "";
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         if (copyData) {
-            sql = "INSERT INTO " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " SELECT * FROM " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+            sql = "INSERT INTO " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " SELECT * FROM " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         }
     }

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -28,15 +29,65 @@ class ClickHouseIdentifierProcessorTest {
     }
 
     @Test
+    void shouldPassThroughNullAndBlankIdentifiers() {
+        assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("  ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("  "));
+    }
+
+    @Test
+    void shouldLeavePlainIdentifiersUnquoted() {
+        assertEquals("plain", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("table_1", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("table_1"));
+        assertEquals("plain", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("plain", 24, 3));
+    }
+
+    @Test
+    void shouldQuoteReservedKeywords() {
+        assertEquals("`select`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
+        assertEquals("`SELECT`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
+        assertEquals("`order`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("order", null, null));
+    }
+
+    @Test
     void shouldDoubleBackticksInIdentifiers() {
         assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("a`b"));
-        assertEquals("`plain`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
-        assertEquals("``", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("`with space`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("with space"));
+    }
+
+    @Test
+    void shouldAlwaysQuoteInIgnoreCaseAndAlwaysVariants() {
+        assertEquals("`plain`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a`b"));
+        assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+        assertEquals("`plain`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a`b"));
+        assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
     }
 
     @Test
     void shouldStripSurroundingBackticksBeforeDoubling() {
         assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
+        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
+    }
+
+    @Test
+    void shouldRecognizeAndRemoveBacktickQuotes() {
+        assertTrue(ClickHouseIdentifierProcessor.INSTANCE.isQuoteIdentifier("`name`"));
+        assertTrue(ClickHouseIdentifierProcessor.INSTANCE.isQuoteIdentifier("\"name\""));
+        assertFalse(ClickHouseIdentifierProcessor.INSTANCE.isQuoteIdentifier("name"));
+        assertFalse(ClickHouseIdentifierProcessor.INSTANCE.isQuoteIdentifier(null));
+        assertEquals("name", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("`name`"));
+        assertEquals("name", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("\"name\""));
+        assertEquals("name", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("name"));
+        assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote(null));
+    }
+
+    @Test
+    void shouldRoundTripThroughAlwaysQuoteAndRemove() {
+        assertEquals("plain", ClickHouseIdentifierProcessor.INSTANCE
+                .removeIdentifierQuote(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain")));
+        assertEquals("db.table", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("`db`.`table`"));
     }
 
     @Test

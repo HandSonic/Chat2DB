@@ -102,7 +102,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
 
     private static String buildValidatedFallbackColumn(TableColumn column) {
         StringBuilder script = new StringBuilder();
-        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
         String columnType = ClickHouseSqlGuards.requireColumnTypeExpression(column.getColumnType());
         if (column.getNullable() != null && 1 == column.getNullable() && isNullableWrappable(columnType)) {
             columnType = "Nullable(" + columnType + ")";
@@ -156,7 +156,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildNullableAndDataType(column, type)).append(" ");
 
@@ -171,7 +171,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join("DROP COLUMN ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
@@ -179,7 +179,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             String modifyColumn = "";
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                modifyColumn = StringUtils.join("RENAME COLUMN ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " TO ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()),
+                modifyColumn = StringUtils.join("RENAME COLUMN ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " TO ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()),
                         ", ", buildCreateColumnSql(tableColumn));
             }
             return StringUtils.join(modifyColumn, "MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
@@ -268,7 +268,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
         script.append(buildDataType(column, type)).append(" ");
         if (StringUtils.isNoneBlank(column.getComment())) {
             script.append(SQL_COMMENT).append(" ").append("'").append(ClickHouseIdentifierProcessor.INSTANCE.escapeString(column.getComment())).append("'").append(" ");

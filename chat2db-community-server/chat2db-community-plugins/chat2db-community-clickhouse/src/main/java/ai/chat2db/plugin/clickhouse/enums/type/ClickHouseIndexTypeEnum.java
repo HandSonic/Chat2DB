@@ -90,7 +90,7 @@ public enum ClickHouseIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
+                script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 script.append(",");
             }
         }
@@ -103,7 +103,7 @@ public enum ClickHouseIndexTypeEnum {
         if (this.equals(PRIMARY)) {
             return "";
         } else {
-            return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+            return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
         }
     }
 
@@ -112,10 +112,10 @@ public enum ClickHouseIndexTypeEnum {
             return "";
         }
         if (EditStatusEnum.DELETE.name().equals(tableIndex.getEditStatus())) {
-            return StringUtils.join("DROP INDEX ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+            return StringUtils.join("DROP INDEX ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
         }
         if (EditStatusEnum.MODIFY.name().equals(tableIndex.getEditStatus())) {
-            return StringUtils.join("DROP INDEX ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()),
+            return StringUtils.join("DROP INDEX ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()),
                     ",\n ADD ", buildIndexScript(tableIndex));
         }
         if (EditStatusEnum.ADD.name().equals(tableIndex.getEditStatus())) {

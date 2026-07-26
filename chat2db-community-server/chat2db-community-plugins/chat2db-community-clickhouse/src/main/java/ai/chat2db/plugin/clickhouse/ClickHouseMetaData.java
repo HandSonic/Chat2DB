@@ -46,7 +46,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
     }
 
     public static String format(String tableName) {
-        return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     @Override
@@ -305,7 +305,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(ClickHouseIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
 
     }
 

@@ -29,9 +29,9 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getDatabaseName())) {
-            script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -79,9 +79,9 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_ALTER_TABLE);
         if (StringUtils.isNotBlank(oldTable.getDatabaseName())) {
-            script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(oldTable.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+        script.append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
 
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             script.append(SQLConstants.TAB).append(SQL_MODIFY_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(ClickHouseIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
@@ -139,9 +139,9 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName()));
+        sqlBuilder.append(SQL_CREATE_DATABASE).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName()));
         if(StringUtils.isNotBlank(database.getComment())){
-            sqlBuilder.append(SQL_SEMICOLON_ALTER_DATABASE).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName())).append(SQL_COMMENT).append(ClickHouseIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_SEMICOLON_ALTER_DATABASE).append(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName())).append(SQL_COMMENT).append(ClickHouseIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
         return sqlBuilder.toString();
     }
