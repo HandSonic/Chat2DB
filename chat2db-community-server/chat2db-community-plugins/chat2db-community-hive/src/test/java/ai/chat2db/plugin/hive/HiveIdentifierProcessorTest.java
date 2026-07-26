@@ -8,6 +8,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.hive.builder.HiveSqlBuilder;
 import ai.chat2db.plugin.hive.enums.type.HiveColumnTypeEnum;
 import ai.chat2db.plugin.hive.enums.type.HiveIndexTypeEnum;
+import ai.chat2db.plugin.hive.identifier.HiveIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,51 +18,51 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class HiveSqlEscapesTest {
+class HiveIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesBackslashBeforeSingleQuote() {
-        assertEquals("a''b\\\\c", HiveSqlEscapes.escapeSqlLiteral("a'b\\c"));
-        assertEquals("''", HiveSqlEscapes.escapeSqlLiteral("'"));
-        assertEquals("plain", HiveSqlEscapes.escapeSqlLiteral("plain"));
-        assertNull(HiveSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("a''b\\\\c", HiveIdentifierProcessor.INSTANCE.escapeString("a'b\\c"));
+        assertEquals("''", HiveIdentifierProcessor.INSTANCE.escapeString("'"));
+        assertEquals("plain", HiveIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertNull(HiveIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void quoteIdentifierDoublesEmbeddedBackticks() {
-        assertEquals("`plain`", HiveSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("`weird``name`", HiveSqlEscapes.quoteIdentifier("weird`name"));
-        assertEquals("`a``; DROP TABLE b; --`", HiveSqlEscapes.quoteIdentifier("a`; DROP TABLE b; --"));
+        assertEquals("`plain`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name"));
+        assertEquals("`a``; DROP TABLE b; --`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("a`; DROP TABLE b; --"));
         // one surrounding backtick pair is stripped before doubling
-        assertEquals("`a``b`", HiveSqlEscapes.quoteIdentifier("`a`b`"));
-        assertEquals("`quoted`", HiveSqlEscapes.quoteIdentifier("`quoted`"));
+        assertEquals("`a``b`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
+        assertEquals("`quoted`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
     }
 
     @Test
     void requireHiveNameRejectsInjection() {
-        assertEquals("utf8", HiveSqlEscapes.requireHiveName("utf8", "charset"));
+        assertEquals("utf8", HiveSqlGuards.requireHiveName("utf8", "charset"));
         assertThrows(IllegalArgumentException.class,
-                () -> HiveSqlEscapes.requireHiveName("InnoDB, COMMENT='x'", "engine"));
+                () -> HiveSqlGuards.requireHiveName("InnoDB, COMMENT='x'", "engine"));
         assertThrows(IllegalArgumentException.class,
-                () -> HiveSqlEscapes.requireHiveName("utf8;DROP TABLE t", "charset"));
+                () -> HiveSqlGuards.requireHiveName("utf8;DROP TABLE t", "charset"));
     }
 
     @Test
     void requireNumericDefaultRejectsNonLiteral() {
-        assertEquals("42", HiveSqlEscapes.requireNumericDefault("42"));
-        assertEquals("-1.5", HiveSqlEscapes.requireNumericDefault("-1.5"));
-        assertEquals("1e3", HiveSqlEscapes.requireNumericDefault("1e3"));
-        assertEquals("TRUE", HiveSqlEscapes.requireNumericDefault("TRUE"));
-        assertThrows(IllegalArgumentException.class, () -> HiveSqlEscapes.requireNumericDefault("0);DROP TABLE t"));
-        assertThrows(IllegalArgumentException.class, () -> HiveSqlEscapes.requireNumericDefault("(uuid())"));
+        assertEquals("42", HiveSqlGuards.requireNumericDefault("42"));
+        assertEquals("-1.5", HiveSqlGuards.requireNumericDefault("-1.5"));
+        assertEquals("1e3", HiveSqlGuards.requireNumericDefault("1e3"));
+        assertEquals("TRUE", HiveSqlGuards.requireNumericDefault("TRUE"));
+        assertThrows(IllegalArgumentException.class, () -> HiveSqlGuards.requireNumericDefault("0);DROP TABLE t"));
+        assertThrows(IllegalArgumentException.class, () -> HiveSqlGuards.requireNumericDefault("(uuid())"));
     }
 
     @Test
     void requireAscOrDescRejectsInjection() {
-        assertEquals("ASC", HiveSqlEscapes.requireAscOrDesc("asc"));
-        assertEquals("DESC", HiveSqlEscapes.requireAscOrDesc("DESC"));
+        assertEquals("ASC", HiveSqlGuards.requireAscOrDesc("asc"));
+        assertEquals("DESC", HiveSqlGuards.requireAscOrDesc("DESC"));
         assertThrows(IllegalArgumentException.class,
-                () -> HiveSqlEscapes.requireAscOrDesc("DESC, `x` ASC; DROP TABLE t"));
+                () -> HiveSqlGuards.requireAscOrDesc("DESC, `x` ASC; DROP TABLE t"));
     }
 
     @Test

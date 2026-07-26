@@ -3,8 +3,10 @@ package ai.chat2db.plugin.hive;
 import ai.chat2db.plugin.hive.builder.HiveSqlBuilder;
 import ai.chat2db.plugin.hive.enums.type.HiveColumnTypeEnum;
 import ai.chat2db.plugin.hive.enums.type.HiveIndexTypeEnum;
+import ai.chat2db.plugin.hive.identifier.HiveIdentifierProcessor;
 import ai.chat2db.spi.ICommandExecutor;
 import ai.chat2db.spi.IDbMetaData;
+import ai.chat2db.spi.ISQLIdentifierProcessor;
 import ai.chat2db.spi.ISqlBuilder;
 import ai.chat2db.spi.DefaultMetaService;
 import ai.chat2db.community.domain.api.model.account.*;
@@ -30,6 +32,10 @@ import java.util.stream.Collectors;
 import static ai.chat2db.plugin.hive.constant.HiveMetaDataConstants.*;
 public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
 
+    @Override
+    public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
+        return HiveIdentifierProcessor.INSTANCE;
+    }
 
     @Override
     public List<Database> databases(Connection connection) {
@@ -76,7 +82,7 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(HiveSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override
@@ -265,7 +271,7 @@ public class HiveMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     public static String format(String name) {
-        return HiveSqlEscapes.quoteIdentifier(name);
+        return HiveIdentifierProcessor.INSTANCE.quoteIdentifier(name);
     }
 
 

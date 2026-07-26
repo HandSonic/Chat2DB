@@ -2,7 +2,8 @@ package ai.chat2db.plugin.hive.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
 
-import ai.chat2db.plugin.hive.HiveSqlEscapes;
+import ai.chat2db.plugin.hive.HiveSqlGuards;
+import ai.chat2db.plugin.hive.identifier.HiveIdentifierProcessor;
 import ai.chat2db.plugin.hive.enums.type.HiveColumnTypeEnum;
 import ai.chat2db.plugin.hive.enums.type.HiveIndexTypeEnum;
 import ai.chat2db.spi.DefaultSqlBuilder;
@@ -31,9 +32,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getDatabaseName())) {
-            script.append(HiveSqlEscapes.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(table.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(HiveSqlEscapes.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -60,15 +61,15 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
 
 
         if (StringUtils.isNotBlank(table.getEngine())) {
-            script.append(SQLConstants.ENGINE_SQL).append(HiveSqlEscapes.requireHiveName(table.getEngine(), "engine"));
+            script.append(SQLConstants.ENGINE_SQL).append(HiveSqlGuards.requireHiveName(table.getEngine(), "engine"));
         }
 
         if (StringUtils.isNotBlank(table.getCharset())) {
-            script.append(SQLConstants.DEFAULT_CHARACTER_SET_SQL).append(HiveSqlEscapes.requireHiveName(table.getCharset(), "charset"));
+            script.append(SQLConstants.DEFAULT_CHARACTER_SET_SQL).append(HiveSqlGuards.requireHiveName(table.getCharset(), "charset"));
         }
 
         if (StringUtils.isNotBlank(table.getCollate())) {
-            script.append(SQLConstants.COLLATE_SQL).append(HiveSqlEscapes.requireHiveName(table.getCollate(), "collation"));
+            script.append(SQLConstants.COLLATE_SQL).append(HiveSqlGuards.requireHiveName(table.getCollate(), "collation"));
         }
 
         if (table.getIncrementValue() != null) {
@@ -76,7 +77,7 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         }
 
         if (StringUtils.isNotBlank(table.getComment())) {
-            script.append(SQL_COMMENT).append(HiveSqlEscapes.escapeSqlLiteral(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
+            script.append(SQL_COMMENT).append(HiveIdentifierProcessor.INSTANCE.escapeString(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
         }
 
         if (StringUtils.isNotBlank(table.getPartition())) {
@@ -93,22 +94,22 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         boolean isModify = false;
         script.append(SQL_ALTER_TABLE);
         if (StringUtils.isNotBlank(newTable.getDatabaseName())) {
-            script.append(HiveSqlEscapes.quoteIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOT);
+            script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOT);
         }
-        script.append(HiveSqlEscapes.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+        script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQLConstants.TAB).append(SQL_RENAME).append(HiveSqlEscapes.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQLConstants.TAB).append(SQL_RENAME).append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
             isModify = true;
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             if (isModify) {
                 script.append(SQL_ALTER_TABLE);
                 if (StringUtils.isNotBlank(newTable.getDatabaseName())) {
-                    script.append(HiveSqlEscapes.quoteIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOT);
+                    script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOT);
                 }
-                script.append(HiveSqlEscapes.quoteIdentifier(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+                script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
             }
-            script.append(SQLConstants.TAB).append(SQL_SET_TBLPROPERTIES_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(HiveSqlEscapes.escapeSqlLiteral(newTable.getComment())).append(VALUE_SINGLE_QUOTE_CLOSE_PAREN_COMMA);
+            script.append(SQLConstants.TAB).append(SQL_SET_TBLPROPERTIES_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(HiveIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(VALUE_SINGLE_QUOTE_CLOSE_PAREN_COMMA);
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
@@ -162,9 +163,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE).append(HiveSqlEscapes.quoteIdentifier(database.getName()));
+        sqlBuilder.append(SQL_CREATE_DATABASE).append(HiveIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName()));
         if (StringUtils.isNotBlank(database.getComment())) {
-            sqlBuilder.append(SQL_COMMENT_SINGLE_QUOTE).append(HiveSqlEscapes.escapeSqlLiteral(database.getComment())).append(SQLConstants.SINGLE_QUOTE);
+            sqlBuilder.append(SQL_COMMENT_SINGLE_QUOTE).append(HiveIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE);
 
         }
         return sqlBuilder.toString();

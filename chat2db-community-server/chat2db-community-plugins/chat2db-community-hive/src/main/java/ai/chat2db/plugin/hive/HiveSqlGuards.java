@@ -5,41 +5,18 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.regex.Pattern;
 
 /**
- * Canonical escaping/quoting helpers for values interpolated into Hive SQL text (#1914).
+ * Validation helpers for non-escapable SQL positions in Hive DDL generation
+ * (engine/charset/collation tokens, numeric DEFAULT literals, index sort
+ * direction). Escaping itself lives in
+ * {@link ai.chat2db.plugin.hive.identifier.HiveIdentifierProcessor}.
  */
-public final class HiveSqlEscapes {
+public final class HiveSqlGuards {
 
     private static final Pattern HIVE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
             "^([+-]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?|0[xX][0-9a-fA-F]+|(?i:TRUE|FALSE))$");
 
-    private HiveSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal (surrounding quotes NOT added).
-     * Hive treats backslash as an escape character, so backslashes are doubled before single quotes.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value.replace("\\", "\\\\").replace("'", "''");
-    }
-
-    /**
-     * Quote an identifier with backticks: strips one surrounding backtick pair, then doubles every
-     * embedded backtick.
-     */
-    public static String quoteIdentifier(String name) {
-        if (StringUtils.isBlank(name)) {
-            return name;
-        }
-        String identifier = name;
-        if (identifier.length() >= 2 && identifier.startsWith("`") && identifier.endsWith("`")) {
-            identifier = identifier.substring(1, identifier.length() - 1);
-        }
-        return "`" + identifier.replace("`", "``") + "`";
+    private HiveSqlGuards() {
     }
 
     /**
