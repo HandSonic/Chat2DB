@@ -107,7 +107,7 @@ public enum MysqlIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
+                script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     script.append(" ").append(MysqlSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
@@ -123,7 +123,7 @@ public enum MysqlIndexTypeEnum {
         if(this.equals(PRIMARY_KEY)){
             return "";
         }else {
-            return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+            return MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
         }
     }
 
@@ -144,7 +144,7 @@ public enum MysqlIndexTypeEnum {
         if (MysqlIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join("DROP INDEX ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+        return StringUtils.join("DROP INDEX ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
     }
     public static List<IndexType> getIndexTypes() {
         return Arrays.asList(MysqlIndexTypeEnum.values()).stream().map(MysqlIndexTypeEnum::getIndexType).collect(java.util.stream.Collectors.toList());

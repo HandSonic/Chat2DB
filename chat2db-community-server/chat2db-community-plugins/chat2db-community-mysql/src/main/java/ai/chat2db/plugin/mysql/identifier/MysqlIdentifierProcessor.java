@@ -295,8 +295,9 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     }
 
     /**
-     * Always quotes with backticks, stripping one surrounding backtick pair and
-     * doubling every embedded backtick.
+     * SPI-facing conditional quote: identifiers that are already valid plain identifiers
+     * and not reserved keywords pass through unquoted; anything else is wrapped in
+     * backticks with one surrounding pair stripped and embedded backticks doubled.
      */
     @Override
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
@@ -306,15 +307,32 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifier(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
+        if (identifier == null) {
+            return null;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
             return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditional backtick quote for DDL-generation call sites: strips one surrounding
+     * backtick pair, then doubles every embedded backtick.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
         }
         return "`" + escapeIdentifierContent(identifier) + "`";
     }
 
+    /**
+     * Always-quote variant that preserves the original identifier case.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
     }
 
     /**

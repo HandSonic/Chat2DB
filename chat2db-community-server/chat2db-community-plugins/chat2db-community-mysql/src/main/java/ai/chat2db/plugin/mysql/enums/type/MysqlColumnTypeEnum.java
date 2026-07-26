@@ -151,7 +151,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -182,7 +182,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -224,14 +224,14 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join("DROP COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                return StringUtils.join("CHANGE COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
                 return StringUtils.join("MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
             }
@@ -241,14 +241,14 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
 
     public String buildModifyColumn(TableColumn tableColumn, boolean isMove, String columnName) {
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join("DROP COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             if (isMove) {
                 if (columnName.equals("-1")) {
                     return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn), " FIRST");
                 } else {
-                    return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn), " AFTER ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(columnName));
+                    return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn), " AFTER ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(columnName));
                 }
             }
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
@@ -256,7 +256,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             String sql;
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                sql = StringUtils.join("CHANGE COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                sql = StringUtils.join("CHANGE COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
                 sql = StringUtils.join("MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
             }
@@ -276,7 +276,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         if (columnName.equals("-1")) {
             return StringUtils.join(sql, " FIRST");
         }
-        return StringUtils.join(sql, " AFTER ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(columnName));
+        return StringUtils.join(sql, " AFTER ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(columnName));
     }
 
     private String buildAutoIncrement(TableColumn column, MysqlColumnTypeEnum type) {
@@ -419,7 +419,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
         script.append(buildDataType(column, type)).append(" ");
         if (StringUtils.isNoneBlank(column.getComment())) {
             script.append(SQL_COMMENT_KEYWORD).append(" ").append("'").append(MysqlIdentifierProcessor.INSTANCE.escapeString(column.getComment())).append("'").append(" ");

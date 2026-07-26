@@ -531,7 +531,7 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
     }
 
     private static String quoteMysqlIdentifier(String name) {
-        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(name);
+        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(name);
     }
 
 }

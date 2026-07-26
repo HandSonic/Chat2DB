@@ -33,21 +33,45 @@ class MysqlIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDoublesEmbeddedBackticks() {
-        assertEquals("`plain`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        // null/blank pass through untouched
+        assertNull(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("  ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("  "));
+        // valid plain identifiers that are not reserved keywords stay unquoted
+        assertEquals("plain", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("plain_name", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("plain_name"));
+        // reserved keywords and non-plain identifiers are quoted with doubling
+        assertEquals("`select`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
         assertEquals("`weird``name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name"));
         assertEquals("`a``; DROP TABLE b; --`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`; DROP TABLE b; --"));
         // one surrounding backtick pair is stripped before doubling
         assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
         assertEquals("`quoted`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
+        // versioned overload delegates to the same conditional behavior
+        assertEquals("users", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("users", null, null));
+        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`b", null, null));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysWrapsUnconditionally() {
+        assertNull(MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("``", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("`plain`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("`plain_name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain_name"));
+        assertEquals("`weird``name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("weird`name"));
+        assertEquals("`a``; DROP TABLE b; --`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a`; DROP TABLE b; --"));
+        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
+        assertEquals("`quoted`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
     }
 
     @Test
     void escapeIdentifierEscapesContentForQuotedTemplates() {
         assertEquals("WE``IRD", MysqlIdentifierProcessor.escapeIdentifier("WE`IRD"));
         assertEquals("ALREADY", MysqlIdentifierProcessor.escapeIdentifier("`ALREADY`"));
+        // quoteIdentifierIgnoreCase is the always-quote, case-preserving variant
         assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a`b"));
-        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`b", null, null));
+        assertEquals("`plain`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
     }
 
     @Test
@@ -246,10 +270,13 @@ class MysqlIdentifierProcessorTest {
     }
 
     @Test
-    void identifierProcessorAlwaysQuotesAndDoublesEmbeddedBackticks() {
+    void identifierProcessorDdlPathsKeepAlwaysQuoteSemantics() {
         MysqlIdentifierProcessor processor = MysqlIdentifierProcessor.INSTANCE;
-        assertEquals("`a``b`", processor.quoteIdentifier("a`b"));
-        assertEquals("`plain_name`", processor.quoteIdentifier("plain_name"));
+        // SPI-facing conditional quote leaves plain identifiers bare
+        assertEquals("plain_name", processor.quoteIdentifier("plain_name"));
+        // DDL-generation always quote keeps producing quoted output
+        assertEquals("`a``b`", processor.quoteIdentifierAlways("a`b"));
+        assertEquals("`plain_name`", processor.quoteIdentifierAlways("plain_name"));
     }
 
     @Test

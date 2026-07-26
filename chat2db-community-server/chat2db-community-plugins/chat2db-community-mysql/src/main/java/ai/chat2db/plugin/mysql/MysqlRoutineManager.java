@@ -363,7 +363,7 @@ public class MysqlRoutineManager implements IRoutineManager {
     }
 
     private String quoteMysqlIdentifier(String name) {
-        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(name);
+        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(name);
     }
 
     private String routineInvocationName(String name) {

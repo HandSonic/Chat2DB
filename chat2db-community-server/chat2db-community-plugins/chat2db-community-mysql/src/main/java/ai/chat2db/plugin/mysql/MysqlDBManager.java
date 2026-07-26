@@ -260,7 +260,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     public static String format(String tableName) {
-        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     @Override
