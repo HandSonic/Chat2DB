@@ -76,7 +76,7 @@ public enum KingBaseIndexTypeEnum {
             script.append(buildIndexUnique(tableIndex)).append(" ");
             script.append(buildIndexConcurrently(tableIndex)).append(" ");
             script.append(buildIndexName(tableIndex)).append(" ");
-            script.append(SQL_ON).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName())).append(" ");
+            script.append(SQL_ON).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName())).append(" ");
             script.append(buildIndexMethod(tableIndex)).append(" ");
             script.append(buildIndexColumn(tableIndex));
         } else {
@@ -94,16 +94,16 @@ public enum KingBaseIndexTypeEnum {
             StringBuilder script = new StringBuilder();
             script.append(" REFERENCES ");
             if (StringUtils.isNotBlank(tableIndex.getForeignSchemaName())) {
-                script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getForeignSchemaName())).append(".");
+                script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getForeignSchemaName())).append(".");
             }
             if (StringUtils.isNotBlank(tableIndex.getForeignTableName())) {
-                script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getForeignTableName())).append(" ");
+                script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getForeignTableName())).append(" ");
             }
             if (CollectionUtils.isNotEmpty(tableIndex.getForeignColumnNamelist())) {
                 script.append("(");
                 for (String column : tableIndex.getForeignColumnNamelist()) {
                     if (StringUtils.isNotBlank(column)) {
-                        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column)).append(",");
+                        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column)).append(",");
                     }
                 }
                 script.deleteCharAt(script.length() - 1);
@@ -143,10 +143,10 @@ public enum KingBaseIndexTypeEnum {
             return "";
         } else if (NORMAL.equals(this)) {
             return StringUtils.join(SQL_COMMENT_INDEX, " ",
-                    KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+                    KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         } else {
-            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName()), " ON ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()),
-                    ".", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " ON ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()),
+                    ".", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         }
     }
 
@@ -155,7 +155,7 @@ public enum KingBaseIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName())).append(",");
+                script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName())).append(",");
             }
         }
         script.deleteCharAt(script.length() - 1);
@@ -164,7 +164,7 @@ public enum KingBaseIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -183,8 +183,8 @@ public enum KingBaseIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (NORMAL.equals(this)) {
-            return StringUtils.join(SQL_DROP_INDEX, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+            return StringUtils.join(SQL_DROP_INDEX, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
         }
-        return StringUtils.join(SQL_DROP_CONSTRAINT, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+        return StringUtils.join(SQL_DROP_CONSTRAINT, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
     }
 }

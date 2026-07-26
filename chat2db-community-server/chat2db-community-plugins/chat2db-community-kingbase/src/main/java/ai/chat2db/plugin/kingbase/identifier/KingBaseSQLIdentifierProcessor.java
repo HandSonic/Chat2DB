@@ -13,12 +13,23 @@ public class KingBaseSQLIdentifierProcessor extends DefaultSQLIdentifierProcesso
     public static final KingBaseSQLIdentifierProcessor INSTANCE = new KingBaseSQLIdentifierProcessor();
 
     /**
-     * Always quotes with double quotes, stripping one surrounding quote pair and
-     * doubling every embedded double quote.
+     * SPI-facing conditional quoting: returns {@code null} for {@code null}, returns blank
+     * input unchanged, returns a valid plain identifier (that is not a reserved keyword)
+     * unquoted, and otherwise wraps with double quotes using
+     * {@link #quoteIdentifierAlways(String)} semantics.
      */
     @Override
     public String quoteIdentifier(String identifier) {
-        return "\"" + escapeIdentifierContent(identifier) + "\"";
+        if (identifier == null) {
+            return null;
+        }
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier, null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -26,9 +37,24 @@ public class KingBaseSQLIdentifierProcessor extends DefaultSQLIdentifierProcesso
         return quoteIdentifier(identifier);
     }
 
+    /**
+     * Always-quote SPI variant that preserves the original identifier case.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditional quoting for DDL-generation call sites: returns {@code null} for
+     * {@code null}, otherwise wraps with double quotes, stripping one surrounding quote
+     * pair and doubling every embedded double quote.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
 
     /**

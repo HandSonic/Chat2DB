@@ -79,7 +79,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
         if (StringUtils.isBlank(objectName)) {
             return objectName;
         } else {
-            return getSQLIdentifierProcessor().quoteIdentifier(objectName);
+            return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
         }
     }
 
@@ -135,7 +135,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                         constraintsBuilder.append(",\n");
                     }
                     constraintsBuilder.append("\t").append(" constraint ")
-                            .append(getSQLIdentifierProcessor().quoteIdentifier(constraintName))
+                            .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintName))
                             .append(" ")
                             .append(constraintDefinition.toLowerCase());
                 }
@@ -154,7 +154,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     boolean isParentTable = resultSet.getBoolean("is_parent_table");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(" partition of ").append(getSQLIdentifierProcessor().quoteIdentifier(parentTableName)).append("\n");
+                        ddlBuilder.append("\n").append(" partition of ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(parentTableName)).append("\n");
                         if (!constraintsBuilder.isEmpty()) {
                             ddlBuilder.append("(\n")
                                     .append(constraintsBuilder)
@@ -178,7 +178,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     tableOwnerBuilder.append(SQL_ALTER_TABLE)
                             .append(format(table_name))
                             .append(" owner to ")
-                            .append(getSQLIdentifierProcessor().quoteIdentifier(owner))
+                            .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(owner))
                             .append(";").append("\n");
                 }
             }
@@ -197,7 +197,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                                 .append(SQL_ON)
                                 .append(formatTableName)
                                 .append(" to ")
-                                .append(getSQLIdentifierProcessor().quoteIdentifier(grantee))
+                                .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(grantee))
                                 .append(";").append("\n");
                     }
                 }
@@ -621,7 +621,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(KingBaseSQLIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
     @Override

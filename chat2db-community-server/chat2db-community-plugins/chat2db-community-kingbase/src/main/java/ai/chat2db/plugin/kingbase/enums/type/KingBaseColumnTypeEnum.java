@@ -116,7 +116,7 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -134,30 +134,30 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
         if (!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())) {
             return "";
         }
-        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getCollationName());
+        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getCollationName());
     }
 
     @Override
     public String buildModifyColumn(TableColumn column) {
 
         if (EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()));
+            return StringUtils.join(SQL_DROP_COLUMN, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(column.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(column));
         }
         if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" TYPE ").append(buildDataType(column, this)).append(",\n");
+            script.append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" TYPE ").append(buildDataType(column, this)).append(",\n");
             if (column.getNullable() != null && 1 == column.getNullable()) {
-                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" DROP NOT NULL ,\n");
+                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" DROP NOT NULL ,\n");
             } else {
-                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" SET NOT NULL ,\n");
+                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" SET NOT NULL ,\n");
 
             }
             String defaultValue = buildDefaultValue(column, this);
             if (StringUtils.isNotBlank(defaultValue)) {
-                script.append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" SET ").append(defaultValue).append(",\n");
+                script.append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" SET ").append(defaultValue).append(",\n");
             }
             script = new StringBuilder(script.substring(0, script.length() - 2));
             return script.toString();
@@ -170,8 +170,8 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
                 || EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
             return "";
         }
-        return StringUtils.join(SQL_COMMENT_COLUMN, " ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getTableName()),
-                ".", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "';");
+        return StringUtils.join(SQL_COMMENT_COLUMN, " ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getTableName()),
+                ".", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "';");
     }
 
     private String buildDefaultValue(TableColumn column, KingBaseColumnTypeEnum type) {

@@ -54,7 +54,7 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
     public String buildCreateTable(Table table, TableBuilderConfig tableBuilderConfig) {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
-        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.SPACE).append(SQLConstants.LINE_SEPARATOR);
+        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.SPACE).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -85,7 +85,7 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         script = new StringBuilder(script.substring(0, script.length() - 2));
         script.append(SQLConstants.LINE_SEPARATOR_CLOSE_PARENTHESIS);
         if(StringUtils.isNotBlank(table.getTablespace())){
-            script.append(" TABLESPACE ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getTablespace())).append(SQLConstants.SEMICOLON);
+            script.append(" TABLESPACE ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getTablespace())).append(SQLConstants.SEMICOLON);
         }else {
             script.append(SQL_TABLESPACE_DOUBLE_QUOTE_SYS_DEFAULT_DOUBLE_QUOTE_SEMICOLON);
         }
@@ -103,7 +103,7 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         }
         if (StringUtils.isNotBlank(table.getComment())) {
             script.append(SQLConstants.LINE_SEPARATOR);
-            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SQL_IS_SINGLE_QUOTE)
+            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SQL_IS_SINGLE_QUOTE)
                     .append(KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(table.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON_LINE_SEPARATOR);
         }
         List<TableColumn> tableColumnList = table.getColumnList().stream().filter(v -> StringUtils.isNotBlank(v.getComment())).toList();
@@ -131,8 +131,8 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
     public String buildAlterTable(Table oldTable, Table newTable) {
         StringBuilder script = new StringBuilder();
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_ALTER_TABLE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName()));
-            script.append(SQLConstants.TAB).append(SQL_RENAME).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_ALTER_TABLE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(oldTable.getName()));
+            script.append(SQLConstants.TAB).append(SQL_RENAME).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
 
         }
         newTable.setColumnList(newTable.getColumnList().stream().filter(v -> StringUtils.isNotBlank(v.getEditStatus())).toList());
@@ -140,15 +140,15 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         List<TableColumn> columnNameList = newTable.getColumnList().stream().filter(v ->
                 v.getOldName() != null && !StringUtils.equals(v.getOldName(), v.getName())).toList();
         for (TableColumn tableColumn : columnNameList) {
-            script.append(SQL_ALTER_TABLE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SPACE).append("RENAME COLUMN ")
-                    .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName())).append(" TO ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_ALTER_TABLE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.SPACE).append("RENAME COLUMN ")
+                    .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName())).append(" TO ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
         }
 
         Map<Boolean, List<TableIndex>> tableIndexMap = newTable.getIndexList().stream()
                 .collect(Collectors.partitioningBy(v -> KingBaseIndexTypeEnum.NORMAL.getName().equals(v.getType())));
         StringBuilder scriptModify = new StringBuilder();
         Boolean modify = false;
-        scriptModify.append(SQL_ALTER_TABLE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(" \n");
+        scriptModify.append(SQL_ALTER_TABLE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(" \n");
         for (TableColumn tableColumn : newTable.getColumnList()) {
             KingBaseColumnTypeEnum typeEnum = KingBaseColumnTypeEnum.getByType(tableColumn.getColumnType());
             if(typeEnum == null){
@@ -185,7 +185,7 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         }
         if (!StringUtils.equals(oldTable.getComment(), newTable.getComment())) {
             script.append(SQLConstants.LINE_SEPARATOR);
-            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SQL_IS_SINGLE_QUOTE)
+            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.SQL_IS_SINGLE_QUOTE)
                     .append(KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON_LINE_SEPARATOR);
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
@@ -231,19 +231,19 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE+KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName()));
+        sqlBuilder.append(SQL_CREATE_DATABASE+KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName()));
         String owner = database.getOwner();
         if (StringUtils.isBlank(owner)) {
             owner = SYSTEM_KEYWORD;
         }
-        sqlBuilder.append(" WITH  OWNER = ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(owner));
+        sqlBuilder.append(" WITH  OWNER = ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(owner));
         if (StringUtils.isNotBlank(database.getCharset())) {
             sqlBuilder.append(SQL_ENCODING).append(KingBaseSqlGuards.requireSafeExpression(database.getCharset(), "database charset")).append(SQLConstants.EMPTY);
         }
         sqlBuilder.append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
 
         if (StringUtils.isNotBlank(database.getComment())) {
-            sqlBuilder.append(SQL_COMMENT_DATABASE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName())).append(SQLConstants.SQL_IS_SINGLE_QUOTE).append(KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_COMMENT_DATABASE).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName())).append(SQLConstants.SQL_IS_SINGLE_QUOTE).append(KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
         return sqlBuilder.toString();
     }
@@ -252,12 +252,12 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateSchema(Schema schema){
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_SCHEMA+KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schema.getName())+SQLConstants.EMPTY);
+        sqlBuilder.append(SQL_CREATE_SCHEMA+KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schema.getName())+SQLConstants.EMPTY);
         String owner = schema.getOwner();
         if(StringUtils.isBlank(schema.getOwner())){
             owner = SYSTEM_KEYWORD;
         }
-        sqlBuilder.append(" AUTHORIZATION ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(owner));
+        sqlBuilder.append(" AUTHORIZATION ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(owner));
         return sqlBuilder.toString();
     }
 

@@ -57,7 +57,7 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "drop table if exists " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        String sql = "drop table if exists " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
         return sql;
     }
 
@@ -65,9 +65,9 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
         String sql = "";
         if(copyData){
-            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + " WITH DATA";
+            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + " WITH DATA";
         }else {
-            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + " WITH NO DATA";
+            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + " WITH NO DATA";
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }

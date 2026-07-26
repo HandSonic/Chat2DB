@@ -17,6 +17,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,12 +40,36 @@ class KingBaseSQLIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierWrapsAndDoublesEmbeddedQuotes() {
-        assertEquals("\"\"", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(null));
-        assertEquals("\"plain\"", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
-        assertEquals("\"we\"\"name\"", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier("we\"name"));
+    void quoteIdentifierConditionallyQuotes() {
+        KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifier(null));
+        assertEquals("", processor.quoteIdentifier(""));
+        assertEquals("plain", processor.quoteIdentifier("plain"));
+        assertEquals("UPPER", processor.quoteIdentifier("UPPER"));
+        assertEquals("plain", processor.quoteIdentifier("plain", null, null));
+        assertEquals("\"we\"\"name\"", processor.quoteIdentifier("we\"name"));
         assertEquals("\"evil\"\"; DROP TABLE t; --\"",
-                KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier("evil\"; DROP TABLE t; --"));
+                processor.quoteIdentifier("evil\"; DROP TABLE t; --"));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+        KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"plain\"", processor.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"we\"\"name\"", processor.quoteIdentifierIgnoreCase("we\"name"));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysWrapsAndDoublesEmbeddedQuotes() {
+        KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierAlways(null));
+        assertEquals("\"plain\"", processor.quoteIdentifierAlways("plain"));
+        assertEquals("\"UPPER\"", processor.quoteIdentifierAlways("UPPER"));
+        assertEquals("\"we\"\"name\"", processor.quoteIdentifierAlways("we\"name"));
+        assertEquals("\"quoted\"", processor.quoteIdentifierAlways("\"quoted\""));
+        assertEquals("\"evil\"\"; DROP TABLE t; --\"",
+                processor.quoteIdentifierAlways("evil\"; DROP TABLE t; --"));
     }
 
     @Test
@@ -233,11 +258,14 @@ class KingBaseSQLIdentifierProcessorTest {
     }
 
     @Test
-    void identifierProcessorAlwaysQuotesAndDoublesEmbeddedQuotes() {
+    void spiProcessorIsConditionalForCompletionConsumers() {
         KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
-        assertEquals("\"plain\"", processor.quoteIdentifier("plain"));
-        assertEquals("\"UPPER\"", processor.quoteIdentifier("UPPER"));
+        assertEquals("plain", processor.quoteIdentifier("plain"));
+        assertEquals("UPPER", processor.quoteIdentifier("UPPER"));
         assertEquals("\"we\"\"name\"", processor.quoteIdentifier("we\"name"));
+        assertEquals("plain", processor.removeIdentifierQuote("\"plain\""));
+        assertFalse(processor.isQuoteIdentifier("plain"));
+        assertTrue(processor.isQuoteIdentifier("\"plain\""));
     }
 
     @Test
