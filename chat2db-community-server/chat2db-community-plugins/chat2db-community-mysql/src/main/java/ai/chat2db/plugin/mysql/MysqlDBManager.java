@@ -66,12 +66,12 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportFunction(Connection connection, String functionName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SHOW_CREATE_FUNCTION_TEMPLATE, functionName);
+        String sql = String.format(SQL_SHOW_CREATE_FUNCTION_TEMPLATE, format(functionName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 asyncContext.write(String.format(FUNCTION_TITLE, functionName));
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(SQLConstants.DROP_FUNCTION_IF_EXISTS_SQL_PREFIX).append(functionName).append(SQLConstants.SEMICOLON).append(SQLConstants.LINE_SEPARATOR);
+                sqlBuilder.append(SQLConstants.DROP_FUNCTION_IF_EXISTS_SQL_PREFIX).append(format(functionName)).append(SQLConstants.SEMICOLON).append(SQLConstants.LINE_SEPARATOR);
 
                 sqlBuilder.append(DELIMITER_BLOCK_START).append(SQLConstants.LINE_SEPARATOR).append(resultSet.getString(CREATE_FUNCTION_COLUMN))
                         .append(ROUTINE_DELIMITER)
@@ -95,7 +95,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
 
 
     public void exportTable(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SHOW_CREATE_TABLE_TEMPLATE, tableName);
+        String sql = String.format(SQL_SHOW_CREATE_TABLE_TEMPLATE, format(tableName));
         asyncContext.info(DateUtil.formatDateTime(new Date()) + EXPORTING_TABLE_MESSAGE + tableName);
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
@@ -130,7 +130,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportView(Connection connection, String viewName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SHOW_CREATE_VIEW_TEMPLATE, viewName);
+        String sql = String.format(SQL_SHOW_CREATE_VIEW_TEMPLATE, format(viewName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 asyncContext.write(String.format(VIEW_TITLE, viewName));
@@ -152,7 +152,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportProcedure(Connection connection, String procedureName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SHOW_CREATE_PROCEDURE_TEMPLATE, procedureName);
+        String sql = String.format(SQL_SHOW_CREATE_PROCEDURE_TEMPLATE, format(procedureName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 asyncContext.write(String.format(PROCEDURE_TITLE, procedureName));
@@ -177,7 +177,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportTrigger(Connection connection, String triggerName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SHOW_CREATE_TRIGGER_TEMPLATE, triggerName);
+        String sql = String.format(SQL_SHOW_CREATE_TRIGGER_TEMPLATE, format(triggerName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 asyncContext.write(String.format(TRIGGER_TITLE, triggerName));
@@ -241,7 +241,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     public static String format(String tableName) {
-        return SQLConstants.BACK_QUOTE + tableName + SQLConstants.BACK_QUOTE;
+        return MysqlSqlEscapes.quoteIdentifier(tableName);
     }
 
     @Override

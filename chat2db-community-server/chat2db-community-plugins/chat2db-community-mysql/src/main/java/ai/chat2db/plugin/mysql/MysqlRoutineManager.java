@@ -362,11 +362,7 @@ public class MysqlRoutineManager implements IRoutineManager {
     }
 
     private String quoteMysqlIdentifier(String name) {
-        String trimmed = StringUtils.trimToEmpty(name);
-        if (trimmed.matches("^`(?:``|[^`])+`$")) {
-            return trimmed;
-        }
-        return "`" + trimmed.replace("`", "``") + "`";
+        return MysqlSqlEscapes.quoteIdentifier(name);
     }
 
     private String routineInvocationName(String name) {
