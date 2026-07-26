@@ -140,12 +140,16 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
     //     SEQ.NEXTVAL, -1, 1.5. No quotes, commas or parentheses, so the
     //     value cannot smuggle literals, inject column defs, or close the
     //     column definition early.
-    //  2. anchored single-quoted literal '(?:[^']|'')*' — covers legitimate
-    //     string defaults like 'Y', '0', 'O''Brien', '1970-01-01', ''.
-    //     Doubling is the only quote escape, so the literal cannot terminate
-    //     early; anything after the closing quote fails the \z anchor.
+    //  2. optionally keyword-prefixed single-quoted literal
+    //     (?:[A-Za-z]+ )?'(?:[^']|'')*' — covers string defaults like 'Y',
+    //     'O''Brien', '' and typed date/time literals like DATE '2024-01-01'.
+    //     Interior quotes must be doubled, which exactly mirrors SQL
+    //     string-literal tokenization, so anything accepted is parsed by the
+    //     DB as one inert string token; the keyword is letters-only and
+    //     cannot break out either. Parenthesized calls (TO_DATE(...),
+    //     SYS_GUID()) remain rejected: parens could close the column def.
     private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
-            "\\A(?:(?!.*--)[A-Za-z0-9_ .+-]+|'(?:[^']|'')*')\\z");
+            "\\A(?:(?!.*--)[A-Za-z0-9_ .+-]+|(?:[A-Za-z]+ )?'(?:[^']|'')*')\\z");
 
     static {
         for (SUNDBColumnTypeEnum value : SUNDBColumnTypeEnum.values()) {

@@ -163,7 +163,8 @@ class SUNDBSqlEscapesTest {
 
     @Test
     void buildCreateColumnSqlAcceptsStringLiteralDefaults() {
-        String[] valid = {"'Y'", "'0'", "'O''Brien'", "'1970-01-01'", "''"};
+        String[] valid = {"'Y'", "'0'", "'O''Brien'", "'1970-01-01'", "''",
+                "DATE '2024-01-01'", "TIMESTAMP '2024-01-01 00:00:00'"};
         for (String literal : valid) {
             TableColumn column = new TableColumn();
             column.setName("c1");
@@ -186,7 +187,10 @@ class SUNDBSqlEscapesTest {
                 "'a' 'b'",        // literal concatenation smuggling
                 "'a'||'b'",       // concatenation operator
                 "'a'--",          // comment after literal
-                "'a'; DROP TABLE x--"
+                "'a'; DROP TABLE x--",
+                "TO_DATE('2024-01-01','YYYY-MM-DD')", // parens/comma could reshape DDL
+                "SYS_GUID()",
+                "DATE '2024-01-01'--" // comment after typed literal
         };
         for (String payload : payloads) {
             TableColumn column = new TableColumn();
