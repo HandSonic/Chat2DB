@@ -76,7 +76,7 @@ public enum PostgreSQLIndexTypeEnum {
             script.append(buildIndexUnique(tableIndex)).append(" ");
             script.append(buildIndexConcurrently(tableIndex)).append(" ");
             script.append(buildIndexName(tableIndex)).append(" ");
-            script.append(SQL_ON).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName())).append(" ");
+            script.append(SQL_ON).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName())).append(" ");
             script.append(buildIndexMethod(tableIndex)).append(" ");
             script.append(buildIndexColumn(tableIndex));
         } else {
@@ -94,16 +94,16 @@ public enum PostgreSQLIndexTypeEnum {
             StringBuilder script = new StringBuilder();
             script.append(" REFERENCES ");
             if (StringUtils.isNotBlank(tableIndex.getForeignSchemaName())) {
-                script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getForeignSchemaName())).append(".");
+                script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getForeignSchemaName())).append(".");
             }
             if (StringUtils.isNotBlank(tableIndex.getForeignTableName())) {
-                script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getForeignTableName())).append(" ");
+                script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getForeignTableName())).append(" ");
             }
             if (CollectionUtils.isNotEmpty(tableIndex.getForeignColumnNamelist())) {
                 script.append("(");
                 for (String column : tableIndex.getForeignColumnNamelist()) {
                     if (StringUtils.isNotBlank(column)) {
-                        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column)).append(",");
+                        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column)).append(",");
                     }
                 }
                 script.deleteCharAt(script.length() - 1);
@@ -143,10 +143,10 @@ public enum PostgreSQLIndexTypeEnum {
             return "";
         } else if (NORMAL.equals(this)) {
             return StringUtils.join(SQL_COMMENT_INDEX, " ",
-                    PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+                    PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         } else {
-            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName()), " ON ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()),
-                    ".", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " ON ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()),
+                    ".", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         }
     }
 
@@ -155,7 +155,7 @@ public enum PostgreSQLIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName())).append(",");
+                script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName())).append(",");
             }
         }
         script.deleteCharAt(script.length() - 1);
@@ -164,7 +164,7 @@ public enum PostgreSQLIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -183,8 +183,8 @@ public enum PostgreSQLIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (NORMAL.equals(this)) {
-            return StringUtils.join(SQL_DROP_INDEX, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+            return StringUtils.join(SQL_DROP_INDEX, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
         }
-        return StringUtils.join(SQL_DROP_CONSTRAINT, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
+        return StringUtils.join(SQL_DROP_CONSTRAINT, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
     }
 }

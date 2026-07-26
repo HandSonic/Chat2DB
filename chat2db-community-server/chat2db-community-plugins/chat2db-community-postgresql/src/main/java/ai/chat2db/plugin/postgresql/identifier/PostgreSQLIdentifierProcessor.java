@@ -105,8 +105,10 @@ public class PostgreSQLIdentifierProcessor extends DefaultSQLIdentifierProcessor
     }
 
     /**
-     * Always quotes with double quotes, stripping one surrounding quote pair and
-     * doubling every embedded double quote. Blank identifiers are returned unchanged.
+     * SPI-facing conditional quoting: {@code null} stays {@code null}, blank is returned
+     * unchanged, a valid plain identifier that is not a reserved keyword is returned
+     * unquoted, and anything else is wrapped in double quotes with one surrounding
+     * quote pair stripped and every embedded double quote doubled.
      */
     @Override
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
@@ -119,12 +121,30 @@ public class PostgreSQLIdentifierProcessor extends DefaultSQLIdentifierProcessor
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        return "\"" + escapeIdentifierContent(identifier) + "\"";
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
+    /**
+     * Always-quote SPI variant that preserves case.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditionally wraps with double quotes, stripping one surrounding quote pair
+     * and doubling every embedded double quote. For DDL-generation call sites that
+     * must always emit quoted identifiers. Returns {@code null} for {@code null}.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
 
     /**

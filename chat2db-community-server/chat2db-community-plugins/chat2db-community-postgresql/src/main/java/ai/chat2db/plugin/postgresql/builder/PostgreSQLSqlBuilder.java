@@ -92,9 +92,9 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (needFullTableName) {
-            script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT);
+            script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT);
         }
-        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.SPACE).append(SQLConstants.LINE_SEPARATOR);
+        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.SPACE).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -138,7 +138,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
         }
         if (StringUtils.isNotBlank(table.getComment())) {
             script.append(SQLConstants.LINE_SEPARATOR);
-            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE)
+            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE)
                     .append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(table.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON_LINE_SEPARATOR);
         }
         List<TableColumn> tableColumnList = table.getColumnList().stream().filter(v -> StringUtils.isNotBlank(v.getComment())).toList();
@@ -167,8 +167,8 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
     public String buildAITableSchema(Table table) {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
-        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT);
-        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.SPACE).append(SQLConstants.LINE_SEPARATOR);
+        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT);
+        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.SPACE).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -215,7 +215,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
         }
         if (StringUtils.isNotBlank(table.getComment())) {
             script.append(SQLConstants.LINE_SEPARATOR);
-            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE)
+            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE)
                     .append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(table.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON_LINE_SEPARATOR);
         }
         List<TableIndex> indexList = table.getIndexList().stream().filter(v -> StringUtils.isNotBlank(v.getComment())).toList();
@@ -235,15 +235,15 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
     public String buildAlterTable(Table oldTable, Table newTable) {
         StringBuilder script = new StringBuilder();
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_ALTER_TABLE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName()));
-            script.append(SQLConstants.TAB).append(SQL_RENAME).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_ALTER_TABLE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(oldTable.getName()));
+            script.append(SQLConstants.TAB).append(SQL_RENAME).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
 
         }
         newTable.setIndexList(newTable.getIndexList().stream().filter(v -> StringUtils.isNotBlank(v.getEditStatus())).toList());
         List<TableColumn> columnNameList = newTable.getColumnList().stream().filter(v ->
                 v.getOldName() != null && !StringUtils.equals(v.getOldName(), v.getName())).toList();
         for (TableColumn tableColumn : columnNameList) {
-            script.append(SQL_ALTER_TABLE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(VALUE_DOUBLE_QUOTE).append(SQL_RENAME_COLUMN)
+            script.append(SQL_ALTER_TABLE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(VALUE_DOUBLE_QUOTE).append(SQL_RENAME_COLUMN)
                     .append(PostgreSQLIdentifierProcessor.escapeIdentifier(tableColumn.getOldName())).append(VALUE_DOUBLE_QUOTE_TO_DOUBLE_QUOTE).append(PostgreSQLIdentifierProcessor.escapeIdentifier(tableColumn.getName())).append(SQLConstants.DOUBLE_QUOTE_SEMICOLON_LINE_SEPARATOR);
         }
 
@@ -251,7 +251,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
                 .collect(Collectors.partitioningBy(v -> PostgreSQLIndexTypeEnum.NORMAL.getName().equals(v.getType())));
         StringBuilder scriptModify = new StringBuilder();
         Boolean modify = false;
-        scriptModify.append(SQL_ALTER_TABLE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(VALUE_DOUBLE_QUOTE_2);
+        scriptModify.append(SQL_ALTER_TABLE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(VALUE_DOUBLE_QUOTE_2);
         List<TableColumn> columnList = newTable.getColumnList();
         for (TableColumn tableColumn : columnList) {
             String editStatus = tableColumn.getEditStatus();
@@ -296,7 +296,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
         }
         if (!StringUtils.equals(oldTable.getComment(), newTable.getComment())) {
             script.append(SQLConstants.LINE_SEPARATOR);
-            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE)
+            script.append(SQL_COMMENT_TABLE).append(SQLConstants.SPACE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE)
                     .append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON_LINE_SEPARATOR);
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
@@ -341,7 +341,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName()));
+        sqlBuilder.append(SQL_CREATE_DATABASE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName()));
         sqlBuilder.append(SQLConstants.LINE_SEPARATOR_SQL_WITH);
         if (StringUtils.isNotBlank(database.getCharset())) {
             sqlBuilder.append(VALUE_LC_CTYPE_EQUAL_SINGLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(database.getCharset())).append(VALUE_SINGLE_QUOTE);
@@ -351,7 +351,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
         }
 
         if (StringUtils.isNotBlank(database.getComment())) {
-            sqlBuilder.append(SQL_SEMICOLON_COMMENT_ON_DATABASE_DOUBLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(database.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_SEMICOLON_COMMENT_ON_DATABASE_DOUBLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
         return sqlBuilder.toString();
     }
@@ -388,12 +388,12 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateSchema(Schema schema) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_SCHEMA).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schema.getName()));
+        sqlBuilder.append(SQL_CREATE_SCHEMA).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schema.getName()));
         if (StringUtils.isNotBlank(schema.getOwner())) {
             sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(PostgreSqlGuards.requirePgName(schema.getOwner(), "schema owner"));
         }
         if (StringUtils.isNotBlank(schema.getComment())) {
-            sqlBuilder.append(SQL_SEMICOLON_COMMENT_ON_SCHEMA_DOUBLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schema.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(schema.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_SEMICOLON_COMMENT_ON_SCHEMA_DOUBLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schema.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(schema.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
         return sqlBuilder.toString();
     }
@@ -404,7 +404,7 @@ public class PostgreSQLSqlBuilder extends DefaultSqlBuilder {
     }
 
     private static String quotePostgreSqlIdentifier(String name) {
-        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(name);
+        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(name);
     }
 
     private static String quotePostgreSqlStringLiteral(String value) {

@@ -36,13 +36,50 @@ class PostgreSQLIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"plain\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
-        assertEquals("\"weird\"\"name\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("weird\"name"));
-        assertEquals("\"a\"\"; DROP TABLE b; --\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("a\"; DROP TABLE b; --"));
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        PostgreSQLIdentifierProcessor processor = PostgreSQLIdentifierProcessor.INSTANCE;
+        // null/blank pass through
+        assertNull(processor.quoteIdentifier(null));
+        assertEquals("", processor.quoteIdentifier(""));
+        assertEquals("   ", processor.quoteIdentifier("   "));
+        // valid plain identifiers that are not reserved keywords stay unquoted
+        assertEquals("plain", processor.quoteIdentifier("plain"));
+        assertEquals("my_table", processor.quoteIdentifier("my_table"));
+        // reserved keywords are quoted
+        assertEquals("\"select\"", processor.quoteIdentifier("select"));
+        assertEquals("\"USER\"", processor.quoteIdentifier("USER"));
+        // anything else is wrapped with embedded-quote doubling
+        assertEquals("\"weird\"\"name\"", processor.quoteIdentifier("weird\"name"));
+        assertEquals("\"a\"\"; DROP TABLE b; --\"", processor.quoteIdentifier("a\"; DROP TABLE b; --"));
         // one surrounding quote pair is stripped before doubling
-        assertEquals("\"a\"\"b\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("\"a\"b\""));
-        assertEquals("\"quoted\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("\"quoted\""));
+        assertEquals("\"a\"\"b\"", processor.quoteIdentifier("\"a\"b\""));
+        assertEquals("\"quoted\"", processor.quoteIdentifier("\"quoted\""));
+        // the versioned overload delegates to the same conditional behavior
+        assertEquals("plain", processor.quoteIdentifier("plain", 15, 0));
+        assertEquals("\"select\"", processor.quoteIdentifier("select", 15, 0));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseAlwaysQuotesAndPreservesCase() {
+        PostgreSQLIdentifierProcessor processor = PostgreSQLIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"plain\"", processor.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"MyTable\"", processor.quoteIdentifierIgnoreCase("MyTable"));
+        assertEquals("\"weird\"\"name\"", processor.quoteIdentifierIgnoreCase("weird\"name"));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysWrapsUnconditionally() {
+        PostgreSQLIdentifierProcessor processor = PostgreSQLIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierAlways(null));
+        assertEquals("\"\"", processor.quoteIdentifierAlways(""));
+        assertEquals("\"plain\"", processor.quoteIdentifierAlways("plain"));
+        assertEquals("\"my_table\"", processor.quoteIdentifierAlways("my_table"));
+        assertEquals("\"weird\"\"name\"", processor.quoteIdentifierAlways("weird\"name"));
+        assertEquals("\"a\"\"; DROP TABLE b; --\"", processor.quoteIdentifierAlways("a\"; DROP TABLE b; --"));
+        // one surrounding quote pair is stripped before doubling
+        assertEquals("\"a\"\"b\"", processor.quoteIdentifierAlways("\"a\"b\""));
+        assertEquals("\"quoted\"", processor.quoteIdentifierAlways("\"quoted\""));
     }
 
     @Test

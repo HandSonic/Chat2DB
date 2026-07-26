@@ -105,7 +105,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
 
     protected String format(String objectName) {
-        return getSQLIdentifierProcessor().quoteIdentifier(objectName);
+        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
     }
 
     @Override
@@ -746,7 +746,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(PostgreSQLIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
     @Override
