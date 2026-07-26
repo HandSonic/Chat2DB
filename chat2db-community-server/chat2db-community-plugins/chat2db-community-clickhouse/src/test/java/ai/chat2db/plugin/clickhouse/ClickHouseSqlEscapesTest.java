@@ -227,4 +227,56 @@ class ClickHouseSqlEscapesTest {
 
         assertTrue(sql.contains("DEFAULT '2024-01-01'' OR ''1''=''1'"), sql);
     }
+
+    @Test
+    void shouldAllowEqualsInsideEnumTypeArguments() {
+        TableColumn column = new TableColumn();
+        column.setName("e");
+        column.setColumnType("Enum8('a'=1,'b'=2)");
+
+        String sql = ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column);
+
+        assertTrue(sql.startsWith("`e` Enum8('a'=1,'b'=2)"), sql);
+    }
+
+    @Test
+    void shouldRejectEqualsOutsideTypeArguments() {
+        TableColumn topLevel = new TableColumn();
+        topLevel.setName("e");
+        topLevel.setColumnType("Int32=1");
+        assertThrows(IllegalArgumentException.class,
+                () -> ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(topLevel));
+
+        TableColumn afterClose = new TableColumn();
+        afterClose.setName("e");
+        afterClose.setColumnType("Enum8('a'=1)=2");
+        assertThrows(IllegalArgumentException.class,
+                () -> ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(afterClose));
+    }
+
+    @Test
+    void shouldPreserveNullableAndDefaultInValidatedFallback() {
+        TableColumn column = new TableColumn();
+        column.setName("d");
+        column.setColumnType("Decimal(10,2)");
+        column.setNullable(1);
+        column.setDefaultValue("1.5");
+
+        String sql = ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column);
+
+        assertTrue(sql.startsWith("`d` Nullable(Decimal(10,2))"), sql);
+        assertTrue(sql.contains("DEFAULT 1.5"), sql);
+    }
+
+    @Test
+    void shouldNotWrapNonNullableCapableTypesInFallback() {
+        TableColumn column = new TableColumn();
+        column.setName("a");
+        column.setColumnType("Array(Nullable(String))");
+        column.setNullable(1);
+
+        String sql = ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column);
+
+        assertTrue(sql.startsWith("`a` Array(Nullable(String))"), sql);
+    }
 }

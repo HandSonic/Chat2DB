@@ -36,10 +36,11 @@ public final class ClickHouseSqlEscapes {
 
     /**
      * Validates a column type expression that is emitted verbatim into DDL
-     * (e.g. Int32, Decimal(10,2), Array(Nullable(String)), Enum8('a','b')).
+     * (e.g. Int32, Decimal(10,2), Array(Nullable(String)), Enum8('a'=1)).
      * Only letters/digits/underscore are allowed at the top level; spaces,
-     * commas and single quotes are only allowed inside balanced parentheses.
-     * Semicolons, dashes, double quotes and backticks are always rejected.
+     * commas, single quotes and equals signs are only allowed inside balanced
+     * parentheses. Semicolons, dashes, double quotes and backticks are always
+     * rejected.
      */
     public static String requireColumnTypeExpression(String columnType) {
         if (StringUtils.isBlank(columnType)) {
@@ -60,7 +61,7 @@ public final class ClickHouseSqlEscapes {
                 continue;
             }
             boolean ok = Character.isLetterOrDigit(c) || c == '_'
-                    || (depth > 0 && (c == ' ' || c == ',' || c == '\''));
+                    || (depth > 0 && (c == ' ' || c == ',' || c == '\'' || c == '='));
             if (!ok) {
                 throw new IllegalArgumentException("Invalid ClickHouse column type: " + columnType);
             }

@@ -102,11 +102,38 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     private static String buildValidatedFallbackColumn(TableColumn column) {
         StringBuilder script = new StringBuilder();
         script.append(ClickHouseSqlEscapes.quoteIdentifier(column.getName())).append(" ");
-        script.append(ClickHouseSqlEscapes.requireColumnTypeExpression(column.getColumnType())).append(" ");
+        String columnType = ClickHouseSqlEscapes.requireColumnTypeExpression(column.getColumnType());
+        if (column.getNullable() != null && 1 == column.getNullable() && isNullableWrappable(columnType)) {
+            columnType = "Nullable(" + columnType + ")";
+        }
+        script.append(columnType).append(" ");
+        String defaultValue = buildFallbackDefaultValue(column);
+        if (StringUtils.isNotBlank(defaultValue)) {
+            script.append(defaultValue).append(" ");
+        }
         if (StringUtils.isNotBlank(column.getComment())) {
             script.append("COMMENT '").append(ClickHouseSqlEscapes.escapeSqlLiteral(column.getComment())).append("' ");
         }
         return script.toString();
+    }
+
+    private static boolean isNullableWrappable(String columnType) {
+        String upper = columnType.toUpperCase();
+        return !upper.startsWith("ARRAY(") && !upper.startsWith("MAP(") && !upper.startsWith("TUPLE(")
+                && !upper.startsWith("NESTED(") && !upper.startsWith("NULLABLE(");
+    }
+
+    private static String buildFallbackDefaultValue(TableColumn column) {
+        if (StringUtils.isEmpty(column.getDefaultValue())) {
+            return "";
+        }
+        if ("EMPTY_STRING".equalsIgnoreCase(column.getDefaultValue().trim())) {
+            return "DEFAULT ''";
+        }
+        if ("NULL".equalsIgnoreCase(column.getDefaultValue().trim())) {
+            return "DEFAULT NULL";
+        }
+        return "DEFAULT " + validateDefaultExpression(column.getDefaultValue());
     }
 
     public static List<ColumnType> getTypes() {
