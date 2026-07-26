@@ -2,17 +2,16 @@ package ai.chat2db.plugin.sqlite;
 
 import java.util.regex.Pattern;
 
+import ai.chat2db.plugin.sqlite.identifier.SqliteIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Escaping helpers for SQLite SQL generation.
- *
- * <p>Contract: callers MUST pass raw (unquoted, unescaped) names and values.
- * {@link #escapeIdentifier(String)} tolerates at most one surrounding pair of double quotes
- * for convenience, but passing an already-escaped identifier (e.g. {@code we""ird}) will
- * double-escape it and produce a wrong name. Never feed output of these helpers back in.</p>
+ * Validation helpers for non-escapable SQL positions in SQLite DDL generation
+ * (collation/charset keyword names, free-text column type names, column default
+ * expressions) and for {@code --} line comments. Escaping itself lives in
+ * {@link SqliteIdentifierProcessor}.
  */
-public final class SqliteSqlEscapes {
+public final class SqliteSqlGuards {
 
     /**
      * Conservative allow-list for names embedded into keyword positions where quoting
@@ -35,40 +34,7 @@ public final class SqliteSqlEscapes {
      */
     private static final Pattern SAFE_DEFAULT_EXPRESSION = Pattern.compile("[A-Za-z0-9_()., +\\-*/%]+");
 
-    private SqliteSqlEscapes() {
-    }
-
-    /**
-     * Escapes a raw string literal value for inclusion inside single quotes
-     * (single quotes are doubled, per the SQL standard which SQLite follows).
-     * Returns an empty string for {@code null}.
-     */
-    public static String escapeSqlLiteral(String value) {
-        return value == null ? "" : StringUtils.replace(value, "'", "''");
-    }
-
-    /**
-     * Escapes a raw identifier for inclusion inside double quotes
-     * (embedded double quotes are doubled). One surrounding pair of double quotes
-     * is stripped first; do NOT pass already-escaped identifiers. Returns an empty
-     * string for {@code null}.
-     */
-    public static String escapeIdentifier(String identifier) {
-        if (identifier == null) {
-            return "";
-        }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "\"", "\"\"");
-    }
-
-    /**
-     * Returns the raw identifier wrapped in double quotes with embedded quotes doubled.
-     */
-    public static String quoteIdentifier(String identifier) {
-        return "\"" + escapeIdentifier(identifier) + "\"";
+    private SqliteSqlGuards() {
     }
 
     /**
@@ -121,12 +87,12 @@ public final class SqliteSqlEscapes {
             if (isWellFormedEscapedLiteral(inner)) {
                 return trimmed;
             }
-            return "'" + escapeSqlLiteral(inner) + "'";
+            return "'" + SqliteIdentifierProcessor.INSTANCE.escapeString(inner) + "'";
         }
         if (SAFE_DEFAULT_EXPRESSION.matcher(trimmed).matches()) {
             return trimmed;
         }
-        return "'" + escapeSqlLiteral(trimmed) + "'";
+        return "'" + SqliteIdentifierProcessor.INSTANCE.escapeString(trimmed) + "'";
     }
 
     /**

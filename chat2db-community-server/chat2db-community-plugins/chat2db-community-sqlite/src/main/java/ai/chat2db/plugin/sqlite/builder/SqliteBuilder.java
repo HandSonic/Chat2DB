@@ -3,7 +3,8 @@ package ai.chat2db.plugin.sqlite.builder;
 import ai.chat2db.spi.constant.SQLConstants;
 
 import ai.chat2db.plugin.sqlite.SqliteMetaData;
-import ai.chat2db.plugin.sqlite.SqliteSqlEscapes;
+import ai.chat2db.plugin.sqlite.SqliteSqlGuards;
+import ai.chat2db.plugin.sqlite.identifier.SqliteIdentifierProcessor;
 import ai.chat2db.plugin.sqlite.enums.type.SqliteColumnTypeEnum;
 import ai.chat2db.plugin.sqlite.enums.type.SqliteIndexTypeEnum;
 import ai.chat2db.spi.ISQLIdentifierProcessor;
@@ -30,9 +31,9 @@ public class SqliteBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getDatabaseName())) {
-            script.append(SQLConstants.DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(table.getDatabaseName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE);
+            script.append(SQLConstants.DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(table.getDatabaseName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE);
         }
-        script.append(SQLConstants.DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(table.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SQLConstants.DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(table.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -41,13 +42,13 @@ public class SqliteBuilder extends DefaultSqlBuilder {
             if (typeEnum == null) {
                 script.append(SQLConstants.TAB).append(buildDefaultCreateColumnSql(column)).append(SQLConstants.COMMA);
                 if (StringUtils.isNotBlank(column.getComment())) {
-                    script.append(VALUE).append(SqliteSqlEscapes.sanitizeLineComment(column.getComment())).append(SQLConstants.SPACE);
+                    script.append(VALUE).append(SqliteSqlGuards.sanitizeLineComment(column.getComment())).append(SQLConstants.SPACE);
                 }
                 script.append(SQLConstants.LINE_SEPARATOR);
             } else {
                 script.append(SQLConstants.TAB).append(typeEnum.buildCreateColumnSql(column)).append(SQLConstants.COMMA);
                 if (StringUtils.isNotBlank(column.getComment())) {
-                    script.append(VALUE).append(SqliteSqlEscapes.sanitizeLineComment(column.getComment())).append(SQLConstants.SPACE);
+                    script.append(VALUE).append(SqliteSqlGuards.sanitizeLineComment(column.getComment())).append(SQLConstants.SPACE);
                 }
                 script.append(SQLConstants.LINE_SEPARATOR);
             }
@@ -80,8 +81,8 @@ public class SqliteBuilder extends DefaultSqlBuilder {
 
     public String buildDefaultCreateColumnSql(TableColumn column) {
         StringBuilder script = new StringBuilder();
-        script.append(SQLConstants.DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(column.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SPACE);
-        script.append(SqliteSqlEscapes.requireSafeTypeName(column.getColumnType())).append(SQLConstants.SPACE);
+        script.append(SQLConstants.DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(column.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SPACE);
+        script.append(SqliteSqlGuards.requireSafeTypeName(column.getColumnType())).append(SQLConstants.SPACE);
 
         return script.toString();
     }
@@ -90,12 +91,12 @@ public class SqliteBuilder extends DefaultSqlBuilder {
     public String buildAlterTable(Table oldTable, Table newTable) {
         StringBuilder script = new StringBuilder();
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(oldTable.getDatabaseName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(oldTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.LINE_SEPARATOR);
-            script.append(SQLConstants.TAB).append(SQL_RENAME).append(SQLConstants.DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(newTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(oldTable.getDatabaseName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(oldTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.LINE_SEPARATOR);
+            script.append(SQLConstants.TAB).append(SQL_RENAME).append(SQLConstants.DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(newTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
-                script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SqliteSqlEscapes.escapeIdentifier(newTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.LINE_SEPARATOR);
+                script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(newTable.getDatabaseName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(SqliteIdentifierProcessor.escapeIdentifier(newTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.LINE_SEPARATOR);
                 SqliteColumnTypeEnum typeEnum = SqliteColumnTypeEnum.getByType(tableColumn.getColumnType());
                 if (typeEnum == null) {
                     continue;

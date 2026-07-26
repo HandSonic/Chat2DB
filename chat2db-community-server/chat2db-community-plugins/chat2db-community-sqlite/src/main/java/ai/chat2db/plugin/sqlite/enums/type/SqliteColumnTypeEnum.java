@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.sqlite.enums.type;
 
-import ai.chat2db.plugin.sqlite.SqliteSqlEscapes;
+import ai.chat2db.plugin.sqlite.SqliteSqlGuards;
+import ai.chat2db.plugin.sqlite.identifier.SqliteIdentifierProcessor;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -58,7 +59,7 @@ public enum SqliteColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(SqliteSqlEscapes.escapeIdentifier(column.getName())).append("\"").append(" ");
+        script.append("\"").append(SqliteIdentifierProcessor.escapeIdentifier(column.getName())).append("\"").append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -81,14 +82,14 @@ public enum SqliteColumnTypeEnum implements IColumnBuilder {
         if (!type.getColumnType().isSupportCharset() || StringUtils.isEmpty(column.getCharSetName())) {
             return "";
         }
-        return StringUtils.join("CHARACTER SET ", SqliteSqlEscapes.requireSafeName(column.getCharSetName(), "charset"));
+        return StringUtils.join("CHARACTER SET ", SqliteSqlGuards.requireSafeName(column.getCharSetName(), "charset"));
     }
 
     private String buildCollation(TableColumn column, SqliteColumnTypeEnum type) {
         if (!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())) {
             return "";
         }
-        return StringUtils.join("COLLATE ", SqliteSqlEscapes.requireSafeName(column.getCollationName(), "collation"));
+        return StringUtils.join("COLLATE ", SqliteSqlGuards.requireSafeName(column.getCollationName(), "collation"));
     }
 
     @Override
@@ -130,7 +131,7 @@ public enum SqliteColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", SqliteSqlEscapes.escapeColumnDefault(column.getDefaultValue()));
+        return StringUtils.join("DEFAULT ", SqliteSqlGuards.escapeColumnDefault(column.getDefaultValue()));
     }
 
     private String buildNullable(TableColumn column, SqliteColumnTypeEnum type) {

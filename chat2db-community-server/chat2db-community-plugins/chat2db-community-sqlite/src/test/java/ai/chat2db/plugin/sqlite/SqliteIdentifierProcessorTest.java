@@ -20,30 +20,30 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SqliteSqlEscapesTest {
+class SqliteIdentifierProcessorTest {
 
     @Test
-    void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", SqliteSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("''", SqliteSqlEscapes.escapeSqlLiteral("'"));
-        assertEquals("plain", SqliteSqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("", SqliteSqlEscapes.escapeSqlLiteral(null));
+    void escapeStringDoublesSingleQuotes() {
+        assertEquals("O''Brien", SqliteIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("''", SqliteIdentifierProcessor.INSTANCE.escapeString("'"));
+        assertEquals("plain", SqliteIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("", SqliteIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void escapeIdentifierDoublesDoubleQuotesAndStripsWrappingQuotes() {
-        assertEquals("WE\"\"IRD", SqliteSqlEscapes.escapeIdentifier("WE\"IRD"));
-        assertEquals("ALREADY", SqliteSqlEscapes.escapeIdentifier("\"ALREADY\""));
-        assertEquals("", SqliteSqlEscapes.escapeIdentifier(null));
-        assertEquals("", SqliteSqlEscapes.escapeIdentifier("\"\""));
-        assertEquals("\"A\"\"B\"", SqliteSqlEscapes.quoteIdentifier("A\"B"));
-        assertEquals("\"\"\"\"", SqliteSqlEscapes.quoteIdentifier("\""));
+        assertEquals("WE\"\"IRD", SqliteIdentifierProcessor.escapeIdentifier("WE\"IRD"));
+        assertEquals("ALREADY", SqliteIdentifierProcessor.escapeIdentifier("\"ALREADY\""));
+        assertEquals("", SqliteIdentifierProcessor.escapeIdentifier(null));
+        assertEquals("", SqliteIdentifierProcessor.escapeIdentifier("\"\""));
+        assertEquals("\"A\"\"B\"", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("A\"B"));
+        assertEquals("\"\"\"\"", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("\""));
     }
 
     @Test
     void metadataSqlTemplatesNeutralizeLiteralInjection() {
         String payload = "v' OR '1'='1";
-        String sql = String.format(SqliteMetaDataConstants.VIEW_DDL_SQL, SqliteSqlEscapes.escapeSqlLiteral(payload));
+        String sql = String.format(SqliteMetaDataConstants.VIEW_DDL_SQL, SqliteIdentifierProcessor.INSTANCE.escapeString(payload));
         assertTrue(sql.contains("name='v'' OR ''1''=''1';"), sql);
         assertFalse(sql.contains("name='v' OR"), sql);
     }
@@ -150,39 +150,39 @@ class SqliteSqlEscapesTest {
 
     @Test
     void requireSafeTypeNameAcceptsRealTypesAndRejectsInjection() {
-        assertEquals("VARCHAR(255)", SqliteSqlEscapes.requireSafeTypeName("VARCHAR(255)"));
-        assertEquals("NUMERIC(10,2)", SqliteSqlEscapes.requireSafeTypeName("NUMERIC(10,2)"));
-        assertEquals("DOUBLE PRECISION", SqliteSqlEscapes.requireSafeTypeName("DOUBLE PRECISION"));
+        assertEquals("VARCHAR(255)", SqliteSqlGuards.requireSafeTypeName("VARCHAR(255)"));
+        assertEquals("NUMERIC(10,2)", SqliteSqlGuards.requireSafeTypeName("NUMERIC(10,2)"));
+        assertEquals("DOUBLE PRECISION", SqliteSqlGuards.requireSafeTypeName("DOUBLE PRECISION"));
         assertThrows(IllegalArgumentException.class,
-                () -> SqliteSqlEscapes.requireSafeTypeName("TEXT); DROP TABLE u; --"));
+                () -> SqliteSqlGuards.requireSafeTypeName("TEXT); DROP TABLE u; --"));
         assertThrows(IllegalArgumentException.class,
-                () -> SqliteSqlEscapes.requireSafeTypeName("TEXT\")"));
-        assertNull(SqliteSqlEscapes.requireSafeTypeName(null));
+                () -> SqliteSqlGuards.requireSafeTypeName("TEXT\")"));
+        assertNull(SqliteSqlGuards.requireSafeTypeName(null));
     }
 
     @Test
     void escapeColumnDefaultKeepsQuotedLiteralsAndExpressions() {
-        assertEquals("'O''Brien'", SqliteSqlEscapes.escapeColumnDefault("'O''Brien'"));
-        assertEquals("''", SqliteSqlEscapes.escapeColumnDefault("''"));
-        assertEquals("42", SqliteSqlEscapes.escapeColumnDefault("42"));
-        assertEquals("-1.5", SqliteSqlEscapes.escapeColumnDefault("-1.5"));
-        assertEquals("CURRENT_TIMESTAMP", SqliteSqlEscapes.escapeColumnDefault("CURRENT_TIMESTAMP"));
-        assertEquals("(1+2)", SqliteSqlEscapes.escapeColumnDefault("(1+2)"));
-        assertEquals("", SqliteSqlEscapes.escapeColumnDefault(null));
+        assertEquals("'O''Brien'", SqliteSqlGuards.escapeColumnDefault("'O''Brien'"));
+        assertEquals("''", SqliteSqlGuards.escapeColumnDefault("''"));
+        assertEquals("42", SqliteSqlGuards.escapeColumnDefault("42"));
+        assertEquals("-1.5", SqliteSqlGuards.escapeColumnDefault("-1.5"));
+        assertEquals("CURRENT_TIMESTAMP", SqliteSqlGuards.escapeColumnDefault("CURRENT_TIMESTAMP"));
+        assertEquals("(1+2)", SqliteSqlGuards.escapeColumnDefault("(1+2)"));
+        assertEquals("", SqliteSqlGuards.escapeColumnDefault(null));
     }
 
     @Test
     void escapeColumnDefaultNeutralizesAttackStrings() {
         assertEquals("'x''); DROP TABLE u; --'",
-                SqliteSqlEscapes.escapeColumnDefault("'x'); DROP TABLE u; --'"));
+                SqliteSqlGuards.escapeColumnDefault("'x'); DROP TABLE u; --'"));
         assertEquals("'0; DROP TABLE u; --'",
-                SqliteSqlEscapes.escapeColumnDefault("0; DROP TABLE u; --"));
+                SqliteSqlGuards.escapeColumnDefault("0; DROP TABLE u; --"));
     }
 
     @Test
     void sanitizeLineCommentFlattensLineBreaks() {
-        assertEquals("x ); DROP TABLE u; --", SqliteSqlEscapes.sanitizeLineComment("x\n); DROP TABLE u; --"));
-        assertEquals("a  b", SqliteSqlEscapes.sanitizeLineComment("a\r\nb"));
-        assertEquals("", SqliteSqlEscapes.sanitizeLineComment(null));
+        assertEquals("x ); DROP TABLE u; --", SqliteSqlGuards.sanitizeLineComment("x\n); DROP TABLE u; --"));
+        assertEquals("a  b", SqliteSqlGuards.sanitizeLineComment("a\r\nb"));
+        assertEquals("", SqliteSqlGuards.sanitizeLineComment(null));
     }
 }
