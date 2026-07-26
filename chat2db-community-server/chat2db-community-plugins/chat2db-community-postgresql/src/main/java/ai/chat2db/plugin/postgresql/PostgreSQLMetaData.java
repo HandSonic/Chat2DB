@@ -53,8 +53,6 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
 
 
-    public static final ISQLIdentifierProcessor POSTGRE_SQL_IDENTIFIER_PROCESSOR = new PostgreSQLIdentifierProcessor();
-
     @Override
     public List<Database> databases(Connection connection) {
         List<Database> list = DefaultSQLExecutor.getInstance().execute(connection, SQL_SELECT_DATNAME_PG_DATABASE, resultSet -> {
@@ -92,7 +90,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, PostgreSqlEscapes.escapeSqlLiteral(schemaName));
+        String sql = String.format(TRIGGER_SQL_LIST, getSQLIdentifierProcessor().escapeString(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -107,7 +105,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
 
     protected String format(String objectName) {
-        return PostgreSqlEscapes.quoteIdentifier(objectName);
+        return getSQLIdentifierProcessor().quoteIdentifier(objectName);
     }
 
     @Override
@@ -572,7 +570,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(viewName));
+        String sql = String.format(VIEW_SQL, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -589,7 +587,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
                            String triggerName) {
 
-        String sql = String.format(TRIGGER_SQL, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(triggerName));
+        String sql = String.format(TRIGGER_SQL, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Trigger trigger = new Trigger();
             trigger.setDatabaseName(databaseName);
@@ -621,7 +619,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
 
-        String constraintSql = String.format(SELECT_KEY_INDEX, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(tableName));
+        String constraintSql = String.format(SELECT_KEY_INDEX, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(tableName));
         Map<String, String> constraintMap = new HashMap();
         LinkedHashMap<String, TableIndex> foreignMap = new LinkedHashMap();
         DefaultSQLExecutor.getInstance().execute(connection, constraintSql, resultSet -> {
@@ -651,7 +649,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
             return null;
         });
 
-        String sql = String.format(SELECT_TABLE_INDEX, PostgreSqlEscapes.escapeSqlLiteral(schemaName), PostgreSqlEscapes.escapeSqlLiteral(tableName));
+        String sql = String.format(SELECT_TABLE_INDEX, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap(foreignMap);
 
@@ -743,12 +741,12 @@ public class PostgreSQLMetaData extends DefaultMetaService implements IDbMetaDat
 
     @Override
     public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
-        return POSTGRE_SQL_IDENTIFIER_PROCESSOR;
+        return PostgreSQLIdentifierProcessor.INSTANCE;
     }
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(PostgreSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
     }
 
     @Override

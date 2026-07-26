@@ -12,6 +12,7 @@ import ai.chat2db.plugin.postgresql.builder.PostgreSQLSqlBuilder;
 import ai.chat2db.plugin.postgresql.enums.PostgreSQLViewCheckOptionEnum;
 import ai.chat2db.plugin.postgresql.enums.type.PostgreSQLColumnTypeEnum;
 import ai.chat2db.plugin.postgresql.enums.type.PostgreSQLIndexTypeEnum;
+import ai.chat2db.plugin.postgresql.identifier.PostgreSQLIdentifierProcessor;
 import ai.chat2db.plugin.postgresql.value.template.PostgreSQLDmlValueTemplate;
 import org.junit.jupiter.api.Test;
 
@@ -22,36 +23,36 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class PostgreSqlEscapesTest {
+class PostgreSQLIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("a''b", PostgreSqlEscapes.escapeSqlLiteral("a'b"));
-        assertEquals("''", PostgreSqlEscapes.escapeSqlLiteral("'"));
-        assertEquals("plain", PostgreSqlEscapes.escapeSqlLiteral("plain"));
+        assertEquals("a''b", PostgreSQLIdentifierProcessor.INSTANCE.escapeString("a'b"));
+        assertEquals("''", PostgreSQLIdentifierProcessor.INSTANCE.escapeString("'"));
+        assertEquals("plain", PostgreSQLIdentifierProcessor.INSTANCE.escapeString("plain"));
         // backslash is NOT an escape character under standard_conforming_strings=on
-        assertEquals("a\\b", PostgreSqlEscapes.escapeSqlLiteral("a\\b"));
-        assertNull(PostgreSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("a\\b", PostgreSQLIdentifierProcessor.INSTANCE.escapeString("a\\b"));
+        assertNull(PostgreSQLIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"plain\"", PostgreSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("\"weird\"\"name\"", PostgreSqlEscapes.quoteIdentifier("weird\"name"));
-        assertEquals("\"a\"\"; DROP TABLE b; --\"", PostgreSqlEscapes.quoteIdentifier("a\"; DROP TABLE b; --"));
+        assertEquals("\"plain\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"weird\"\"name\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("weird\"name"));
+        assertEquals("\"a\"\"; DROP TABLE b; --\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("a\"; DROP TABLE b; --"));
         // one surrounding quote pair is stripped before doubling
-        assertEquals("\"a\"\"b\"", PostgreSqlEscapes.quoteIdentifier("\"a\"b\""));
-        assertEquals("\"quoted\"", PostgreSqlEscapes.quoteIdentifier("\"quoted\""));
+        assertEquals("\"a\"\"b\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("\"a\"b\""));
+        assertEquals("\"quoted\"", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier("\"quoted\""));
     }
 
     @Test
     void requirePgNameRejectsInjection() {
-        assertEquals("btree", PostgreSqlEscapes.requirePgName("btree", "index method"));
-        assertEquals("en_US", PostgreSqlEscapes.requirePgName("en_US", "role"));
+        assertEquals("btree", PostgreSqlGuards.requirePgName("btree", "index method"));
+        assertEquals("en_US", PostgreSqlGuards.requirePgName("en_US", "role"));
         assertThrows(IllegalArgumentException.class,
-                () -> PostgreSqlEscapes.requirePgName("btree; DROP TABLE t", "index method"));
+                () -> PostgreSqlGuards.requirePgName("btree; DROP TABLE t", "index method"));
         assertThrows(IllegalArgumentException.class,
-                () -> PostgreSqlEscapes.requirePgName("alice\" ", "schema owner"));
+                () -> PostgreSqlGuards.requirePgName("alice\" ", "schema owner"));
     }
 
     @Test
@@ -59,7 +60,7 @@ class PostgreSqlEscapesTest {
         String[] valid = {"0", "-1", "1.5", "+2", "true", "FALSE", "CURRENT_TIMESTAMP", "now",
                 "'Y'", "'0'", "'O''Brien'", "'1970-01-01'", "'{}'", "''"};
         for (String value : valid) {
-            assertEquals(value, PostgreSqlEscapes.requireDefaultExpression(value), "should accept: " + value);
+            assertEquals(value, PostgreSqlGuards.requireDefaultExpression(value), "should accept: " + value);
         }
     }
 
@@ -71,24 +72,24 @@ class PostgreSqlEscapesTest {
         };
         for (String payload : payloads) {
             assertThrows(IllegalArgumentException.class,
-                    () -> PostgreSqlEscapes.requireDefaultExpression(payload), "should reject: " + payload);
+                    () -> PostgreSqlGuards.requireDefaultExpression(payload), "should reject: " + payload);
         }
     }
 
     @Test
     void requireBitAndHexLiteralsValidateContent() {
-        assertEquals("0101", PostgreSqlEscapes.requireBitLiteral("0101"));
-        assertThrows(IllegalArgumentException.class, () -> PostgreSqlEscapes.requireBitLiteral("2"));
-        assertThrows(IllegalArgumentException.class, () -> PostgreSqlEscapes.requireBitLiteral("1' OR '1'='1"));
-        assertEquals("deadBEEF", PostgreSqlEscapes.requireHexLiteral("deadBEEF"));
-        assertThrows(IllegalArgumentException.class, () -> PostgreSqlEscapes.requireHexLiteral("zz'; DROP TABLE t;--"));
+        assertEquals("0101", PostgreSqlGuards.requireBitLiteral("0101"));
+        assertThrows(IllegalArgumentException.class, () -> PostgreSqlGuards.requireBitLiteral("2"));
+        assertThrows(IllegalArgumentException.class, () -> PostgreSqlGuards.requireBitLiteral("1' OR '1'='1"));
+        assertEquals("deadBEEF", PostgreSqlGuards.requireHexLiteral("deadBEEF"));
+        assertThrows(IllegalArgumentException.class, () -> PostgreSqlGuards.requireHexLiteral("zz'; DROP TABLE t;--"));
     }
 
     @Test
     void requireEnumConstantRejectsUnknownOption() {
-        assertEquals("CASCADED", PostgreSqlEscapes.requireEnumConstant(
+        assertEquals("CASCADED", PostgreSqlGuards.requireEnumConstant(
                 "cascaded", PostgreSQLViewCheckOptionEnum.values(), "view check option"));
-        assertThrows(IllegalArgumentException.class, () -> PostgreSqlEscapes.requireEnumConstant(
+        assertThrows(IllegalArgumentException.class, () -> PostgreSqlGuards.requireEnumConstant(
                 "CASCADED; DROP TABLE t", PostgreSQLViewCheckOptionEnum.values(), "view check option"));
     }
 

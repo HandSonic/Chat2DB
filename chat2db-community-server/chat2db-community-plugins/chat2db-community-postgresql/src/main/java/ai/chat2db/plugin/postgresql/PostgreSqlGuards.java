@@ -5,13 +5,12 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.regex.Pattern;
 
 /**
- * Canonical escaping/quoting helpers for values interpolated into PostgreSQL SQL text (#1914).
- * Literal escaping mirrors Oracle's escapeSqlLiteral (#2052): standard single-quote doubling
- * (PostgreSQL runs with standard_conforming_strings=on, so backslash is not an escape character).
- * Identifier quoting mirrors SqlServerIdentifierUtils (#2053): strip one surrounding quote pair,
- * then double every embedded double quote.
+ * Validation helpers for non-escapable SQL positions in PostgreSQL DDL/DML generation
+ * (strict name tokens, raw DEFAULT expressions, bit/hex literal content, enum options).
+ * Escaping itself lives in
+ * {@link ai.chat2db.plugin.postgresql.identifier.PostgreSQLIdentifierProcessor}.
  */
-public final class PostgreSqlEscapes {
+public final class PostgreSqlGuards {
 
     private static final Pattern PG_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
     private static final Pattern BIT_LITERAL_PATTERN = Pattern.compile("^[01]*$");
@@ -27,43 +26,7 @@ public final class PostgreSqlEscapes {
     private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
             "\\A(?:(?!.*--)[A-Za-z0-9_ .+-]+|'(?:[^']|'')*')\\z");
 
-    private PostgreSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal (surrounding quotes NOT
-     * added) by doubling every single quote.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value.replace("'", "''");
-    }
-
-    /**
-     * Escape an identifier for a double-quoted position (surrounding quotes NOT added): strips one
-     * surrounding double-quote pair, then doubles every embedded double quote.
-     */
-    public static String escapeIdentifier(String identifier) {
-        if (identifier == null) {
-            return null;
-        }
-        String unquoted = identifier;
-        if (unquoted.length() >= 2 && unquoted.startsWith("\"") && unquoted.endsWith("\"")) {
-            unquoted = unquoted.substring(1, unquoted.length() - 1);
-        }
-        return unquoted.replace("\"", "\"\"");
-    }
-
-    /**
-     * Quote an identifier with double quotes, doubling every embedded double quote.
-     */
-    public static String quoteIdentifier(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
-        }
-        return "\"" + escapeIdentifier(identifier) + "\"";
+    private PostgreSqlGuards() {
     }
 
     /**

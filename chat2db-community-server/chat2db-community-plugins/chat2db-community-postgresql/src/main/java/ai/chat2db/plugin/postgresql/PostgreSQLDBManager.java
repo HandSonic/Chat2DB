@@ -2,6 +2,7 @@ package ai.chat2db.plugin.postgresql;
 
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.plugin.postgresql.builder.PostgreSQLSqlBuilder;
+import ai.chat2db.plugin.postgresql.identifier.PostgreSQLIdentifierProcessor;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
 import ai.chat2db.spi.sql.Chat2DBContext;
@@ -56,7 +57,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
                 if (StringUtils.isBlank(sequenceName)) {
                     continue;
                 }
-                String quotedSequenceName = PostgreSqlEscapes.quoteIdentifier(sequenceName);
+                String quotedSequenceName = PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(sequenceName);
                 sqlBuilder.append(SQL_DROP_SEQUENCE_EXISTS).append(quotedSequenceName).append(";\n");
                 sqlBuilder.append(SQL_CREATE_SEQUENCE).append(quotedSequenceName).append("\n")
                         .append(" START WITH ").append(startValue).append("\n")
@@ -78,7 +79,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
         StringBuilder typeBuilder = new StringBuilder();
         DefaultSQLExecutor.getInstance().preExecute(connection, ENUM_TYPE_DDL_SQL, new String[]{schemaName}, resultSet -> {
             while (resultSet.next()) {
-                typeBuilder.append(SQL_DROP_TYPE_EXISTS).append(PostgreSqlEscapes.quoteIdentifier(resultSet.getString("type_name"))).append(";\n");
+                typeBuilder.append(SQL_DROP_TYPE_EXISTS).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(resultSet.getString("type_name"))).append(";\n");
                 typeBuilder.append(resultSet.getString("ddl")).append("\n");
                 asyncContext.write(typeBuilder.toString());
             }
@@ -86,7 +87,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
         typeBuilder.setLength(0);
         DefaultSQLExecutor.getInstance().preExecute(connection, UDT_SQL, new String[]{schemaName}, resultSet -> {
             while (resultSet.next()) {
-                String typeName = PostgreSqlEscapes.quoteIdentifier(resultSet.getString("type_name"));
+                String typeName = PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(resultSet.getString("type_name"));
                 typeBuilder.append(SQL_DROP_TYPE_EXISTS).append(typeName).append(";\n");
                 typeBuilder.append(resultSet.getString("create_type_statement")).append("\n");
                 asyncContext.write(typeBuilder.toString());
@@ -108,7 +109,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
         String tableDDL = Chat2DBContext.getDbMetaData().tableDDL(connection,
                 new TableMetadataRequest(databaseName, schemaName, tableName));
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("\n").append(SQL_DROP_TABLE_EXISTS).append(PostgreSqlEscapes.quoteIdentifier(tableName)).append(";").append("\n")
+        sqlBuilder.append("\n").append(SQL_DROP_TABLE_EXISTS).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName)).append(";").append("\n")
                 .append(tableDDL).append("\n");
         asyncContext.write(sqlBuilder.toString());
         if (asyncContext.isContainsData()) {
@@ -125,7 +126,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
                 StringBuilder sqlBuilder = new StringBuilder();
                 String viewName = resultSet.getString("table_name");
                 String viewDefinition = resultSet.getString("view_definition");
-                String quotedObjectName = PostgreSqlEscapes.quoteIdentifier(viewName);
+                String quotedObjectName = PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(viewName);
                 sqlBuilder.append(SQL_DROP_VIEW_EXISTS).append(quotedObjectName).append(";\n");
                 sqlBuilder.append(SQL_CREATE_REPLACE_VIEW).append(quotedObjectName).append(" AS ").append(viewDefinition).append("\n");
                 asyncContext.write(sqlBuilder.toString());
@@ -142,9 +143,9 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
                 String routineDefinition = resultSet.getString("function_definition");
                 String prokind = resultSet.getString("prokind");
                 if (Objects.equals("f", prokind)) {
-                    sqlBuilder.append(SQL_DROP_FUNCTION_EXISTS).append(PostgreSqlEscapes.quoteIdentifier(schemaName)).append(".").append(PostgreSqlEscapes.quoteIdentifier(routineName)).append(";\n");
+                    sqlBuilder.append(SQL_DROP_FUNCTION_EXISTS).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName)).append(".").append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(routineName)).append(";\n");
                 } else {
-                    sqlBuilder.append(SQL_DROP_PROCEDURE_EXISTS).append(PostgreSqlEscapes.quoteIdentifier(schemaName)).append(".").append(PostgreSqlEscapes.quoteIdentifier(routineName)).append(";\n");
+                    sqlBuilder.append(SQL_DROP_PROCEDURE_EXISTS).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName)).append(".").append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(routineName)).append(";\n");
                 }
                 sqlBuilder.append(routineDefinition).append(";\n\n");
                 asyncContext.write(sqlBuilder.toString());
@@ -179,7 +180,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
         connectInfo.setSchemaName(null);
         Connection connection = super.getConnection(connectInfo);
         if (StringUtils.isNotBlank(schemaName)) {
-            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, PostgreSqlEscapes.quoteIdentifier(schemaName));
+            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName));
             try {
                 DefaultSQLExecutor.getInstance().execute(connection, sql);
             } catch (SQLException e) {
@@ -206,7 +207,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "DROP TABLE " + PostgreSqlEscapes.quoteIdentifier(tableName);
+        String sql = "DROP TABLE " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
         return sql;
     }
 
@@ -228,9 +229,9 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
         String sql = "";
         if (copyData) {
-            sql = "CREATE TABLE " + PostgreSqlEscapes.quoteIdentifier(newTableName) + " AS TABLE " + PostgreSqlEscapes.quoteIdentifier(tableName) + " WITH DATA";
+            sql = "CREATE TABLE " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS TABLE " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + " WITH DATA";
         } else {
-            sql = "CREATE TABLE " + PostgreSqlEscapes.quoteIdentifier(newTableName) + " AS TABLE " + PostgreSqlEscapes.quoteIdentifier(tableName) + " WITH NO DATA";
+            sql = "CREATE TABLE " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS TABLE " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + " WITH NO DATA";
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
@@ -243,7 +244,7 @@ public class PostgreSQLDBManager extends DefaultDBManager implements IDbManager 
 
     @Override
     public void dropView(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = "DROP VIEW " + PostgreSqlEscapes.quoteIdentifier(schemaName) + "." + PostgreSqlEscapes.quoteIdentifier(viewName);
+        String sql = "DROP VIEW " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName) + "." + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifier(viewName);
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 }
