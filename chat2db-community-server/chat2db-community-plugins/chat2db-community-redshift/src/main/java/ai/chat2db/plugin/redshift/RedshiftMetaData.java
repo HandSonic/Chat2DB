@@ -1,12 +1,14 @@
 package ai.chat2db.plugin.redshift;
 
 import ai.chat2db.plugin.postgresql.PostgreSQLMetaData;
+import ai.chat2db.plugin.redshift.identifier.RedshiftIdentifierProcessor;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.community.domain.api.model.metadata.Function;
 import ai.chat2db.community.domain.api.model.metadata.Procedure;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.Trigger;
 import ai.chat2db.spi.DefaultSQLExecutor;
+import ai.chat2db.spi.ISQLIdentifierProcessor;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -18,6 +20,12 @@ import java.util.List;
 import static ai.chat2db.plugin.redshift.constant.RedshiftMetaDataConstants.*;
 @Slf4j
 public class RedshiftMetaData extends PostgreSQLMetaData implements IDbMetaData {
+
+    @Override
+    public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
+        return RedshiftIdentifierProcessor.INSTANCE;
+    }
+
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = buildShowCreateTableSql(schemaName, tableName);
@@ -30,8 +38,8 @@ public class RedshiftMetaData extends PostgreSQLMetaData implements IDbMetaData 
     }
 
     static String buildShowCreateTableSql(String schemaName, String tableName) {
-        return "SHOW CREATE TABLE " + RedshiftSqlEscapes.quoteIdentifier(schemaName) + "."
-                + RedshiftSqlEscapes.quoteIdentifier(tableName);
+        return "SHOW CREATE TABLE " + RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(schemaName) + "."
+                + RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
     }
 
     @Override

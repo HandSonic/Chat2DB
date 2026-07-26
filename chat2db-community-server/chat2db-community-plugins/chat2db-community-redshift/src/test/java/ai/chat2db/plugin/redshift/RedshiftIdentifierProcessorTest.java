@@ -1,41 +1,42 @@
 package ai.chat2db.plugin.redshift;
 
+import ai.chat2db.plugin.redshift.identifier.RedshiftIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RedshiftSqlEscapesTest {
+class RedshiftIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("o''brien", RedshiftSqlEscapes.escapeSqlLiteral("o'brien"));
-        assertEquals("plain", RedshiftSqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("''''", RedshiftSqlEscapes.escapeSqlLiteral("''"));
-        assertNull(RedshiftSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("o''brien", RedshiftIdentifierProcessor.INSTANCE.escapeString("o'brien"));
+        assertEquals("plain", RedshiftIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("''''", RedshiftIdentifierProcessor.INSTANCE.escapeString("''"));
+        assertNull(RedshiftIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void escapeIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("we\"\"ird", RedshiftSqlEscapes.escapeIdentifier("we\"ird"));
-        assertEquals("plain", RedshiftSqlEscapes.escapeIdentifier("plain"));
-        assertNull(RedshiftSqlEscapes.escapeIdentifier(null));
+        assertEquals("we\"\"ird", RedshiftIdentifierProcessor.escapeIdentifier("we\"ird"));
+        assertEquals("plain", RedshiftIdentifierProcessor.escapeIdentifier("plain"));
+        assertNull(RedshiftIdentifierProcessor.escapeIdentifier(null));
     }
 
     @Test
     void escapeIdentifierStripsOneSurroundingQuotePair() {
-        assertEquals("foo", RedshiftSqlEscapes.escapeIdentifier("\"foo\""));
-        assertEquals("fo\"\"o", RedshiftSqlEscapes.escapeIdentifier("\"fo\"o\""));
+        assertEquals("foo", RedshiftIdentifierProcessor.escapeIdentifier("\"foo\""));
+        assertEquals("fo\"\"o", RedshiftIdentifierProcessor.escapeIdentifier("\"fo\"o\""));
     }
 
     @Test
     void quoteIdentifierWrapsAndEscapes() {
-        assertEquals("\"foo\"", RedshiftSqlEscapes.quoteIdentifier("foo"));
-        assertEquals("\"foo\"", RedshiftSqlEscapes.quoteIdentifier("\"foo\""));
-        assertEquals("\"we\"\"ird\"", RedshiftSqlEscapes.quoteIdentifier("we\"ird"));
-        assertEquals("", RedshiftSqlEscapes.quoteIdentifier(""));
-        assertNull(RedshiftSqlEscapes.quoteIdentifier(null));
+        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("foo"));
+        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("\"foo\""));
+        assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
+        assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier(null));
     }
 
     @Test
