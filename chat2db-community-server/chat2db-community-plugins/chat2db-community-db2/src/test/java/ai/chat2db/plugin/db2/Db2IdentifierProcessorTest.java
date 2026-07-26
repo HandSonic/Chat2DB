@@ -7,6 +7,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.plugin.db2.builder.DB2SqlBuilder;
 import ai.chat2db.plugin.db2.enums.type.DB2ColumnTypeEnum;
 import ai.chat2db.plugin.db2.enums.type.DB2IndexTypeEnum;
+import ai.chat2db.plugin.db2.identifier.Db2IdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -15,21 +16,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class Db2SqlEscapesTest {
+class Db2IdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", Db2SqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("plain", Db2SqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("", Db2SqlEscapes.escapeSqlLiteral(null));
+        assertEquals("O''Brien", Db2IdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("plain", Db2IdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("", Db2IdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void escapeIdentifierDoublesDoubleQuotesAndStripsSurroundingQuotes() {
-        assertEquals("we\"\"ird", Db2SqlEscapes.escapeIdentifier("we\"ird"));
-        assertEquals("abc", Db2SqlEscapes.escapeIdentifier("\"abc\""));
-        assertEquals("", Db2SqlEscapes.escapeIdentifier(null));
-        assertEquals("\"a\"\"b\"", Db2SqlEscapes.quoteIdentifier("a\"b"));
+        assertEquals("we\"\"ird", Db2IdentifierProcessor.escapeIdentifier("we\"ird"));
+        assertEquals("abc", Db2IdentifierProcessor.escapeIdentifier("\"abc\""));
+        assertEquals("", Db2IdentifierProcessor.escapeIdentifier(null));
+        assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
     }
 
     @Test
@@ -155,7 +156,7 @@ class Db2SqlEscapesTest {
     @Test
     void setSchemaEscapesIdentifierInsideTemplateQuotes() {
         String sql = String.format(ai.chat2db.plugin.db2.constant.DB2DBManagerConstants.SQL_SET_SCHEMA,
-                Db2SqlEscapes.escapeIdentifier("bad\"schema"));
+                Db2IdentifierProcessor.escapeIdentifier("bad\"schema"));
 
         assertEquals("SET SCHEMA \"bad\"\"schema\"", sql);
     }
@@ -170,7 +171,7 @@ class Db2SqlEscapesTest {
     @Test
     void copyTableQuotesBothIdentifiers() {
         String sql = String.format(ai.chat2db.plugin.db2.constant.DB2DBManagerConstants.SQL_COPY_TABLE,
-                Db2SqlEscapes.quoteIdentifier("n\"t"), Db2SqlEscapes.quoteIdentifier("s\"t"));
+                Db2IdentifierProcessor.INSTANCE.quoteIdentifier("n\"t"), Db2IdentifierProcessor.INSTANCE.quoteIdentifier("s\"t"));
 
         assertEquals("CREATE TABLE \"n\"\"t\" LIKE \"s\"\"t\" INCLUDING INDEXES", sql);
     }
@@ -285,7 +286,7 @@ class Db2SqlEscapesTest {
     @Test
     void getDdlTokenEscapesSingleQuotesInsideOptionString() {
         String sql = String.format(ai.chat2db.plugin.db2.constant.DB2MetaDataConstants.GET_DDL_TOKEN,
-                Db2SqlEscapes.escapeSqlLiteral("o'brien"), Db2SqlEscapes.escapeSqlLiteral("t'; DROP TABLE t; --"));
+                Db2IdentifierProcessor.INSTANCE.escapeString("o'brien"), Db2IdentifierProcessor.INSTANCE.escapeString("t'; DROP TABLE t; --"));
 
         assertTrue(sql.contains("-td \"o''brien\""), sql);
         assertTrue(sql.contains("-t \"t''; DROP TABLE t; --\""), sql);
