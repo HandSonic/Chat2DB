@@ -45,7 +45,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<Schema> schemas(Connection connection, String databaseName) {
-        String sql = "select s.schema_name, db.db_name from all_schemas s left join all_databases db on db.db_id = s.db_id where db.db_name = '" + databaseName + "'";
+        String sql = "select s.schema_name, db.db_name from all_schemas s left join all_databases db on db.db_id = s.db_id where db.db_name = '" + XugudbSqlEscapes.escapeSqlLiteral(databaseName) + "'";
         List<Schema> schemas = DefaultSQLExecutor.getInstance().execute(connection,
                 sql, resultSet -> {
                     List<Schema> databases = new ArrayList<>();
@@ -63,7 +63,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String format(String tableName) {
-        return "\"" + tableName + "\"";
+        return XugudbSqlEscapes.quoteIdentifier(tableName);
     }
 
     @Override
@@ -74,7 +74,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
                 FROM dual;
                 """;
         StringBuilder ddlBuilder = new StringBuilder();
-        String tableDDLSql = String.format(sql, schemaName, tableName);
+        String tableDDLSql = String.format(sql, XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(tableName));
         DefaultSQLExecutor.getInstance().execute(connection, tableDDLSql, resultSet -> {
             if (resultSet.next()) {
                 String ddl = resultSet.getString("ddl");
@@ -90,7 +90,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<Function> functions(Connection connection, String databaseName, String schemaName) {
         List<Function> functions = new ArrayList<>();
-        String sql = String.format(FUNCTIONS_SQL, databaseName, schemaName);
+        String sql = String.format(FUNCTIONS_SQL, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Function function = new Function();
@@ -109,7 +109,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     public Function function(Connection connection, @NotEmpty String databaseName, String schemaName,
                              String functionName) {
 
-        String sql = String.format(ROUTINES_SQL, databaseName, schemaName, functionName);
+        String sql = String.format(ROUTINES_SQL, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(functionName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -131,7 +131,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String sql = String.format(PROCEDURE_SQL, databaseName, schemaName, procedureName);
+        String sql = String.format(PROCEDURE_SQL, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(procedureName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -152,7 +152,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<Procedure> procedures(Connection connection, String databaseName, String schemaName) {
         List<Procedure> procedures = new ArrayList<>();
-        String sql = String.format(PROCEDURES_SQL, databaseName, schemaName);
+        String sql = String.format(PROCEDURES_SQL, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Procedure procedure = new Procedure();
@@ -173,7 +173,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, databaseName, schemaName);
+        String sql = String.format(TRIGGER_SQL_LIST, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -190,7 +190,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
                            String triggerName) {
 
-        String sql = String.format(TRIGGER_SQL, databaseName, schemaName, triggerName);
+        String sql = String.format(TRIGGER_SQL, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(triggerName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Trigger trigger = new Trigger();
             trigger.setDatabaseName(databaseName);
@@ -207,7 +207,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<Table> views(Connection connection, String databaseName, String schemaName) {
-        String sql = String.format(VIEW_SQL_LIST, databaseName, schemaName);
+        String sql = String.format(VIEW_SQL_LIST, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName));
         List<Table> tables = new ArrayList<>();
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
@@ -227,7 +227,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = String.format(VIEW_SQL, databaseName, schemaName, viewName);
+        String sql = String.format(VIEW_SQL, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(viewName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
             table.setDatabaseName(databaseName);
@@ -244,7 +244,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(INDEX_SQL, schemaName, tableName);
+        String sql = String.format(INDEX_SQL, XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap();
             while (resultSet.next()) {
@@ -294,7 +294,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<TableColumn> columns(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(SELECT_TABLE_COLUMNS, databaseName, schemaName, tableName);
+        String sql = String.format(SELECT_TABLE_COLUMNS, XugudbSqlEscapes.escapeSqlLiteral(databaseName), XugudbSqlEscapes.escapeSqlLiteral(schemaName), XugudbSqlEscapes.escapeSqlLiteral(tableName));
         List<TableColumn> tableColumns = new ArrayList<>();
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
@@ -342,9 +342,9 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public String getMetaDataName(String... names) {
         if (Arrays.stream(names).count() > 1) {
-            return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+            return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(name -> XugudbSqlEscapes.quoteIdentifier(name)).collect(Collectors.joining("."));
         }
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + name + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> XugudbSqlEscapes.quoteIdentifier(name)).collect(Collectors.joining("."));
     }
 
 

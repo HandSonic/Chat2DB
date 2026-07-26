@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.xugudb.enums.type;
 
 import ai.chat2db.spi.IColumnBuilder;
+import ai.chat2db.plugin.xugudb.XugudbSqlEscapes;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
@@ -8,6 +9,7 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.xugudb.constant.XUGUDBColumnTypeEnumConstants.*;
 public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
@@ -121,7 +123,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(column.getName()).append("\"").append(" ");
+        script.append("\"").append(XugudbSqlEscapes.escapeIdentifier(column.getName())).append("\"").append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -140,8 +142,8 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
             return "";
         }
         StringBuilder script = new StringBuilder();
-        script.append(SQL_ALTER_TABLE).append("\"").append(column.getSchemaName()).append("\".\"").append(column.getTableName()).append("\"");
-        script.append(" ").append("MODIFY (").append("\"").append(column.getName()).append("\"").append(" ");
+        script.append(SQL_ALTER_TABLE).append("\"").append(XugudbSqlEscapes.escapeIdentifier(column.getSchemaName())).append("\".\"").append(XugudbSqlEscapes.escapeIdentifier(column.getTableName())).append("\"");
+        script.append(" ").append("MODIFY (").append("\"").append(XugudbSqlEscapes.escapeIdentifier(column.getName())).append("\"").append(" ");
         boolean isModify = false;
         Integer oldColumnSize = Optional.ofNullable(column.getOldColumn())
                 .map(TableColumn::getColumnSize)
@@ -209,7 +211,26 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", validateDefaultValue(column.getDefaultValue()));
+    }
+
+    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
+            "^(-?\\d+(\\.\\d+)?|'([^']|'')*'|[A-Za-z_][A-Za-z0-9_]*(\\([A-Za-z0-9_ ',.+\\-]*\\))?)$");
+
+    private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z]+$");
+
+    private static String validateDefaultValue(String defaultValue) {
+        if (!DEFAULT_VALUE_PATTERN.matcher(defaultValue.trim()).matches()) {
+            throw new IllegalArgumentException("Unsupported column default value: " + defaultValue);
+        }
+        return defaultValue;
+    }
+
+    private static String validateUnit(String unit) {
+        if (!UNIT_PATTERN.matcher(unit.trim()).matches()) {
+            throw new IllegalArgumentException("Unsupported length unit: " + unit);
+        }
+        return unit;
     }
 
     private String buildDataType(TableColumn column, XUGUDBColumnTypeEnum type) {
@@ -220,7 +241,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
             if (column.getColumnSize() != null && StringUtils.isEmpty(column.getUnit())) {
                 script.append("(").append(column.getColumnSize()).append(")");
             } else if (column.getColumnSize() != null && !StringUtils.isEmpty(column.getUnit())) {
-                script.append("(").append(column.getColumnSize()).append(" ").append(column.getUnit()).append(")");
+                script.append("(").append(column.getColumnSize()).append(" ").append(validateUnit(column.getUnit())).append(")");
             }
             return script.toString();
         }
@@ -274,21 +295,21 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(tableColumn.getName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
+            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getName())).append("\"");
             return script.toString();
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(tableColumn.getOldName()).append("\"").append(" TO ").append("\"").append(tableColumn.getName()).append("\" ").append(";\n").append(buildUpdateColumnSql(tableColumn));
+                script.append(SQL_ALTER_TABLE).append("\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
+                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getOldName())).append("\"").append(" TO ").append("\"").append(XugudbSqlEscapes.escapeIdentifier(tableColumn.getName())).append("\" ").append(";\n").append(buildUpdateColumnSql(tableColumn));
             } else {
                 script.append(buildUpdateColumnSql(tableColumn)).append("\n");
             }
