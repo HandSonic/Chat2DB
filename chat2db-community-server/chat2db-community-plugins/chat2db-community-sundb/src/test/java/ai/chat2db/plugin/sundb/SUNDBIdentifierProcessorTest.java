@@ -42,6 +42,50 @@ class SUNDBIdentifierProcessorTest {
     }
 
     @Test
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        SUNDBIdentifierProcessor processor = SUNDBIdentifierProcessor.INSTANCE;
+        // null and blank pass through unchanged
+        assertEquals(null, processor.quoteIdentifier(null));
+        assertEquals("", processor.quoteIdentifier(""));
+        assertEquals("  ", processor.quoteIdentifier("  "));
+        // valid plain identifiers are returned unquoted
+        assertEquals("plain", processor.quoteIdentifier("plain"));
+        assertEquals("T_PRIMARY_KEY_INDEX", processor.quoteIdentifier("T_PRIMARY_KEY_INDEX"));
+        assertEquals("col_1", processor.quoteIdentifier("col_1"));
+        // anything needing quotes is wrapped with embedded-quote doubling
+        assertEquals("\"we\"\"ird\"", processor.quoteIdentifier("we\"ird"));
+        assertEquals("\"has space\"", processor.quoteIdentifier("has space"));
+        assertEquals("\"1abc\"", processor.quoteIdentifier("1abc"));
+        assertEquals("\"abc\"", processor.quoteIdentifier("\"abc\""));
+        // versioned overload delegates to the conditional single-arg form
+        assertEquals("plain", processor.quoteIdentifier("plain", 1, 0));
+        assertEquals(null, processor.quoteIdentifier(null, 1, 0));
+        assertEquals("\"has space\"", processor.quoteIdentifier("has space", 1, 0));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesUnconditionallyForDdlPaths() {
+        SUNDBIdentifierProcessor processor = SUNDBIdentifierProcessor.INSTANCE;
+        // null passes through
+        assertEquals(null, processor.quoteIdentifierAlways(null));
+        // valid plain identifiers are still quoted
+        assertEquals("\"plain\"", processor.quoteIdentifierAlways("plain"));
+        assertEquals("\"T_PRIMARY_KEY_INDEX\"", processor.quoteIdentifierAlways("T_PRIMARY_KEY_INDEX"));
+        // embedded quotes are doubled, one surrounding pair is stripped
+        assertEquals("\"we\"\"ird\"", processor.quoteIdentifierAlways("we\"ird"));
+        assertEquals("\"abc\"", processor.quoteIdentifierAlways("\"abc\""));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
+        SUNDBIdentifierProcessor processor = SUNDBIdentifierProcessor.INSTANCE;
+        assertEquals(null, processor.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"plain\"", processor.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"MixedCase\"", processor.quoteIdentifierIgnoreCase("MixedCase"));
+        assertEquals("\"we\"\"ird\"", processor.quoteIdentifierIgnoreCase("we\"ird"));
+    }
+
+    @Test
     void getMetaDataNameNeutralizesQuotesInNames() {
         String name = new SUNDBMetaData().getMetaDataName("sch\"ema", "ta\"ble");
 
@@ -59,6 +103,17 @@ class SUNDBIdentifierProcessorTest {
 
         assertEquals("CREATE SCHEMA \"we\"\"ird\" AUTHORIZATION \"ad\"\"min\"", sql);
         assertFalse(sql.contains("we\"ird"));
+    }
+
+    @Test
+    void buildCreateSchemaStillQuotesPlainOwnerForDdlGeneration() {
+        Schema schema = new Schema();
+        schema.setName("myschema");
+        schema.setOwner("admin");
+
+        String sql = new SUNDBSqlBuilder().buildCreateSchema(schema);
+
+        assertEquals("CREATE SCHEMA \"myschema\" AUTHORIZATION \"admin\"", sql);
     }
 
     @Test

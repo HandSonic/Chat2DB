@@ -23,7 +23,7 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
 
 
     private String format(String tableName) {
-        return SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
 
@@ -146,9 +146,9 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
         String sql;
         if(copyData){
-            sql = String.format(SQL_COPY_TABLE_DATA, SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName), SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+            sql = String.format(SQL_COPY_TABLE_DATA, SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName), SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
         }else {
-            sql = String.format(SQL_COPY_TABLE_STRUCTURE, SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName), SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+            sql = String.format(SQL_COPY_TABLE_STRUCTURE, SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName), SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }

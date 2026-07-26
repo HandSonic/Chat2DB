@@ -162,7 +162,7 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append(SQL_CREATE_SCHEMA + SUNDBIdentifierProcessor.escapeIdentifier(schema.getName()) + SQLConstants.DOUBLE_QUOTE);
         if (StringUtils.isNotBlank(schema.getOwner())) {
-            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(schema.getOwner()));
+            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schema.getOwner()));
         }
         return sqlBuilder.toString();
     }

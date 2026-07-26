@@ -157,7 +157,7 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
         if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus()) &&
                 StringUtils.equalsIgnoreCase(column.getOldColumn().getColumnType(), column.getColumnType())
                 && Objects.equals(column.getOldColumn().getColumnSize(), column.getColumnSize())
@@ -290,21 +290,21 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
-            script.append(" ").append(SQL_SET_UNUSED_COLUMN).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getTableName()));
+            script.append(" ").append(SQL_SET_UNUSED_COLUMN).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
             return script.toString();
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
+            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getTableName()));
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
+            script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getTableName()));
             script.append(" ").append(SQL_ALTER_COLUMN);
-            if (buildCreateColumnSql(tableColumn).trim().equals(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()))) {
+            if (buildCreateColumnSql(tableColumn).trim().equals(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()))) {
                 script.setLength(0);
             } else {
                 script.append(buildCreateColumnSql(tableColumn)).append(" \n");
@@ -313,8 +313,8 @@ public enum SUNDBColumnTypeEnum implements IColumnBuilder {
 
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
                 script.append(";");
-                script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getTableName()));
-                script.append(" ").append(SQL_RENAME_COLUMN).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName())).append(" TO ").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+                script.append(SQL_ALTER_TABLE).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getSchemaName())).append(".").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getTableName()));
+                script.append(" ").append(SQL_RENAME_COLUMN).append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName())).append(" TO ").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
 
             }
             return script.toString();
