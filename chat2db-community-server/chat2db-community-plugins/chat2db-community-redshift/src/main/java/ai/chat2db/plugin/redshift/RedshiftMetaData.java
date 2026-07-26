@@ -20,14 +20,18 @@ import static ai.chat2db.plugin.redshift.constant.RedshiftMetaDataConstants.*;
 public class RedshiftMetaData extends PostgreSQLMetaData implements IDbMetaData {
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "SHOW CREATE TABLE " + format(schemaName) + "."
-                + format(tableName);
+        String sql = buildShowCreateTableSql(schemaName, tableName);
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 return resultSet.getString(1);
             }
             return null;
         });
+    }
+
+    static String buildShowCreateTableSql(String schemaName, String tableName) {
+        return "SHOW CREATE TABLE " + RedshiftSqlEscapes.quoteIdentifier(schemaName) + "."
+                + RedshiftSqlEscapes.quoteIdentifier(tableName);
     }
 
     @Override
