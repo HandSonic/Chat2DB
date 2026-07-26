@@ -22,8 +22,8 @@ public class GenericDBManager extends DefaultDBManager implements IDbManager {
         DBConfig dbConfig = Chat2DBContext.getDBConfig();
         String template = dbConfig.getSql(DBConfigConstants.SQL_CHANGE_DATABASE);
         if (template != null) {
-            database = GenericSqlEscapes.sanitizeTemplateValue(template, "{database}", database);
-            schema = GenericSqlEscapes.sanitizeTemplateValue(template, "{schema}", schema);
+            database = GenericSqlGuards.sanitizeTemplateValue(template, "{database}", database);
+            schema = GenericSqlGuards.sanitizeTemplateValue(template, "{schema}", schema);
         }
         String changeDatabase = dbConfig.getChangeDatabase(database, schema);
         if(StringUtils.isEmpty(changeDatabase)){

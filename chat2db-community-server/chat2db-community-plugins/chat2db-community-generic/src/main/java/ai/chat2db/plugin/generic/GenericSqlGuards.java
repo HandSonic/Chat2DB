@@ -1,50 +1,24 @@
 package ai.chat2db.plugin.generic;
 
+import ai.chat2db.plugin.generic.identifier.GenericIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.regex.Pattern;
 
 /**
- * Canonical escaping/validation helpers for values substituted into generic adapter SQL
- * templates (generic.json sqlMap) (#1914).
+ * Validation helpers for values substituted into generic adapter SQL templates
+ * (generic.json sqlMap) (#1914).
  *
  * The generic adapter serves mixed dialects via DBConfig templates (e.g. DuckDB wraps
  * placeholders in single quotes, TDengine uses bare identifier positions), so treatment
  * is chosen per placeholder by inspecting the template; no single dialect quote char is
- * hard-coded.
+ * hard-coded. Escaping itself lives in {@link GenericIdentifierProcessor}.
  */
-public final class GenericSqlEscapes {
+public final class GenericSqlGuards {
 
     private static final Pattern SAFE_IDENTIFIER_PATTERN = Pattern.compile("^[A-Za-z0-9_$]+$");
 
-    private GenericSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal (surrounding
-     * quotes NOT added). Standard single-quote doubling.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value.replace("'", "''");
-    }
-
-    /**
-     * Quote an identifier with the dialect's quote char: strips one surrounding pair of
-     * that quote, then doubles every embedded quote char.
-     */
-    public static String quoteIdentifier(String name, char quote) {
-        if (StringUtils.isBlank(name)) {
-            return name;
-        }
-        String q = String.valueOf(quote);
-        String identifier = name;
-        if (identifier.length() >= 2 && identifier.startsWith(q) && identifier.endsWith(q)) {
-            identifier = identifier.substring(1, identifier.length() - 1);
-        }
-        return q + identifier.replace(q, q + q) + q;
+    private GenericSqlGuards() {
     }
 
     /**
@@ -69,7 +43,7 @@ public final class GenericSqlEscapes {
             return value;
         }
         if (template.contains("'" + placeholder + "'")) {
-            return escapeSqlLiteral(value);
+            return GenericIdentifierProcessor.INSTANCE.escapeString(value);
         }
         return requireSafeIdentifier(value, placeholder);
     }
