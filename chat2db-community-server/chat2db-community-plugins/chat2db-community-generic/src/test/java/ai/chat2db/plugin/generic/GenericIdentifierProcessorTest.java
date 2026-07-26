@@ -30,10 +30,36 @@ class GenericIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDefaultsToDoubleQuotes() {
-        assertEquals("\"plain\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        // null/blank pass through
+        assertNull(GenericIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", GenericIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals(" ", GenericIdentifierProcessor.INSTANCE.quoteIdentifier(" "));
+        // valid plain identifiers are returned unquoted
+        assertEquals("plain", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("Plain_Case1", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("Plain_Case1"));
+        // anything else is wrapped with embedded quotes doubled
         assertEquals("\"a\"\"b\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
+        assertEquals("\"with space\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("with space"));
+        assertEquals("\"1abc\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("1abc"));
+        // versioned overload delegates to the conditional variant
+        assertEquals("plain", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("plain", null, null));
         assertEquals("\"a\"\"b\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifier("a\"b", null, null));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysWrapsUnconditionally() {
+        assertNull(GenericIdentifierProcessor.quoteIdentifierAlways(null));
+        assertEquals("", GenericIdentifierProcessor.quoteIdentifierAlways(""));
+        assertEquals("\"plain\"", GenericIdentifierProcessor.quoteIdentifierAlways("plain"));
+        assertEquals("\"a\"\"b\"", GenericIdentifierProcessor.quoteIdentifierAlways("a\"b"));
+        assertEquals("\"we\"\"\"\"ird\"", GenericIdentifierProcessor.quoteIdentifierAlways("\"we\"\"ird\""));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
+        assertNull(GenericIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+        assertEquals("\"plain\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
         assertEquals("\"a\"\"b\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a\"b"));
     }
 

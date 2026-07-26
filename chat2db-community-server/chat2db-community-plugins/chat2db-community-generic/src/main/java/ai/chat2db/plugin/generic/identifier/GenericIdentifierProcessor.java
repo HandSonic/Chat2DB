@@ -4,23 +4,36 @@ import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Generic dialect identifier processor: double-quoted identifiers with embedded-quote
- * doubling (ANSI default), and single-quote doubling for string literals. The generic
- * adapter serves mixed dialects via DBConfig templates, so a dialect-parameterized
+ * Generic dialect identifier processor. The SPI-facing {@link #quoteIdentifier(String)}
+ * is conditional: identifiers that are already valid plain identifiers (and not
+ * reserved keywords) are returned unquoted so completion/matching consumers keep
+ * working; anything else is wrapped in double quotes (ANSI default) with embedded
+ * quotes doubled. Call sites that historically always quoted use
+ * {@link #quoteIdentifierAlways(String)} (or the SPI always-quote variant
+ * {@link #quoteIdentifierIgnoreCase(String)}). The generic adapter serves mixed
+ * dialects via DBConfig templates, so a dialect-parameterized
  * {@link #quoteIdentifier(String, char)} variant is also provided for call sites that
- * know the target quote char. Shared stateless instance available via {@link #INSTANCE}.
+ * know the target quote char. String literals are escaped by doubling single quotes.
+ * Shared stateless instance available via {@link #INSTANCE}.
  */
 public class GenericIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     public static final GenericIdentifierProcessor INSTANCE = new GenericIdentifierProcessor();
 
     /**
-     * Quotes with the ANSI default double quote, stripping one surrounding quote pair
-     * and doubling every embedded double quote. Blank input is returned unchanged.
+     * Conditional quoting for SPI/completion paths: null/blank pass through; valid
+     * plain identifiers that are not reserved keywords are returned unquoted;
+     * everything else is double-quoted like {@link #quoteIdentifierAlways}.
      */
     @Override
     public String quoteIdentifier(String identifier) {
-        return quoteIdentifier(identifier, '"');
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -28,9 +41,20 @@ public class GenericIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         return quoteIdentifier(identifier);
     }
 
+    /**
+     * SPI always-quote variant (preserve case, always quote).
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditional double-quote wrapping: strips one surrounding quote pair, then
+     * doubles every embedded double quote. Null/blank input is returned unchanged.
+     */
+    public static String quoteIdentifierAlways(String identifier) {
+        return quoteIdentifier(identifier, '"');
     }
 
     /**
