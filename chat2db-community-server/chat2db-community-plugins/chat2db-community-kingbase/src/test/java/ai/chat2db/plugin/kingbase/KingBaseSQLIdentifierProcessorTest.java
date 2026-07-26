@@ -17,67 +17,66 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class KingBaseSqlEscapesTest {
+class KingBaseSQLIdentifierProcessorTest {
 
     @Test
-    void escapeSqlLiteralDoublesSingleQuotes() {
-        assertNull(KingBaseSqlEscapes.escapeSqlLiteral(null));
-        assertEquals("plain", KingBaseSqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("O''Brien", KingBaseSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("a''; DROP TABLE t; --", KingBaseSqlEscapes.escapeSqlLiteral("a'; DROP TABLE t; --"));
+    void escapeStringDoublesSingleQuotes() {
+        assertEquals("", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(null));
+        assertEquals("plain", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("O''Brien", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("a''; DROP TABLE t; --", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString("a'; DROP TABLE t; --"));
     }
 
     @Test
     void escapeIdentifierStripsOnePairAndDoublesEmbeddedQuotes() {
-        assertNull(KingBaseSqlEscapes.escapeIdentifier(null));
-        assertEquals("plain", KingBaseSqlEscapes.escapeIdentifier("plain"));
-        assertEquals("we\"\"name", KingBaseSqlEscapes.escapeIdentifier("we\"name"));
-        assertEquals("quoted", KingBaseSqlEscapes.escapeIdentifier("\"quoted\""));
+        assertEquals("", KingBaseSQLIdentifierProcessor.escapeIdentifier(null));
+        assertEquals("plain", KingBaseSQLIdentifierProcessor.escapeIdentifier("plain"));
+        assertEquals("we\"\"name", KingBaseSQLIdentifierProcessor.escapeIdentifier("we\"name"));
+        assertEquals("quoted", KingBaseSQLIdentifierProcessor.escapeIdentifier("\"quoted\""));
     }
 
     @Test
     void quoteIdentifierWrapsAndDoublesEmbeddedQuotes() {
-        assertNull(KingBaseSqlEscapes.quoteIdentifier(null));
-        assertEquals("\"plain\"", KingBaseSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("\"we\"\"name\"", KingBaseSqlEscapes.quoteIdentifier("we\"name"));
+        assertEquals("\"\"", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("\"plain\"", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"we\"\"name\"", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier("we\"name"));
         assertEquals("\"evil\"\"; DROP TABLE t; --\"",
-                KingBaseSqlEscapes.quoteIdentifier("evil\"; DROP TABLE t; --"));
+                KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier("evil\"; DROP TABLE t; --"));
     }
 
     @Test
     void expressionWhitelistAcceptsLegitimateValues() {
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("0"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("-1"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("3.14"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("now()"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("CURRENT_TIMESTAMP"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("nextval('seq'::regclass)"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("'quoted string'"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("'it''s'"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("'2024-01-01 00:00:00'"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("true"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("UTF8"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("'UTF8'"));
-        assertTrue(KingBaseSqlEscapes.isSafeSqlExpression("GB18030"));
-        assertEquals("now()", KingBaseSqlEscapes.requireSafeExpression("now()", "test"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("0"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("-1"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("3.14"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("now()"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("CURRENT_TIMESTAMP"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("nextval('seq'::regclass)"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'quoted string'"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'it''s'"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'2024-01-01 00:00:00'"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("true"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("UTF8"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'UTF8'"));
+        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("GB18030"));
+        assertEquals("now()", KingBaseSqlGuards.requireSafeExpression("now()", "test"));
     }
 
     @Test
     void expressionWhitelistRejectsInjection() {
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression(null));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression(""));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression("0; DROP TABLE users--"));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression("1--"));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression("x/*"));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression("*/"));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression("$$body$$"));
-        assertFalse(KingBaseSqlEscapes.isSafeSqlExpression("'unterminated"));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression(null));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression(""));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("0; DROP TABLE users--"));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("1--"));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("x/*"));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("*/"));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("$$body$$"));
+        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("'unterminated"));
         assertThrows(IllegalArgumentException.class,
-                () -> KingBaseSqlEscapes.requireSafeExpression("0; DROP TABLE users--", "test"));
+                () -> KingBaseSqlGuards.requireSafeExpression("0; DROP TABLE users--", "test"));
     }
 
     @Test
@@ -234,20 +233,20 @@ class KingBaseSqlEscapesTest {
     }
 
     @Test
-    void identifierProcessorDoublesEmbeddedQuotes() {
-        KingBaseSQLIdentifierProcessor processor = new KingBaseSQLIdentifierProcessor();
-        assertEquals("plain", processor.quoteIdentifier("plain"));
+    void identifierProcessorAlwaysQuotesAndDoublesEmbeddedQuotes() {
+        KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
+        assertEquals("\"plain\"", processor.quoteIdentifier("plain"));
         assertEquals("\"UPPER\"", processor.quoteIdentifier("UPPER"));
         assertEquals("\"we\"\"name\"", processor.quoteIdentifier("we\"name"));
     }
 
     @Test
     void indexMethodAcceptsKnownAndRejectsInjection() {
-        org.junit.jupiter.api.Assertions.assertEquals("btree", KingBaseSqlEscapes.requireIndexMethod("btree"));
-        org.junit.jupiter.api.Assertions.assertEquals("gin", KingBaseSqlEscapes.requireIndexMethod("gin"));
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> KingBaseSqlEscapes.requireIndexMethod("btree); DROP TABLE t;--"));
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> KingBaseSqlEscapes.requireIndexMethod("btree USING x"));
+        assertEquals("btree", KingBaseSqlGuards.requireIndexMethod("btree"));
+        assertEquals("gin", KingBaseSqlGuards.requireIndexMethod("gin"));
+        assertThrows(IllegalArgumentException.class,
+                () -> KingBaseSqlGuards.requireIndexMethod("btree); DROP TABLE t;--"));
+        assertThrows(IllegalArgumentException.class,
+                () -> KingBaseSqlGuards.requireIndexMethod("btree USING x"));
     }
 }

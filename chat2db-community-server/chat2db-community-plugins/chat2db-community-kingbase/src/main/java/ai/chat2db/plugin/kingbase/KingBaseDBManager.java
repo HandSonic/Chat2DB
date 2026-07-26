@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.kingbase;
 
 import ai.chat2db.spi.IDbManager;
+import ai.chat2db.plugin.kingbase.identifier.KingBaseSQLIdentifierProcessor;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
@@ -29,7 +30,7 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
         connectInfo.setSchemaName(null);
         Connection connection = super.getConnection(connectInfo);
         if (StringUtils.isNotBlank(schemaName)) {
-            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, KingBaseSqlEscapes.escapeIdentifier(schemaName));
+            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, KingBaseSQLIdentifierProcessor.escapeIdentifier(schemaName));
             try {
                 DefaultSQLExecutor.getInstance().execute(connection, sql);
             } catch (SQLException e) {
@@ -56,7 +57,7 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "drop table if exists " + KingBaseSqlEscapes.quoteIdentifier(tableName);
+        String sql = "drop table if exists " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
         return sql;
     }
 
@@ -64,9 +65,9 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
         String sql = "";
         if(copyData){
-            sql = "CREATE TABLE " + KingBaseSqlEscapes.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSqlEscapes.quoteIdentifier(tableName) + " WITH DATA";
+            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + " WITH DATA";
         }else {
-            sql = "CREATE TABLE " + KingBaseSqlEscapes.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSqlEscapes.quoteIdentifier(tableName) + " WITH NO DATA";
+            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(tableName) + " WITH NO DATA";
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }

@@ -4,7 +4,8 @@ import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
-import ai.chat2db.plugin.kingbase.KingBaseSqlEscapes;
+import ai.chat2db.plugin.kingbase.KingBaseSqlGuards;
+import ai.chat2db.plugin.kingbase.identifier.KingBaseSQLIdentifierProcessor;
 import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
@@ -115,7 +116,7 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(KingBaseSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -133,30 +134,30 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
         if (!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())) {
             return "";
         }
-        return KingBaseSqlEscapes.quoteIdentifier(column.getCollationName());
+        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getCollationName());
     }
 
     @Override
     public String buildModifyColumn(TableColumn column) {
 
         if (EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, KingBaseSqlEscapes.quoteIdentifier(column.getName()));
+            return StringUtils.join(SQL_DROP_COLUMN, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(column.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(column));
         }
         if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_COLUMN).append(KingBaseSqlEscapes.quoteIdentifier(column.getName())).append(" TYPE ").append(buildDataType(column, this)).append(",\n");
+            script.append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" TYPE ").append(buildDataType(column, this)).append(",\n");
             if (column.getNullable() != null && 1 == column.getNullable()) {
-                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSqlEscapes.quoteIdentifier(column.getName())).append(" DROP NOT NULL ,\n");
+                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" DROP NOT NULL ,\n");
             } else {
-                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSqlEscapes.quoteIdentifier(column.getName())).append(" SET NOT NULL ,\n");
+                script.append("\t").append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" SET NOT NULL ,\n");
 
             }
             String defaultValue = buildDefaultValue(column, this);
             if (StringUtils.isNotBlank(defaultValue)) {
-                script.append(SQL_ALTER_COLUMN).append(KingBaseSqlEscapes.quoteIdentifier(column.getName())).append(" SET ").append(defaultValue).append(",\n");
+                script.append(SQL_ALTER_COLUMN).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" SET ").append(defaultValue).append(",\n");
             }
             script = new StringBuilder(script.substring(0, script.length() - 2));
             return script.toString();
@@ -169,8 +170,8 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
                 || EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
             return "";
         }
-        return StringUtils.join(SQL_COMMENT_COLUMN, " ", KingBaseSqlEscapes.quoteIdentifier(column.getTableName()),
-                ".", KingBaseSqlEscapes.quoteIdentifier(column.getName()), " IS '", KingBaseSqlEscapes.escapeSqlLiteral(column.getComment()), "';");
+        return StringUtils.join(SQL_COMMENT_COLUMN, " ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getTableName()),
+                ".", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "';");
     }
 
     private String buildDefaultValue(TableColumn column, KingBaseColumnTypeEnum type) {
@@ -187,17 +188,17 @@ public enum KingBaseColumnTypeEnum implements IColumnBuilder {
         }
 
         if (Arrays.asList(CHAR, VARCHAR).contains(type)) {
-            return StringUtils.join("DEFAULT '", KingBaseSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
+            return StringUtils.join("DEFAULT '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(TIMESTAMP, TIME, TIMETZ, TIMESTAMPTZ, DATE).contains(type)) {
             if ("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())) {
                 return StringUtils.join("DEFAULT ", column.getDefaultValue());
             }
-            return StringUtils.join("DEFAULT '", KingBaseSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
+            return StringUtils.join("DEFAULT '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
-        return StringUtils.join("DEFAULT ", KingBaseSqlEscapes.requireSafeExpression(column.getDefaultValue(), "column default"));
+        return StringUtils.join("DEFAULT ", KingBaseSqlGuards.requireSafeExpression(column.getDefaultValue(), "column default"));
     }
 
     private String buildNullable(TableColumn column, KingBaseColumnTypeEnum type) {

@@ -3,46 +3,14 @@ package ai.chat2db.plugin.kingbase;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Escaping/validation helpers for SQL fragments built by the kingbase plugin (#1914).
+ * Validation helpers for non-escapable SQL expression positions in KingBase DDL
+ * generation (column DEFAULT expressions, database ENCODING values, index access
+ * method names). Escaping itself lives in
+ * {@link ai.chat2db.plugin.kingbase.identifier.KingBaseSQLIdentifierProcessor}.
  */
-public final class KingBaseSqlEscapes {
+public final class KingBaseSqlGuards {
 
-    private KingBaseSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal by doubling every single quote.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return StringUtils.replace(value, "'", "''");
-    }
-
-    /**
-     * Escape the inner content of a double-quoted identifier: strip one surrounding quote pair if present,
-     * then double every embedded double-quote. The result is NOT wrapped in quotes.
-     */
-    public static String escapeIdentifier(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
-        }
-        String inner = identifier;
-        if (inner.length() >= 2 && inner.startsWith("\"") && inner.endsWith("\"")) {
-            inner = inner.substring(1, inner.length() - 1);
-        }
-        return StringUtils.replace(inner, "\"", "\"\"");
-    }
-
-    /**
-     * Quote a value for a double-quoted identifier position, doubling embedded double-quotes.
-     */
-    public static String quoteIdentifier(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
-        }
-        return "\"" + escapeIdentifier(identifier) + "\"";
+    private KingBaseSqlGuards() {
     }
 
     /**
