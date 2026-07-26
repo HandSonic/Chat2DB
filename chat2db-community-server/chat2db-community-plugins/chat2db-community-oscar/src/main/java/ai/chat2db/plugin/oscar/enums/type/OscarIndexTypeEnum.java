@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.oscar.enums.type;
 
 import ai.chat2db.spi.constant.SQLConstants;
+import ai.chat2db.plugin.oscar.OscarSqlEscapes;
 import ai.chat2db.plugin.oscar.util.OscarUtils;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
@@ -89,7 +90,7 @@ public enum OscarIndexTypeEnum {
             }
             script.append(OscarUtils.quoteIdentifierIgnoreCase(column.getColumnName()));
             if (includeSort && StringUtils.isNotBlank(column.getAscOrDesc())) {
-                script.append(SQLConstants.SPACE).append(column.getAscOrDesc());
+                script.append(SQLConstants.SPACE).append(OscarSqlEscapes.requireSortOrder(column.getAscOrDesc()));
             }
             script.append(SQLConstants.COMMA);
         }

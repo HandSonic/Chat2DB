@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.oscar.identifier;
 
+import ai.chat2db.plugin.oscar.OscarSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
@@ -50,15 +51,15 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
             return identifier;
         }
         if (isQuoteIdentifier(identifier)) {
-            return identifier;
+            return OscarSqlEscapes.quoteIdentifier(identifier);
         }
         if (isValidIdentifier(identifier)) {
             if ((quoteLowerCase && containsLowerCase(identifier))
                     || isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(identifier, '"');
+                return OscarSqlEscapes.quoteIdentifier(identifier);
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return OscarSqlEscapes.quoteIdentifier(identifier);
     }
 }
