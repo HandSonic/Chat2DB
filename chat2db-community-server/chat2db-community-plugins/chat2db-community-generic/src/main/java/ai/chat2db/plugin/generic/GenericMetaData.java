@@ -2,6 +2,7 @@ package ai.chat2db.plugin.generic;
 
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.community.domain.api.config.DBConfig;
+import ai.chat2db.community.domain.api.constant.DBConfigConstants;
 import ai.chat2db.spi.DefaultMetaService;
 import ai.chat2db.community.domain.api.model.account.*;
 import ai.chat2db.community.domain.api.model.async.*;
@@ -26,6 +27,12 @@ public class GenericMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         DBConfig dbConfig = Chat2DBContext.getDBConfig();
+        String template = dbConfig.getSql(DBConfigConstants.SQL_TABLE_DDL);
+        if (template != null) {
+            databaseName = GenericSqlEscapes.sanitizeTemplateValue(template, "{database}", databaseName);
+            schemaName = GenericSqlEscapes.sanitizeTemplateValue(template, "{schema}", schemaName);
+            tableName = GenericSqlEscapes.sanitizeTemplateValue(template, "{table}", tableName);
+        }
         String sql = dbConfig.getTableDdl(databaseName, schemaName, tableName);
         String sqlResult = dbConfig.getTableDdlResult();
         String ddl = null;
