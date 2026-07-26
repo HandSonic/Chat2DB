@@ -1,6 +1,6 @@
 package ai.chat2db.plugin.dm.enums.type;
 
-import ai.chat2db.plugin.dm.DMSqlEscapes;
+import ai.chat2db.plugin.dm.identifier.DMIdentifierProcessor;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
@@ -73,14 +73,14 @@ public enum DMIndexTypeEnum {
     public String buildIndexScript(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
-            script.append(SQL_ALTER_TABLE_2).append(DMSqlEscapes.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(DMSqlEscapes.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
+            script.append(SQL_ALTER_TABLE_2).append(DMIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(DMIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
         } else {
             if (UNIQUE.equals(this)) {
                 script.append(SQL_CREATE_UNIQUE_INDEX);
             } else {
                 script.append(SQL_CREATE_INDEX);
             }
-            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(DMSqlEscapes.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(DMSqlEscapes.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(DMIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(DMIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
         }
         return script.toString();
     }
@@ -91,7 +91,7 @@ public enum DMIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(DMSqlEscapes.quoteIdentifier(column.getColumnName()));
+                script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     String ascOrDesc = column.getAscOrDesc();
                     if (!"ASC".equalsIgnoreCase(ascOrDesc) && !"DESC".equalsIgnoreCase(ascOrDesc)) {
@@ -108,7 +108,7 @@ public enum DMIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return DMSqlEscapes.quoteIdentifier(tableIndex.getSchemaName()) + "." + DMSqlEscapes.quoteIdentifier(tableIndex.getName());
+        return DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()) + "." + DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -126,7 +126,7 @@ public enum DMIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (DMIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            String tableName = DMSqlEscapes.quoteIdentifier(tableIndex.getSchemaName()) + "." + DMSqlEscapes.quoteIdentifier(tableIndex.getTableName());
+            String tableName = DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()) + "." + DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName());
             return StringUtils.join(SQL_ALTER_TABLE,tableName,SQL_DROP_PRIMARY_KEY);
         }
         StringBuilder script = new StringBuilder();

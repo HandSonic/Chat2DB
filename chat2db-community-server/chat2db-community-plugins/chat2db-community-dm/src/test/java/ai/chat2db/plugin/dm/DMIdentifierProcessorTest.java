@@ -8,6 +8,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.dm.builder.DMSqlBuilder;
 import ai.chat2db.plugin.dm.enums.type.DMColumnTypeEnum;
 import ai.chat2db.plugin.dm.enums.type.DMIndexTypeEnum;
+import ai.chat2db.plugin.dm.identifier.DMIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,26 +18,26 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DMSqlEscapesTest {
+class DMIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", DMSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("x'' OR ''1''=''1", DMSqlEscapes.escapeSqlLiteral("x' OR '1'='1"));
-        assertEquals("plain", DMSqlEscapes.escapeSqlLiteral("plain"));
+        assertEquals("O''Brien", DMIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("x'' OR ''1''=''1", DMIdentifierProcessor.INSTANCE.escapeString("x' OR '1'='1"));
+        assertEquals("plain", DMIdentifierProcessor.INSTANCE.escapeString("plain"));
     }
 
     @Test
     void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"plain\"", DMSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("\"we\"\"ird\"", DMSqlEscapes.quoteIdentifier("we\"ird"));
+        assertEquals("\"plain\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"we\"\"ird\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
     }
 
     @Test
     void escapeIdentifierStripsOneSurroundingQuotePairBeforeDoubling() {
-        assertEquals("already", DMSqlEscapes.escapeIdentifier("\"already\""));
-        assertEquals("a\"\"b", DMSqlEscapes.escapeIdentifier("a\"b"));
-        assertEquals("plain", DMSqlEscapes.escapeIdentifier("plain"));
+        assertEquals("already", DMIdentifierProcessor.escapeIdentifier("\"already\""));
+        assertEquals("a\"\"b", DMIdentifierProcessor.escapeIdentifier("a\"b"));
+        assertEquals("plain", DMIdentifierProcessor.escapeIdentifier("plain"));
     }
 
     @Test
@@ -125,15 +126,15 @@ class DMSqlEscapesTest {
 
     @Test
     void defaultExpressionAcceptsLegitimateAndRejectsInjection() {
-        org.junit.jupiter.api.Assertions.assertEquals("'abc'", DMSqlEscapes.requireDefaultExpression("'abc'"));
-        org.junit.jupiter.api.Assertions.assertEquals("'O''Brien'", DMSqlEscapes.requireDefaultExpression("'O''Brien'"));
-        org.junit.jupiter.api.Assertions.assertEquals("-1.5", DMSqlEscapes.requireDefaultExpression("-1.5"));
-        org.junit.jupiter.api.Assertions.assertEquals("CURRENT_TIMESTAMP", DMSqlEscapes.requireDefaultExpression("CURRENT_TIMESTAMP"));
-        org.junit.jupiter.api.Assertions.assertEquals("SEQ.NEXTVAL", DMSqlEscapes.requireDefaultExpression("SEQ.NEXTVAL"));
+        org.junit.jupiter.api.Assertions.assertEquals("'abc'", DMSqlGuards.requireDefaultExpression("'abc'"));
+        org.junit.jupiter.api.Assertions.assertEquals("'O''Brien'", DMSqlGuards.requireDefaultExpression("'O''Brien'"));
+        org.junit.jupiter.api.Assertions.assertEquals("-1.5", DMSqlGuards.requireDefaultExpression("-1.5"));
+        org.junit.jupiter.api.Assertions.assertEquals("CURRENT_TIMESTAMP", DMSqlGuards.requireDefaultExpression("CURRENT_TIMESTAMP"));
+        org.junit.jupiter.api.Assertions.assertEquals("SEQ.NEXTVAL", DMSqlGuards.requireDefaultExpression("SEQ.NEXTVAL"));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> DMSqlEscapes.requireDefaultExpression("1; DROP TABLE t"));
+                () -> DMSqlGuards.requireDefaultExpression("1; DROP TABLE t"));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> DMSqlEscapes.requireDefaultExpression("x' OR '1'='1"));
+                () -> DMSqlGuards.requireDefaultExpression("x' OR '1'='1"));
     }
 
     @Test

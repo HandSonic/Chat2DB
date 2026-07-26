@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.dm.enums.type;
 
-import ai.chat2db.plugin.dm.DMSqlEscapes;
+import ai.chat2db.plugin.dm.DMSqlGuards;
+import ai.chat2db.plugin.dm.identifier.DMIdentifierProcessor;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -159,7 +160,7 @@ public enum DMColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(DMSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -180,7 +181,7 @@ public enum DMColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(DMSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -233,7 +234,7 @@ public enum DMColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", DMSqlEscapes.requireDefaultExpression(column.getDefaultValue()));
+        return StringUtils.join("DEFAULT ", DMSqlGuards.requireDefaultExpression(column.getDefaultValue()));
     }
 
     private String buildDataType(TableColumn column, DMColumnTypeEnum type) {
@@ -298,25 +299,25 @@ public enum DMColumnTypeEnum implements IColumnBuilder {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
-            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getName())).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getTableName())).append("\"");
+            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getName())).append("\"");
             return script.toString();
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getTableName())).append("\"");
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
             if (!StringUtils.equals(tableColumn.getOldName(), tableColumn.getName())) {
-                script.append(SQL_ALTER_TABLE).append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
-                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getOldName())).append("\"").append(" TO ").append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getName())).append("\"");
+                script.append(SQL_ALTER_TABLE).append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getTableName())).append("\"");
+                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getOldName())).append("\"").append(" TO ").append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getName())).append("\"");
                 script.append(";\n");
 
             }
-            script.append(SQL_ALTER_TABLE).append("\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMSqlEscapes.escapeIdentifier(tableColumn.getTableName())).append("\"");
+            script.append(SQL_ALTER_TABLE).append("\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(DMIdentifierProcessor.escapeIdentifier(tableColumn.getTableName())).append("\"");
             script.append(" ").append("MODIFY (").append(buildCreateColumnSql(tableColumn)).append(") \n");
 
             return script.toString();
