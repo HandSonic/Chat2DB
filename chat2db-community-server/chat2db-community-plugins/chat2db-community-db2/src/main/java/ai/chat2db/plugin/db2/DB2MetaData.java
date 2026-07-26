@@ -60,6 +60,8 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
+        validateDb2LookName(schemaName);
+        validateDb2LookName(tableName);
         String ddlTokenSql = String.format(GET_DDL_TOKEN, Db2SqlEscapes.escapeSqlLiteral(schemaName), Db2SqlEscapes.escapeSqlLiteral(tableName));
         log.info("ddlSql : {}", ddlTokenSql);
 
@@ -77,6 +79,17 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
         } catch (SQLException e) {
             log.error("Failed to get DDL for table {}.{}: {}", schemaName, tableName, e.getMessage(), e);
             return null;
+        }
+    }
+
+    /**
+     * GET_DDL_TOKEN embeds names inside a double-quoted db2look option string. Single quotes
+     * are neutralized by {@link Db2SqlEscapes#escapeSqlLiteral}, but a double quote would
+     * break out of the option-argument context, so reject such names up front.
+     */
+    private static void validateDb2LookName(String name) {
+        if (name != null && name.contains("\"")) {
+            throw new IllegalArgumentException("Invalid DB2 object name for DDL generation: " + name);
         }
     }
 

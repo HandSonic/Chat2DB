@@ -106,4 +106,72 @@ class Db2SqlEscapesTest {
 
         assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(column));
     }
+
+    @Test
+    void fallbackColumnContainsMaliciousNameInsideQuotedIdentifier() {
+        TableColumn column = new TableColumn();
+        column.setName("x INT); DROP TABLE t; --");
+        column.setColumnType("VARCHAR(10)");
+
+        String sql = DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(column);
+
+        assertEquals("\"x INT); DROP TABLE t; --\" VARCHAR(10)", sql);
+    }
+
+    @Test
+    void fallbackColumnEscapesEmbeddedQuoteInName() {
+        TableColumn column = new TableColumn();
+        column.setName("a\"b");
+        column.setColumnType("VARCHAR(10)");
+
+        String sql = DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(column);
+
+        assertEquals("\"a\"\"b\" VARCHAR(10)", sql);
+    }
+
+    @Test
+    void fallbackColumnRejectsMaliciousColumnType() {
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("INT); DROP TABLE t; --");
+
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+
+        column.setColumnType("VARCHAR(10); DROP TABLE t");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(column));
+
+        column.setColumnType("VAR CHAR");
+        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.VARCHAR.buildCreateColumnSql(column));
+    }
+
+    @Test
+    void tableDDLRejectsQuoteBearingNames() {
+        DB2MetaData metaData = new DB2MetaData();
+
+        assertThrows(IllegalArgumentException.class, () -> metaData.tableDDL(null, null, "s\"x", "t"));
+        assertThrows(IllegalArgumentException.class, () -> metaData.tableDDL(null, null, "s", "x\" -t \"y"));
+    }
+
+    @Test
+    void setSchemaEscapesIdentifierInsideTemplateQuotes() {
+        String sql = String.format(ai.chat2db.plugin.db2.constant.DB2DBManagerConstants.SQL_SET_SCHEMA,
+                Db2SqlEscapes.escapeIdentifier("bad\"schema"));
+
+        assertEquals("SET SCHEMA \"bad\"\"schema\"", sql);
+    }
+
+    @Test
+    void dropTableQuotesIdentifier() {
+        String sql = new DB2DBManager().dropTable(null, null, null, "t\"x");
+
+        assertEquals("DROP TABLE \"t\"\"x\"", sql);
+    }
+
+    @Test
+    void copyTableQuotesBothIdentifiers() {
+        String sql = String.format(ai.chat2db.plugin.db2.constant.DB2DBManagerConstants.SQL_COPY_TABLE,
+                Db2SqlEscapes.quoteIdentifier("n\"t"), Db2SqlEscapes.quoteIdentifier("s\"t"));
+
+        assertEquals("CREATE TABLE \"n\"\"t\" LIKE \"s\"\"t\" INCLUDING INDEXES", sql);
+    }
 }

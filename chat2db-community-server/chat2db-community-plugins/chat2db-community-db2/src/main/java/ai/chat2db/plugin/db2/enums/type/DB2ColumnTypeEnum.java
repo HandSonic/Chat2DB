@@ -137,7 +137,7 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
     public String buildCreateColumnSql(TableColumn column) {
         DB2ColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
         if (type == null) {
-            return buildDefaultColumn(column,false);
+            return buildSafeFallbackColumn(column);
         }
         StringBuilder script = new StringBuilder();
 
@@ -167,6 +167,21 @@ public enum DB2ColumnTypeEnum implements IColumnBuilder {
     private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("^[A-Za-z0-9_'().,+/: \\t-]+$");
 
     private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
+
+    private static final Pattern FALLBACK_COLUMN_TYPE_PATTERN = Pattern.compile("^[A-Za-z]+(\\(\\d+(,\\d+)?\\))?$");
+
+    /**
+     * Fallback for column types that are not exact enum matches (e.g. {@code VARCHAR(10)}).
+     * The type name is validated against a strict shape and the column name is escaped as a
+     * delimited identifier, so neither value can break out of the column definition.
+     */
+    private static String buildSafeFallbackColumn(TableColumn column) {
+        String columnType = column.getColumnType();
+        if (columnType == null || !FALLBACK_COLUMN_TYPE_PATTERN.matcher(columnType).matches()) {
+            throw new IllegalArgumentException("Invalid DB2 column type: " + columnType);
+        }
+        return "\"" + Db2SqlEscapes.escapeIdentifier(column.getName()) + "\" " + columnType;
+    }
 
     private static String validateDefaultValue(String defaultValue) {
         if (!DEFAULT_VALUE_PATTERN.matcher(defaultValue).matches() || defaultValue.contains("--")
