@@ -45,7 +45,7 @@ import static ai.chat2db.plugin.oracle.constant.OracleMetaDataConstants.*;
 public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
 
 
-    public static final ISQLIdentifierProcessor ORACLE_SQL_IDENTIFIER_PROCESSOR = new OracleIdentifierProcessor();
+    public static final ISQLIdentifierProcessor ORACLE_SQL_IDENTIFIER_PROCESSOR = OracleIdentifierProcessor.INSTANCE;
 
     @Override
     public List<Procedure> procedures(Connection connection, String databaseName, String schemaName) {
@@ -88,7 +88,7 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
             if (resultSet.next()) {
                 String tableComment = resultSet.getString("comments");
                 if (StringUtils.isNotBlank(tableComment)) {
-                    ddlBuilder.append("\nCOMMENT ON TABLE ").append(OracleSqlEscapes.quoteIdentifier(tableName)).append(" IS ")
+                    ddlBuilder.append("\nCOMMENT ON TABLE ").append(OracleIdentifierProcessor.quoteIdentifierAlways(tableName)).append(" IS ")
                             .append(EasyStringUtils.escapeAndQuoteString(tableComment)).append(";");
                 }
             }
@@ -99,8 +99,8 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
                 String columnComment = resultSet.getString("comments");
                 if (StringUtils.isNotBlank(columnComment)) {
                     ddlBuilder.append("\nCOMMENT ON COLUMN ")
-                            .append(OracleSqlEscapes.quoteIdentifier(tableName)).append(".")
-                            .append(OracleSqlEscapes.quoteIdentifier(columnName)).append(" IS ")
+                            .append(OracleIdentifierProcessor.quoteIdentifierAlways(tableName)).append(".")
+                            .append(OracleIdentifierProcessor.quoteIdentifierAlways(columnName)).append(" IS ")
                             .append(EasyStringUtils.escapeAndQuoteString(columnComment)).append(";");
                 }
             }
@@ -159,7 +159,7 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private static String escapeSqlLiteral(String value) {
-        return OracleSqlEscapes.escapeSqlLiteral(value);
+        return OracleIdentifierProcessor.INSTANCE.escapeString(value);
     }
 
 
@@ -459,7 +459,7 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(OracleSqlEscapes::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(OracleIdentifierProcessor::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
 
@@ -525,7 +525,7 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
         StringBuilder sqlBuilder = new StringBuilder(100);
         sqlBuilder.append(SQL_CREATE).append("view ");
         if (StringUtils.isNotBlank(schemaName)) {
-            sqlBuilder.append("\"").append(OracleSqlEscapes.escapeIdentifier(schemaName)).append("\"").append(".");
+            sqlBuilder.append("\"").append(OracleIdentifierProcessor.escapeIdentifier(schemaName)).append("\"").append(".");
         }
         sqlBuilder.append("\"").append("undefined").append("\"");
         sqlBuilder.append(" AS \n").append(sql).append(";");

@@ -5,11 +5,12 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.regex.Pattern;
 
 /**
- * Canonical escaping/quoting helpers for values interpolated into Oracle SQL text (#1914).
- * Extends the partial coverage from PR #2052 (OracleMetaData.escapeSqlLiteral and
- * OracleSqlBuilder quote helpers) to the remaining metadata/DDL sites.
+ * Validation helpers for non-escapable SQL positions in Oracle DDL/DML generation
+ * (column DEFAULT expressions, column type names, VARCHAR units, index sort
+ * directions and RAW/BLOB hex literals). Escaping itself lives in
+ * {@link ai.chat2db.plugin.oracle.identifier.OracleIdentifierProcessor}.
  */
-public final class OracleSqlEscapes {
+public final class OracleSqlGuards {
 
     /**
      * Two alternatives, fully anchored:
@@ -33,37 +34,7 @@ public final class OracleSqlEscapes {
      */
     private static final Pattern SAFE_TYPE_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_ #$+./]*(\\([A-Za-z0-9_ ,]+\\)[A-Za-z0-9_ ]*)*");
 
-    private OracleSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal (surrounding
-     * quotes NOT added) by doubling every single quote.
-     */
-    public static String escapeSqlLiteral(String value) {
-        return value == null ? "" : StringUtils.replace(value, "'", "''");
-    }
-
-    /**
-     * Escape an identifier placed inside double quotes by stripping one surrounding
-     * double-quote pair (if present) and doubling every embedded double quote.
-     */
-    public static String escapeIdentifier(String identifier) {
-        if (identifier == null) {
-            return "";
-        }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "\"", "\"\"");
-    }
-
-    /**
-     * Escape an identifier and wrap it in double quotes.
-     */
-    public static String quoteIdentifier(String identifier) {
-        return "\"" + escapeIdentifier(identifier) + "\"";
+    private OracleSqlGuards() {
     }
 
     /**

@@ -9,6 +9,7 @@ import ai.chat2db.community.domain.api.model.view.ModifyView;
 import ai.chat2db.plugin.oracle.builder.OracleSqlBuilder;
 import ai.chat2db.plugin.oracle.enums.type.OracleColumnTypeEnum;
 import ai.chat2db.plugin.oracle.enums.type.OracleIndexTypeEnum;
+import ai.chat2db.plugin.oracle.identifier.OracleIdentifierProcessor;
 import ai.chat2db.plugin.oracle.value.sub.OracleRawValueProcessor;
 import ai.chat2db.plugin.oracle.value.template.OracleDmlValueTemplate;
 import com.google.common.io.BaseEncoding;
@@ -21,21 +22,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class OracleSqlEscapesTest {
+class OracleIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", OracleSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("", OracleSqlEscapes.escapeSqlLiteral(null));
-        assertEquals("plain", OracleSqlEscapes.escapeSqlLiteral("plain"));
+        assertEquals("O''Brien", OracleIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("", OracleIdentifierProcessor.INSTANCE.escapeString(null));
+        assertEquals("plain", OracleIdentifierProcessor.INSTANCE.escapeString("plain"));
     }
 
     @Test
     void escapeIdentifierDoublesDoubleQuotesAndStripsWrappingQuotes() {
-        assertEquals("WE\"\"IRD", OracleSqlEscapes.escapeIdentifier("WE\"IRD"));
-        assertEquals("ALREADY", OracleSqlEscapes.escapeIdentifier("\"ALREADY\""));
-        assertEquals("\"A\"\"B\"", OracleSqlEscapes.quoteIdentifier("A\"B"));
-        assertEquals("", OracleSqlEscapes.escapeIdentifier(null));
+        assertEquals("WE\"\"IRD", OracleIdentifierProcessor.escapeIdentifier("WE\"IRD"));
+        assertEquals("ALREADY", OracleIdentifierProcessor.escapeIdentifier("\"ALREADY\""));
+        assertEquals("\"A\"\"B\"", OracleIdentifierProcessor.quoteIdentifierAlways("A\"B"));
+        assertEquals("", OracleIdentifierProcessor.escapeIdentifier(null));
     }
 
     @Test
@@ -201,16 +202,16 @@ class OracleSqlEscapesTest {
 
     @Test
     void requireUnitAcceptsCharAndByteOnly() {
-        assertEquals("CHAR", OracleSqlEscapes.requireUnit("CHAR"));
-        assertEquals("byte", OracleSqlEscapes.requireUnit("byte"));
-        assertThrows(IllegalArgumentException.class, () -> OracleSqlEscapes.requireUnit("BYTE); DROP TABLE U; --"));
+        assertEquals("CHAR", OracleSqlGuards.requireUnit("CHAR"));
+        assertEquals("byte", OracleSqlGuards.requireUnit("byte"));
+        assertThrows(IllegalArgumentException.class, () -> OracleSqlGuards.requireUnit("BYTE); DROP TABLE U; --"));
     }
 
     @Test
     void requireAscOrDescCanonicalizesAndRejects() {
-        assertEquals("ASC", OracleSqlEscapes.requireAscOrDesc("asc"));
-        assertEquals("DESC", OracleSqlEscapes.requireAscOrDesc(" DESC "));
-        assertThrows(IllegalArgumentException.class, () -> OracleSqlEscapes.requireAscOrDesc("DESC; DROP TABLE U; --"));
+        assertEquals("ASC", OracleSqlGuards.requireAscOrDesc("asc"));
+        assertEquals("DESC", OracleSqlGuards.requireAscOrDesc(" DESC "));
+        assertThrows(IllegalArgumentException.class, () -> OracleSqlGuards.requireAscOrDesc("DESC; DROP TABLE U; --"));
     }
 
     @Test

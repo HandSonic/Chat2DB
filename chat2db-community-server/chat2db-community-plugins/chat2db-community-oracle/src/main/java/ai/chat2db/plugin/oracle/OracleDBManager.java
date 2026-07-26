@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.oracle;
 
+import ai.chat2db.plugin.oracle.identifier.OracleIdentifierProcessor;
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.account.*;
@@ -69,7 +70,7 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
     public void exportTable(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
         String tableDDL = Chat2DBContext.getDbMetaData().tableDDL(connection,
                 new TableMetadataRequest(databaseName, schemaName, tableName));
-        String sqlBuilder = "DROP TABLE " + OracleSqlEscapes.quoteIdentifier(tableName) + ";\n" + tableDDL + "\n";
+        String sqlBuilder = "DROP TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName) + ";\n" + tableDDL + "\n";
         asyncContext.write(sqlBuilder);
         if (asyncContext.isContainsData()) {
             exportTableData(connection, databaseName, schemaName, tableName, asyncContext);
@@ -111,7 +112,7 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportTriggers(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(SQL_SELECT_TRIGGER_NAME_ALL_TRIGGERS, OracleSqlEscapes.escapeSqlLiteral(schemaName));
+        String sql = String.format(SQL_SELECT_TRIGGER_NAME_ALL_TRIGGERS, OracleIdentifierProcessor.INSTANCE.escapeString(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 String triggerName = resultSet.getString("TRIGGER_NAME");
@@ -151,7 +152,7 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
         }
         String schemaName = connectInfo.getSchemaName();
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, SQL_ALTER_SESSION_SET_CURRENT_SCHEMA + OracleSqlEscapes.escapeIdentifier(schemaName) + "\"");
+            DefaultSQLExecutor.getInstance().execute(connection, SQL_ALTER_SESSION_SET_CURRENT_SCHEMA + OracleIdentifierProcessor.escapeIdentifier(schemaName) + "\"");
         } catch (SQLException e) {
             log.error("connectDatabase error", e);
         }
@@ -161,16 +162,16 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
         String sql = "";
         if (copyData) {
-            sql = "CREATE TABLE " + OracleSqlEscapes.quoteIdentifier(newTableName) + " AS SELECT * FROM " + OracleSqlEscapes.quoteIdentifier(tableName);
+            sql = "CREATE TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(newTableName) + " AS SELECT * FROM " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName);
         } else {
-            sql = "CREATE TABLE " + OracleSqlEscapes.quoteIdentifier(newTableName) + " AS SELECT * FROM " + OracleSqlEscapes.quoteIdentifier(tableName) + " WHERE 1=0";
+            sql = "CREATE TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(newTableName) + " AS SELECT * FROM " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName) + " WHERE 1=0";
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "DROP TABLE " + OracleSqlEscapes.quoteIdentifier(tableName);
+        String sql = "DROP TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName);
         return sql;
     }
 
@@ -181,7 +182,7 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public void dropView(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = "DROP VIEW " + OracleSqlEscapes.quoteIdentifier(schemaName) + "." + OracleSqlEscapes.quoteIdentifier(viewName);
+        String sql = "DROP VIEW " + OracleIdentifierProcessor.quoteIdentifierAlways(schemaName) + "." + OracleIdentifierProcessor.quoteIdentifierAlways(viewName);
         DefaultSQLExecutor.getInstance().execute(connection, sql, (resultSet) -> null);
     }
 }

@@ -1,14 +1,19 @@
 package ai.chat2db.plugin.oracle.identifier;
 
-import ai.chat2db.plugin.oracle.OracleSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashSet;
 import java.util.Set;
 
-
+/**
+ * Oracle dialect identifier processor: double-quoted identifiers with embedded-quote
+ * doubling, and single-quote doubling for string literals. Shared stateless
+ * instance available via {@link #INSTANCE} for call sites without MetaData access.
+ */
 public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
+
+    public static final OracleIdentifierProcessor INSTANCE = new OracleIdentifierProcessor();
 
     private static final Set<String> ORACLE_RESERVED_KEYWORDS = new HashSet<>();
 
@@ -134,11 +139,11 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
         if (isValidIdentifier(identifier)) {
             if (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
-                return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
+                return StringUtils.wrap(escapeIdentifier(identifier), '"');
             }
             return identifier;
         }
-        return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
+        return StringUtils.wrap(escapeIdentifier(identifier), '"');
 
     }
 
@@ -146,22 +151,22 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public String quoteIdentifier(String identifier) {
         if (isValidIdentifier(identifier)) {
             if (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
+                return StringUtils.wrap(escapeIdentifier(identifier), '"');
             }
             return identifier;
         }
-        return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
+        return StringUtils.wrap(escapeIdentifier(identifier), '"');
     }
 
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
         if (isValidIdentifier(identifier)) {
             if (isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
+                return StringUtils.wrap(escapeIdentifier(identifier), '"');
             }
             return identifier;
         }
-        return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
+        return StringUtils.wrap(escapeIdentifier(identifier), '"');
     }
 
     @Override
@@ -171,6 +176,44 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         }else {
             return identifier.toUpperCase();
         }
+    }
+
+    /**
+     * Escapes a value interpolated into a single-quoted SQL string literal by
+     * doubling every single quote (surrounding quotes NOT added).
+     */
+    @Override
+    public String escapeString(String str) {
+        return str == null ? "" : StringUtils.replace(str, "'", "''");
+    }
+
+    private static String escapeIdentifierContent(String identifier) {
+        if (identifier == null) {
+            return "";
+        }
+        String stripped = identifier;
+        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
+            stripped = stripped.substring(1, stripped.length() - 1);
+        }
+        return StringUtils.replace(stripped, "\"", "\"\"");
+    }
+
+    /**
+     * Escapes identifier content for a position already surrounded by double
+     * quotes: strips one surrounding quote pair, then doubles every embedded
+     * double quote.
+     */
+    public static String escapeIdentifier(String identifier) {
+        return escapeIdentifierContent(identifier);
+    }
+
+    /**
+     * Escapes an identifier and wraps it in double quotes unconditionally. Unlike the
+     * SPI {@link #quoteIdentifier(String)} (which only quotes when the dialect requires
+     * it), generated DDL quotes every identifier; this keeps that position byte-identical.
+     */
+    public static String quoteIdentifierAlways(String identifier) {
+        return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
 
 }
