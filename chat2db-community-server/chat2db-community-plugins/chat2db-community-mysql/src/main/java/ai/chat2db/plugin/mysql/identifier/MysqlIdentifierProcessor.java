@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.mysql.identifier;
 
+import ai.chat2db.plugin.mysql.MysqlSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
@@ -294,7 +295,7 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
             return identifier;
         }
-        return "`" + identifier + "`";
+        return MysqlSqlEscapes.quoteIdentifierRaw(identifier);
     }
 
 
@@ -303,7 +304,7 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
             return identifier;
         }
-        return "`" + identifier + "`";
+        return MysqlSqlEscapes.quoteIdentifierRaw(identifier);
     }
 
     @Override

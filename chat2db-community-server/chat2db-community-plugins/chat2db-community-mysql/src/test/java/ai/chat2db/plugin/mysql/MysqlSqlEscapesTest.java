@@ -225,5 +225,22 @@ class MysqlSqlEscapesTest {
         assertEquals("ST_GeomFromText('x''y')", MysqlDmlValueTemplate.wrapGeometry("x'y"));
         assertEquals("b'0101'", MysqlDmlValueTemplate.wrapBit("0101"));
         assertThrows(IllegalArgumentException.class, () -> MysqlDmlValueTemplate.wrapBit("1' OR '1'='1"));
+        assertEquals("0x4d7953514c", MysqlDmlValueTemplate.wrapHex("4d7953514c"));
+        assertThrows(IllegalArgumentException.class, () -> MysqlDmlValueTemplate.wrapHex("41, name=(SELECT user())-- "));
+    }
+
+    @Test
+    void hexLiteralPassthroughRequiresWellFormedHex() {
+        assertTrue(MysqlSqlEscapes.isHexLiteral("0x4D7953514C"));
+        assertTrue(!MysqlSqlEscapes.isHexLiteral("0x41, name=(SELECT user())-- "));
+        assertTrue(!MysqlSqlEscapes.isHexLiteral("0x"));
+    }
+
+    @Test
+    void identifierProcessorDoublesEmbeddedBackticks() {
+        ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor processor =
+                new ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor();
+        assertEquals("`a``b`", processor.quoteIdentifier("a`b"));
+        assertEquals("plain_name", processor.quoteIdentifier("plain_name"));
     }
 }

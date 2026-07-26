@@ -16,6 +16,8 @@ public final class MysqlSqlEscapes {
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
             "^([+-]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?|0[xX][0-9a-fA-F]+|[xX]'[0-9a-fA-F]*'|[bB]'[01]*'|(?i:TRUE|FALSE))$");
     private static final Pattern BIT_LITERAL_PATTERN = Pattern.compile("^[01]+$");
+    private static final Pattern HEX_DIGITS_PATTERN = Pattern.compile("^[0-9a-fA-F]+$");
+    private static final Pattern HEX_LITERAL_PATTERN = Pattern.compile("^0[xX][0-9a-fA-F]+$");
     private static final String DEFINER_QUOTED_PART = "'([^'\\\\]|\\\\[\\s\\S])*'|`[^`]+`";
     private static final Pattern DEFINER_PATTERN = Pattern.compile(
             "^([A-Za-z0-9_$]+|" + DEFINER_QUOTED_PART + ")@([A-Za-z0-9_.%:$-]+|" + DEFINER_QUOTED_PART + ")$");
@@ -79,6 +81,36 @@ public final class MysqlSqlEscapes {
             throw new IllegalArgumentException("Invalid MySQL bit literal: " + value);
         }
         return value;
+    }
+
+    /**
+     * Validate the digits of a 0x... hex literal (the template adds the 0x prefix).
+     */
+    public static String requireHexDigits(String value) {
+        if (value == null || !HEX_DIGITS_PATTERN.matcher(value).matches()) {
+            throw new IllegalArgumentException("Invalid MySQL hex digits: " + value);
+        }
+        return value;
+    }
+
+    /**
+     * True only when the value is a well-formed 0x... hex literal. Values that merely
+     * start with 0x but contain non-hex characters must not pass through into SQL raw.
+     */
+    public static boolean isHexLiteral(String value) {
+        return value != null && HEX_LITERAL_PATTERN.matcher(value).matches();
+    }
+
+    /**
+     * Quote an identifier with backticks without stripping a surrounding pair: every
+     * embedded backtick is doubled. For call sites where the name may itself start or
+     * end with a backtick character.
+     */
+    public static String quoteIdentifierRaw(String name) {
+        if (StringUtils.isBlank(name)) {
+            return name;
+        }
+        return "`" + name.replace("`", "``") + "`";
     }
 
     /**

@@ -21,6 +21,6 @@ public class MysqlDmlValueTemplate {
     }
 
     public static String wrapHex(String value) {
-        return String.format(HEX_TEMPLATE, value);
+        return String.format(HEX_TEMPLATE, MysqlSqlEscapes.requireHexDigits(value));
     }
 }
