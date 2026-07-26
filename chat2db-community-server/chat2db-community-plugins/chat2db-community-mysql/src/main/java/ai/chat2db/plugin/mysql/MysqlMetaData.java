@@ -52,7 +52,7 @@ import static ai.chat2db.plugin.mysql.constant.MysqlMetaDataConstants.*;
 @Slf4j
 public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
 
-    public static final ISQLIdentifierProcessor MYSQL_IDENTIFIER_PROCESSOR = new MysqlIdentifierProcessor();
+    public static final ISQLIdentifierProcessor MYSQL_IDENTIFIER_PROCESSOR = MysqlIdentifierProcessor.INSTANCE;
 
     @Override
     public List<Database> databases(Connection connection) {
@@ -63,9 +63,9 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List<Table> tables(Connection connection, @NotEmpty String databaseName, String schemaName, String tableName) {
-        String sql = String.format(TABLES_SQL, MysqlSqlEscapes.escapeSqlLiteral(databaseName));
+        String sql = String.format(TABLES_SQL, getSQLIdentifierProcessor().escapeString(databaseName));
         if (StringUtils.isNotBlank(tableName)) {
-            sql += SQL_TABLE_NAME_EQUALS_FILTER + MysqlSqlEscapes.escapeSqlLiteral(tableName) + SQL_SINGLE_QUOTE;
+            sql += SQL_TABLE_NAME_EQUALS_FILTER + getSQLIdentifierProcessor().escapeString(tableName) + SQL_SINGLE_QUOTE;
         }
         Map<String, String> collationMap = getCollationMap(connection);
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
@@ -131,14 +131,14 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     public static String format(String tableName) {
-        return MysqlSqlEscapes.quoteIdentifier(tableName);
+        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
     }
 
     @Override
     public Function function(Connection connection, @NotEmpty String databaseName, String schemaName,
                              String functionName) {
 
-        String functionInfoSql = String.format(ROUTINES_SQL, FUNCTION, MysqlSqlEscapes.escapeSqlLiteral(databaseName), MysqlSqlEscapes.escapeSqlLiteral(functionName));
+        String functionInfoSql = String.format(ROUTINES_SQL, FUNCTION, getSQLIdentifierProcessor().escapeString(databaseName), getSQLIdentifierProcessor().escapeString(functionName));
         Function function = DefaultSQLExecutor.getInstance().execute(connection, functionInfoSql, resultSet -> {
             Function f = new Function();
             f.setDatabaseName(databaseName);
@@ -162,7 +162,7 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, MysqlSqlEscapes.escapeSqlLiteral(databaseName));
+        String sql = String.format(TRIGGER_SQL_LIST, getSQLIdentifierProcessor().escapeString(databaseName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -208,7 +208,7 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String routinesSql = String.format(ROUTINES_SQL, PROCEDURE, MysqlSqlEscapes.escapeSqlLiteral(databaseName), MysqlSqlEscapes.escapeSqlLiteral(procedureName));
+        String routinesSql = String.format(ROUTINES_SQL, PROCEDURE, getSQLIdentifierProcessor().escapeString(databaseName), getSQLIdentifierProcessor().escapeString(procedureName));
         String showCreateProcedureSql = SQL_SHOW_CREATE_PROCEDURE + mysqlQualifiedName(databaseName, procedureName);
         Procedure procedure = DefaultSQLExecutor.getInstance().execute(connection, routinesSql, resultSet -> {
             Procedure p = new Procedure();
@@ -230,7 +230,7 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
     }
     @Override
     public List<TableColumn> columns(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(SELECT_TABLE_COLUMNS, MysqlSqlEscapes.escapeSqlLiteral(databaseName), MysqlSqlEscapes.escapeSqlLiteral(tableName));
+        String sql = String.format(SELECT_TABLE_COLUMNS, getSQLIdentifierProcessor().escapeString(databaseName), getSQLIdentifierProcessor().escapeString(tableName));
         List<TableColumn> tableColumns = new ArrayList<>();
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
@@ -285,7 +285,7 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {
-        String quoteViewName = MysqlSqlEscapes.quoteIdentifier(viewName);
+        String quoteViewName = getSQLIdentifierProcessor().quoteIdentifier(viewName);
         String sql = String.format(VIEW_DDL_SQL, quoteViewName);
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Table table = new Table();
@@ -303,9 +303,9 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
         StringBuilder queryBuf = new StringBuilder(SQL_SHOW_INDEX_FROM);
-        queryBuf.append(MysqlSqlEscapes.quoteIdentifier(tableName));
+        queryBuf.append(getSQLIdentifierProcessor().quoteIdentifier(tableName));
         queryBuf.append(SQL_FROM);
-        queryBuf.append(MysqlSqlEscapes.quoteIdentifier(databaseName));
+        queryBuf.append(getSQLIdentifierProcessor().quoteIdentifier(databaseName));
         return DefaultSQLExecutor.getInstance().execute(connection, queryBuf.toString(), resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap();
             while (resultSet.next()) {
@@ -461,7 +461,7 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public String getMetaDataName(String... names) {
         return Arrays.stream(names).filter(StringUtils::isNotBlank)
-                .map(MysqlSqlEscapes::quoteIdentifier)
+                .map(getSQLIdentifierProcessor()::quoteIdentifier)
                 .collect(Collectors.joining(SQL_DOT));
     }
 
@@ -496,7 +496,7 @@ public class MysqlMetaData extends DefaultMetaService implements IDbMetaData {
         StringBuilder sqlBuilder = new StringBuilder(100);
         sqlBuilder.append(SQL_CREATE).append(SQL_VIEW_KEYWORD);
         if (StringUtils.isNotBlank(databaseName)) {
-            sqlBuilder.append(MysqlSqlEscapes.quoteIdentifier(databaseName)).append(SQL_DOT);
+            sqlBuilder.append(getSQLIdentifierProcessor().quoteIdentifier(databaseName)).append(SQL_DOT);
         }
         sqlBuilder.append(SQL_METADATA_QUOTE).append(SQL_UNDEFINED).append(SQL_METADATA_QUOTE);
         sqlBuilder.append(SQL_AS).append(sql).append(SQL_SEMICOLON);

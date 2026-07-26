@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.mysql.enums.type;
 
-import ai.chat2db.plugin.mysql.MysqlSqlEscapes;
+import ai.chat2db.plugin.mysql.MysqlSqlGuards;
+import ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
@@ -96,7 +97,7 @@ public enum MysqlIndexTypeEnum {
         if(StringUtils.isBlank(tableIndex.getComment())){
             return "";
         }else {
-            return StringUtils.join(SQL_COMMENT_SPACE_SINGLE_QUOTE, MysqlSqlEscapes.escapeSqlLiteral(tableIndex.getComment()),"'");
+            return StringUtils.join(SQL_COMMENT_SPACE_SINGLE_QUOTE, MysqlIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()),"'");
         }
 
     }
@@ -106,9 +107,9 @@ public enum MysqlIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(MysqlSqlEscapes.quoteIdentifier(column.getColumnName()));
+                script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
-                    script.append(" ").append(MysqlSqlEscapes.requireAscOrDesc(column.getAscOrDesc()));
+                    script.append(" ").append(MysqlSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
             }
@@ -122,7 +123,7 @@ public enum MysqlIndexTypeEnum {
         if(this.equals(PRIMARY_KEY)){
             return "";
         }else {
-            return MysqlSqlEscapes.quoteIdentifier(tableIndex.getName());
+            return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
         }
     }
 
@@ -143,7 +144,7 @@ public enum MysqlIndexTypeEnum {
         if (MysqlIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join("DROP INDEX ", MysqlSqlEscapes.quoteIdentifier(tableIndex.getOldName()));
+        return StringUtils.join("DROP INDEX ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getOldName()));
     }
     public static List<IndexType> getIndexTypes() {
         return Arrays.asList(MysqlIndexTypeEnum.values()).stream().map(MysqlIndexTypeEnum::getIndexType).collect(java.util.stream.Collectors.toList());

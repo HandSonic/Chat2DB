@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.mysql.enums.type;
 
-import ai.chat2db.plugin.mysql.MysqlSqlEscapes;
+import ai.chat2db.plugin.mysql.MysqlSqlGuards;
+import ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -150,7 +151,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(MysqlSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -181,7 +182,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(MysqlSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -209,28 +210,28 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         if (!type.getColumnType().isSupportCharset() || StringUtils.isEmpty(column.getCharSetName())) {
             return "";
         }
-        return StringUtils.join("CHARACTER SET ", MysqlSqlEscapes.requireMysqlName(column.getCharSetName(), "charset"));
+        return StringUtils.join("CHARACTER SET ", MysqlSqlGuards.requireMysqlName(column.getCharSetName(), "charset"));
     }
 
     private String buildCollation(TableColumn column, MysqlColumnTypeEnum type) {
         if (!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())) {
             return "";
         }
-        return StringUtils.join("COLLATE ", MysqlSqlEscapes.requireMysqlName(column.getCollationName(), "collation"));
+        return StringUtils.join("COLLATE ", MysqlSqlGuards.requireMysqlName(column.getCollationName(), "collation"));
     }
 
     @Override
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", MysqlSqlEscapes.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join("DROP COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                return StringUtils.join("CHANGE COLUMN ", MysqlSqlEscapes.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
                 return StringUtils.join("MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
             }
@@ -240,14 +241,14 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
 
     public String buildModifyColumn(TableColumn tableColumn, boolean isMove, String columnName) {
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", MysqlSqlEscapes.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join("DROP COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             if (isMove) {
                 if (columnName.equals("-1")) {
                     return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn), " FIRST");
                 } else {
-                    return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn), " AFTER ", MysqlSqlEscapes.quoteIdentifier(columnName));
+                    return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn), " AFTER ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(columnName));
                 }
             }
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
@@ -255,7 +256,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             String sql;
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                sql = StringUtils.join("CHANGE COLUMN ", MysqlSqlEscapes.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                sql = StringUtils.join("CHANGE COLUMN ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
                 sql = StringUtils.join("MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
             }
@@ -275,7 +276,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         if (columnName.equals("-1")) {
             return StringUtils.join(sql, " FIRST");
         }
-        return StringUtils.join(sql, " AFTER ", MysqlSqlEscapes.quoteIdentifier(columnName));
+        return StringUtils.join(sql, " AFTER ", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(columnName));
     }
 
     private String buildAutoIncrement(TableColumn column, MysqlColumnTypeEnum type) {
@@ -292,14 +293,14 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         if (!type.columnType.isSupportComments() || StringUtils.isEmpty(column.getComment())) {
             return "";
         }
-        return StringUtils.join(SQL_COMMENT_SPACE_SINGLE_QUOTE, MysqlSqlEscapes.escapeSqlLiteral(column.getComment()), "'");
+        return StringUtils.join(SQL_COMMENT_SPACE_SINGLE_QUOTE, MysqlIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "'");
     }
 
     private String buildExt(TableColumn column, MysqlColumnTypeEnum type) {
         if (!type.columnType.isSupportExtent() || StringUtils.isEmpty(column.getExtent())) {
             return "";
         }
-        return MysqlSqlEscapes.quoteEnumValues(column.getExtent());
+        return MysqlSqlGuards.quoteEnumValues(column.getExtent());
     }
 
     private String buildDefaultValue(TableColumn column, MysqlColumnTypeEnum type) {
@@ -316,11 +317,11 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
 
         if (Arrays.asList(CHAR, VARCHAR, BINARY, VARBINARY, SET, ENUM).contains(type)) {
-            return StringUtils.join("DEFAULT '", MysqlSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
+            return StringUtils.join("DEFAULT '", MysqlIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(DATE, TIME, YEAR).contains(type)) {
-            return StringUtils.join("DEFAULT '", MysqlSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
+            return StringUtils.join("DEFAULT '", MysqlIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(DATETIME, TIMESTAMP).contains(type)) {
@@ -328,10 +329,10 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
                 return StringUtils.join("DEFAULT ", column.getDefaultValue());
 
             }
-            return StringUtils.join("DEFAULT '", MysqlSqlEscapes.escapeSqlLiteral(column.getDefaultValue()), "'");
+            return StringUtils.join("DEFAULT '", MysqlIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
-        return StringUtils.join("DEFAULT ", MysqlSqlEscapes.requireNumericDefault(column.getDefaultValue()));
+        return StringUtils.join("DEFAULT ", MysqlSqlGuards.requireNumericDefault(column.getDefaultValue()));
     }
 
     private String OnUpdateCurrentTimestamp(TableColumn column, MysqlColumnTypeEnum type) {
@@ -404,7 +405,7 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
 
         if (Arrays.asList(SET, ENUM).contains(type)) {
             if (!StringUtils.isEmpty(column.getValue())) {
-                return StringUtils.join(columnType, "(", MysqlSqlEscapes.quoteEnumValues(column.getValue()), ")");
+                return StringUtils.join(columnType, "(", MysqlSqlGuards.quoteEnumValues(column.getValue()), ")");
             }
         }
 
@@ -418,10 +419,10 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(MysqlSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
         script.append(buildDataType(column, type)).append(" ");
         if (StringUtils.isNoneBlank(column.getComment())) {
-            script.append(SQL_COMMENT_KEYWORD).append(" ").append("'").append(MysqlSqlEscapes.escapeSqlLiteral(column.getComment())).append("'").append(" ");
+            script.append(SQL_COMMENT_KEYWORD).append(" ").append("'").append(MysqlIdentifierProcessor.INSTANCE.escapeString(column.getComment())).append("'").append(" ");
         }
         return script.toString();
     }

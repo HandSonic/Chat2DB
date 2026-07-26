@@ -1,6 +1,5 @@
 package ai.chat2db.plugin.mysql.identifier;
 
-import ai.chat2db.plugin.mysql.MysqlSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
@@ -11,6 +10,11 @@ import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.mysql.constant.MysqlIdentifierProcessorConstants.*;
 public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
+
+    /**
+     * Shared stateless instance for call sites without MetaData access.
+     */
+    public static final MysqlIdentifierProcessor INSTANCE = new MysqlIdentifierProcessor();
 
     private static final Set<String> MYSQL_RESERVED_KEYWORDS = new HashSet<>();
 
@@ -290,21 +294,59 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         return MYSQL_RESERVED_KEYWORDS.contains(identifier);
     }
 
+    /**
+     * Always quotes with backticks, stripping one surrounding backtick pair and
+     * doubling every embedded backtick.
+     */
     @Override
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
-        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
-            return identifier;
-        }
-        return MysqlSqlEscapes.quoteIdentifierRaw(identifier);
+        return quoteIdentifier(identifier);
     }
 
 
     @Override
     public String quoteIdentifier(String identifier) {
-        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+        if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        return MysqlSqlEscapes.quoteIdentifierRaw(identifier);
+        return "`" + escapeIdentifierContent(identifier) + "`";
+    }
+
+    @Override
+    public String quoteIdentifierIgnoreCase(String identifier) {
+        return quoteIdentifier(identifier);
+    }
+
+    /**
+     * Escapes a value interpolated into a single-quoted SQL string literal (surrounding
+     * quotes NOT added). MySQL treats backslash as an escape character, so backslashes
+     * are doubled before single quotes (mirrors MysqlAccountSqlBuilder.stringLiteral).
+     */
+    @Override
+    public String escapeString(String str) {
+        if (str == null) {
+            return null;
+        }
+        return str.replace("\\", "\\\\").replace("'", "''");
+    }
+
+    private static String escapeIdentifierContent(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        String stripped = identifier;
+        if (stripped.length() >= 2 && stripped.startsWith("`") && stripped.endsWith("`")) {
+            stripped = stripped.substring(1, stripped.length() - 1);
+        }
+        return StringUtils.replace(stripped, "`", "``");
+    }
+
+    /**
+     * Escapes identifier content for a position already surrounded by backticks:
+     * strips one surrounding backtick pair, then doubles every embedded backtick.
+     */
+    public static String escapeIdentifier(String identifier) {
+        return escapeIdentifierContent(identifier);
     }
 
     @Override

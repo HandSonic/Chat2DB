@@ -2,6 +2,7 @@ package ai.chat2db.plugin.mysql;
 
 import ai.chat2db.community.tools.exception.BusinessException;
 import ai.chat2db.plugin.mysql.builder.MysqlSqlBuilder;
+import ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor;
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
@@ -259,7 +260,7 @@ public class MysqlDBManager extends DefaultDBManager implements IDbManager {
     }
 
     public static String format(String tableName) {
-        return MysqlSqlEscapes.quoteIdentifier(tableName);
+        return MysqlIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
     }
 
     @Override

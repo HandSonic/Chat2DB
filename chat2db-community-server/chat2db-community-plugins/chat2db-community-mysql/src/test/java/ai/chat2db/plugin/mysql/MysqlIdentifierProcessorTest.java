@@ -10,6 +10,7 @@ import ai.chat2db.plugin.mysql.builder.MysqlSqlBuilder;
 import ai.chat2db.plugin.mysql.enums.MysqlViewAlgorithmOptionEnum;
 import ai.chat2db.plugin.mysql.enums.type.MysqlColumnTypeEnum;
 import ai.chat2db.plugin.mysql.enums.type.MysqlIndexTypeEnum;
+import ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor;
 import ai.chat2db.plugin.mysql.value.template.MysqlDmlValueTemplate;
 import org.junit.jupiter.api.Test;
 
@@ -21,76 +22,84 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class MysqlSqlEscapesTest {
+class MysqlIdentifierProcessorTest {
 
     @Test
-    void escapeSqlLiteralDoublesBackslashBeforeSingleQuote() {
-        assertEquals("a''b\\\\c", MysqlSqlEscapes.escapeSqlLiteral("a'b\\c"));
-        assertEquals("''", MysqlSqlEscapes.escapeSqlLiteral("'"));
-        assertEquals("plain", MysqlSqlEscapes.escapeSqlLiteral("plain"));
-        assertNull(MysqlSqlEscapes.escapeSqlLiteral(null));
+    void escapeStringDoublesBackslashBeforeSingleQuote() {
+        assertEquals("a''b\\\\c", MysqlIdentifierProcessor.INSTANCE.escapeString("a'b\\c"));
+        assertEquals("''", MysqlIdentifierProcessor.INSTANCE.escapeString("'"));
+        assertEquals("plain", MysqlIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertNull(MysqlIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void quoteIdentifierDoublesEmbeddedBackticks() {
-        assertEquals("`plain`", MysqlSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("`weird``name`", MysqlSqlEscapes.quoteIdentifier("weird`name"));
-        assertEquals("`a``; DROP TABLE b; --`", MysqlSqlEscapes.quoteIdentifier("a`; DROP TABLE b; --"));
+        assertEquals("`plain`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("`weird``name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name"));
+        assertEquals("`a``; DROP TABLE b; --`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`; DROP TABLE b; --"));
         // one surrounding backtick pair is stripped before doubling
-        assertEquals("`a``b`", MysqlSqlEscapes.quoteIdentifier("`a`b`"));
-        assertEquals("`quoted`", MysqlSqlEscapes.quoteIdentifier("`quoted`"));
+        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
+        assertEquals("`quoted`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
+    }
+
+    @Test
+    void escapeIdentifierEscapesContentForQuotedTemplates() {
+        assertEquals("WE``IRD", MysqlIdentifierProcessor.escapeIdentifier("WE`IRD"));
+        assertEquals("ALREADY", MysqlIdentifierProcessor.escapeIdentifier("`ALREADY`"));
+        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a`b"));
+        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`b", null, null));
     }
 
     @Test
     void requireMysqlNameRejectsInjection() {
-        assertEquals("utf8mb4_0900_ai_ci", MysqlSqlEscapes.requireMysqlName("utf8mb4_0900_ai_ci", "collation"));
+        assertEquals("utf8mb4_0900_ai_ci", MysqlSqlGuards.requireMysqlName("utf8mb4_0900_ai_ci", "collation"));
         assertThrows(IllegalArgumentException.class,
-                () -> MysqlSqlEscapes.requireMysqlName("InnoDB, COMMENT='x'", "engine"));
+                () -> MysqlSqlGuards.requireMysqlName("InnoDB, COMMENT='x'", "engine"));
         assertThrows(IllegalArgumentException.class,
-                () -> MysqlSqlEscapes.requireMysqlName("utf8mb4;DROP TABLE t", "charset"));
+                () -> MysqlSqlGuards.requireMysqlName("utf8mb4;DROP TABLE t", "charset"));
     }
 
     @Test
     void requireNumericDefaultRejectsNonLiteral() {
-        assertEquals("42", MysqlSqlEscapes.requireNumericDefault("42"));
-        assertEquals("-1.5", MysqlSqlEscapes.requireNumericDefault("-1.5"));
-        assertEquals("1e3", MysqlSqlEscapes.requireNumericDefault("1e3"));
-        assertThrows(IllegalArgumentException.class, () -> MysqlSqlEscapes.requireNumericDefault("0);DROP TABLE t"));
-        assertThrows(IllegalArgumentException.class, () -> MysqlSqlEscapes.requireNumericDefault("(uuid())"));
+        assertEquals("42", MysqlSqlGuards.requireNumericDefault("42"));
+        assertEquals("-1.5", MysqlSqlGuards.requireNumericDefault("-1.5"));
+        assertEquals("1e3", MysqlSqlGuards.requireNumericDefault("1e3"));
+        assertThrows(IllegalArgumentException.class, () -> MysqlSqlGuards.requireNumericDefault("0);DROP TABLE t"));
+        assertThrows(IllegalArgumentException.class, () -> MysqlSqlGuards.requireNumericDefault("(uuid())"));
     }
 
     @Test
     void requireBitLiteralRejectsNonBits() {
-        assertEquals("0101", MysqlSqlEscapes.requireBitLiteral("0101"));
-        assertThrows(IllegalArgumentException.class, () -> MysqlSqlEscapes.requireBitLiteral("2"));
-        assertThrows(IllegalArgumentException.class, () -> MysqlSqlEscapes.requireBitLiteral("1' OR '1'='1"));
+        assertEquals("0101", MysqlSqlGuards.requireBitLiteral("0101"));
+        assertThrows(IllegalArgumentException.class, () -> MysqlSqlGuards.requireBitLiteral("2"));
+        assertThrows(IllegalArgumentException.class, () -> MysqlSqlGuards.requireBitLiteral("1' OR '1'='1"));
     }
 
     @Test
     void requireDefinerAcceptsOnlyAccountSyntax() {
-        assertEquals("root@localhost", MysqlSqlEscapes.requireDefiner("root@localhost"));
-        assertEquals("'root'@'%'", MysqlSqlEscapes.requireDefiner("'root'@'%'"));
-        assertEquals("`root`@`localhost`", MysqlSqlEscapes.requireDefiner("`root`@`localhost`"));
+        assertEquals("root@localhost", MysqlSqlGuards.requireDefiner("root@localhost"));
+        assertEquals("'root'@'%'", MysqlSqlGuards.requireDefiner("'root'@'%'"));
+        assertEquals("`root`@`localhost`", MysqlSqlGuards.requireDefiner("`root`@`localhost`"));
         assertThrows(IllegalArgumentException.class,
-                () -> MysqlSqlEscapes.requireDefiner("root@localhost SQL SECURITY INVOKER"));
+                () -> MysqlSqlGuards.requireDefiner("root@localhost SQL SECURITY INVOKER"));
     }
 
     @Test
     void requireEnumConstantRejectsUnknownOption() {
         assertEquals("MERGE",
-                MysqlSqlEscapes.requireEnumConstant("merge", MysqlViewAlgorithmOptionEnum.values(), "algorithm"));
-        assertThrows(IllegalArgumentException.class, () -> MysqlSqlEscapes.requireEnumConstant(
+                MysqlSqlGuards.requireEnumConstant("merge", MysqlViewAlgorithmOptionEnum.values(), "algorithm"));
+        assertThrows(IllegalArgumentException.class, () -> MysqlSqlGuards.requireEnumConstant(
                 "MERGE SQL SECURITY INVOKER", MysqlViewAlgorithmOptionEnum.values(), "algorithm"));
     }
 
     @Test
     void quoteEnumValuesKeepsBenignListAndNeutralizesMaliciousList() {
-        assertEquals("'draft','published'", MysqlSqlEscapes.quoteEnumValues("'draft','published'"));
-        assertEquals("('draft','published')", MysqlSqlEscapes.quoteEnumValues("('draft','published')"));
+        assertEquals("'draft','published'", MysqlSqlGuards.quoteEnumValues("'draft','published'"));
+        assertEquals("('draft','published')", MysqlSqlGuards.quoteEnumValues("('draft','published')"));
         // unbalanced quote: whole input is re-escaped into a single inert string literal
-        assertEquals("'''),DROP TABLE t;-- x'", MysqlSqlEscapes.quoteEnumValues("'),DROP TABLE t;-- x"));
+        assertEquals("'''),DROP TABLE t;-- x'", MysqlSqlGuards.quoteEnumValues("'),DROP TABLE t;-- x"));
         // balanced items stay split; hostile content stays inside a re-escaped literal
-        assertEquals("'a','b''); DROP TABLE t;-- '", MysqlSqlEscapes.quoteEnumValues("'a','b'); DROP TABLE t;-- '"));
+        assertEquals("'a','b''); DROP TABLE t;-- '", MysqlSqlGuards.quoteEnumValues("'a','b'); DROP TABLE t;-- '"));
     }
 
     @Test
@@ -231,17 +240,16 @@ class MysqlSqlEscapesTest {
 
     @Test
     void hexLiteralPassthroughRequiresWellFormedHex() {
-        assertTrue(MysqlSqlEscapes.isHexLiteral("0x4D7953514C"));
-        assertTrue(!MysqlSqlEscapes.isHexLiteral("0x41, name=(SELECT user())-- "));
-        assertTrue(!MysqlSqlEscapes.isHexLiteral("0x"));
+        assertTrue(MysqlSqlGuards.isHexLiteral("0x4D7953514C"));
+        assertTrue(!MysqlSqlGuards.isHexLiteral("0x41, name=(SELECT user())-- "));
+        assertTrue(!MysqlSqlGuards.isHexLiteral("0x"));
     }
 
     @Test
-    void identifierProcessorDoublesEmbeddedBackticks() {
-        ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor processor =
-                new ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor();
+    void identifierProcessorAlwaysQuotesAndDoublesEmbeddedBackticks() {
+        MysqlIdentifierProcessor processor = MysqlIdentifierProcessor.INSTANCE;
         assertEquals("`a``b`", processor.quoteIdentifier("a`b"));
-        assertEquals("plain_name", processor.quoteIdentifier("plain_name"));
+        assertEquals("`plain_name`", processor.quoteIdentifier("plain_name"));
     }
 
     @Test

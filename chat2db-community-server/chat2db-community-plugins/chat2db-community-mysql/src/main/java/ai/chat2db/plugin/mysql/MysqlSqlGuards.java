@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.mysql;
 
+import ai.chat2db.plugin.mysql.identifier.MysqlIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
@@ -7,10 +8,12 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Canonical escaping/quoting helpers for values interpolated into MySQL SQL text (#1914).
- * Literal escaping mirrors MysqlAccountSqlBuilder.stringLiteral (backslash first, then single quotes).
+ * Validation helpers for non-escapable SQL positions in MySQL DDL/DML generation
+ * (engine/charset/collation names, raw numeric defaults, bit/hex literals, definers,
+ * index sort directions and fixed option sets). Escaping itself lives in
+ * {@link MysqlIdentifierProcessor}.
  */
-public final class MysqlSqlEscapes {
+public final class MysqlSqlGuards {
 
     private static final Pattern MYSQL_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
@@ -22,33 +25,7 @@ public final class MysqlSqlEscapes {
     private static final Pattern DEFINER_PATTERN = Pattern.compile(
             "^([A-Za-z0-9_$]+|" + DEFINER_QUOTED_PART + ")@([A-Za-z0-9_.%:$-]+|" + DEFINER_QUOTED_PART + ")$");
 
-    private MysqlSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal (surrounding quotes NOT added).
-     * MySQL treats backslash as an escape character, so backslashes are doubled before single quotes.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value.replace("\\", "\\\\").replace("'", "''");
-    }
-
-    /**
-     * Quote an identifier with backticks: strips one surrounding backtick pair, then doubles every
-     * embedded backtick.
-     */
-    public static String quoteIdentifier(String name) {
-        if (StringUtils.isBlank(name)) {
-            return name;
-        }
-        String identifier = name;
-        if (identifier.length() >= 2 && identifier.startsWith("`") && identifier.endsWith("`")) {
-            identifier = identifier.substring(1, identifier.length() - 1);
-        }
-        return "`" + identifier.replace("`", "``") + "`";
+    private MysqlSqlGuards() {
     }
 
     /**
@@ -99,18 +76,6 @@ public final class MysqlSqlEscapes {
      */
     public static boolean isHexLiteral(String value) {
         return value != null && HEX_LITERAL_PATTERN.matcher(value).matches();
-    }
-
-    /**
-     * Quote an identifier with backticks without stripping a surrounding pair: every
-     * embedded backtick is doubled. For call sites where the name may itself start or
-     * end with a backtick character.
-     */
-    public static String quoteIdentifierRaw(String name) {
-        if (StringUtils.isBlank(name)) {
-            return name;
-        }
-        return "`" + name.replace("`", "``") + "`";
     }
 
     /**
@@ -201,7 +166,7 @@ public final class MysqlSqlEscapes {
             if (i > 0) {
                 result.append(',');
             }
-            result.append('\'').append(escapeSqlLiteral(unquoteSingle(items.get(i).trim()))).append('\'');
+            result.append('\'').append(MysqlIdentifierProcessor.INSTANCE.escapeString(unquoteSingle(items.get(i).trim()))).append('\'');
         }
         if (parenthesized) {
             result.append(')');
