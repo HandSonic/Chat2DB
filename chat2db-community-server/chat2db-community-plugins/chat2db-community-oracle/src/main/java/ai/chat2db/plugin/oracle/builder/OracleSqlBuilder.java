@@ -2,6 +2,7 @@ package ai.chat2db.plugin.oracle.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
 
+import ai.chat2db.plugin.oracle.OracleSqlEscapes;
 import ai.chat2db.plugin.oracle.enums.type.OracleColumnTypeEnum;
 import ai.chat2db.plugin.oracle.enums.type.OracleIndexTypeEnum;
 import ai.chat2db.plugin.oracle.util.OracleUtil;
@@ -13,7 +14,6 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
-import ai.chat2db.spi.util.SqlUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -152,13 +152,13 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
 
     private String buildTableComment(Table table) {
         StringBuilder script = new StringBuilder();
-        script.append(SQL_COMMENT_TABLE_2).append(SQLConstants.DOUBLE_QUOTE).append(table.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(table.getName()).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(table.getComment()).append(SQLConstants.SINGLE_QUOTE);
+        script.append(SQL_COMMENT_TABLE_2).append(SQLConstants.DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(table.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(table.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(OracleSqlEscapes.escapeSqlLiteral(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
         return script.toString();
     }
 
     private String buildComment(TableColumn column) {
         StringBuilder script = new StringBuilder();
-        script.append(SQL_COMMENT_COLUMN).append(SQLConstants.DOUBLE_QUOTE).append(column.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(column.getTableName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(column.getName()).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(column.getComment()).append(SQLConstants.SINGLE_QUOTE);
+        script.append(SQL_COMMENT_COLUMN).append(SQLConstants.DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(column.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(column.getTableName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(column.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(OracleSqlEscapes.escapeSqlLiteral(column.getComment())).append(SQLConstants.SINGLE_QUOTE);
         return script.toString();
     }
 
@@ -167,8 +167,8 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
 
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(oldTable.getSchemaName()).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(oldTable.getName()).append(SQLConstants.DOUBLE_QUOTE);
-            script.append(SQLConstants.SPACE).append(SQL_RENAME).append(SQLConstants.DOUBLE_QUOTE).append(newTable.getName()).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_ALTER_TABLE).append(SQLConstants.DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(oldTable.getSchemaName())).append(SQLConstants.DOUBLE_QUOTE_DOT_DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(oldTable.getName())).append(SQLConstants.DOUBLE_QUOTE);
+            script.append(SQLConstants.SPACE).append(SQL_RENAME).append(SQLConstants.DOUBLE_QUOTE).append(OracleSqlEscapes.escapeIdentifier(newTable.getName())).append(SQLConstants.DOUBLE_QUOTE).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             script.append(SQLConstants.EMPTY).append(buildTableComment(newTable)).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
@@ -232,9 +232,9 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
     @Override
     protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
         if (StringUtils.isNotBlank(databaseName)) {
-            script.append(SqlUtils.quoteObjectName(databaseName)).append('.');
+            script.append(OracleSqlEscapes.quoteIdentifier(databaseName)).append('.');
         }
-        script.append(SqlUtils.quoteObjectName(tableName));
+        script.append(OracleSqlEscapes.quoteIdentifier(tableName));
     }
 
 
@@ -242,7 +242,7 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
     protected void buildColumns(List<String> columnList, StringBuilder script) {
         if (CollectionUtils.isNotEmpty(columnList)) {
             script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
-                    .append(columnList.stream().map(SqlUtils::quoteObjectName).collect(Collectors.joining(SQLConstants.COMMA)))
+                    .append(columnList.stream().map(OracleSqlEscapes::quoteIdentifier).collect(Collectors.joining(SQLConstants.COMMA)))
                     .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
         }
     }
@@ -328,14 +328,12 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
     }
 
     private static String quoteOracleIdentifier(String identifier) {
-        return SQLConstants.DOUBLE_QUOTE
-                + identifier.replace(SQLConstants.DOUBLE_QUOTE, SQLConstants.DOUBLE_QUOTE + SQLConstants.DOUBLE_QUOTE)
-                + SQLConstants.DOUBLE_QUOTE;
+        return OracleSqlEscapes.quoteIdentifier(identifier);
     }
 
     private static String quoteStringLiteral(String value) {
         return SQLConstants.SINGLE_QUOTE
-                + value.replace(SQLConstants.SINGLE_QUOTE, SQLConstants.SINGLE_QUOTE + SQLConstants.SINGLE_QUOTE)
+                + OracleSqlEscapes.escapeSqlLiteral(value)
                 + SQLConstants.SINGLE_QUOTE;
     }
 

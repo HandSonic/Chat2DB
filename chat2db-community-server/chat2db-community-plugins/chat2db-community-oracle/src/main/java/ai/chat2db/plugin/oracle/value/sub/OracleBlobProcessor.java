@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.oracle.value.sub;
 
 import ai.chat2db.community.tools.util.EasyStringUtils;
+import ai.chat2db.plugin.oracle.OracleSqlEscapes;
 import ai.chat2db.spi.DefaultValueProcessor;
 import ai.chat2db.spi.model.value.JDBCDataValue;
 import ai.chat2db.community.domain.api.model.value.SQLDataValue;
@@ -14,7 +15,7 @@ public class OracleBlobProcessor extends DefaultValueProcessor {
     public String convertSQLValueByType(SQLDataValue dataValue) {
         String value = dataValue.getValue();
         if (value.startsWith("0x")) {
-            return EasyStringUtils.quoteString(value.substring(2));
+            return EasyStringUtils.quoteString(OracleSqlEscapes.hexLiteralOrFallback(value.substring(2), dataValue.getBlobHexString()));
         } else {
             for (int i = 0; i < value.length(); i++) {
                 char c = value.charAt(i);

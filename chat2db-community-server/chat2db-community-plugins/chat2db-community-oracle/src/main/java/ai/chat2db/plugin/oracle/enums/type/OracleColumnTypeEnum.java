@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.oracle.enums.type;
 
+import ai.chat2db.plugin.oracle.OracleSqlEscapes;
 import ai.chat2db.plugin.oracle.util.OracleUtil;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
@@ -140,7 +141,7 @@ public enum OracleColumnTypeEnum implements IColumnBuilder {
     public String buildCreateColumnSql(TableColumn column) {
         OracleColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
         if (type == null) {
-            return OracleUtil.quoteIdentifierIgnoreCase(column.getName()) + " " + column.getColumnType();
+            return OracleUtil.quoteIdentifierIgnoreCase(column.getName()) + " " + OracleSqlEscapes.requireSafeTypeName(column.getColumnType());
         }
         StringBuilder script = new StringBuilder();
 
@@ -159,7 +160,7 @@ public enum OracleColumnTypeEnum implements IColumnBuilder {
     public String buildAICreateColumnSql(TableColumn column) {
         OracleColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
         if (type == null) {
-            return OracleUtil.quoteIdentifierIgnoreCase(column.getName()) + " " + column.getColumnType();
+            return OracleUtil.quoteIdentifierIgnoreCase(column.getName()) + " " + OracleSqlEscapes.requireSafeTypeName(column.getColumnType());
         }
         StringBuilder script = new StringBuilder();
 
@@ -199,7 +200,7 @@ public enum OracleColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", OracleSqlEscapes.requireDefaultValue(column.getDefaultValue()));
     }
 
     private String buildDataType(TableColumn column, OracleColumnTypeEnum type) {
@@ -213,7 +214,7 @@ public enum OracleColumnTypeEnum implements IColumnBuilder {
             if (column.getColumnSize() != null && StringUtils.isEmpty(column.getUnit())) {
                 script.append("(").append(column.getColumnSize()).append(")");
             } else if (column.getColumnSize() != null && !StringUtils.isEmpty(column.getUnit())) {
-                script.append("(").append(column.getColumnSize()).append(" ").append(column.getUnit()).append(")");
+                script.append("(").append(column.getColumnSize()).append(" ").append(OracleSqlEscapes.requireUnit(column.getUnit())).append(")");
             }
             return script.toString();
         }
@@ -265,25 +266,25 @@ public enum OracleColumnTypeEnum implements IColumnBuilder {
 
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-            script.append(" ").append(SQL_DROP_COLUMN).append("\"").append(tableColumn.getName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append(OracleSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(OracleSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
+            script.append(" ").append(SQL_DROP_COLUMN).append(OracleSqlEscapes.quoteIdentifier(tableColumn.getName()));
             return script.toString();
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append(OracleSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(OracleSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append(SQL_ALTER_TABLE).append(OracleSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(OracleSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
             script.append(" ").append("MODIFY (").append(buildModifyColumnSql(tableColumn, tableColumn.getOldColumn())).append(") \n");
 
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
                 script.append(";");
-                script.append(SQL_ALTER_TABLE).append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-                script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(tableColumn.getOldName()).append("\"").append(" TO ").append("\"").append(tableColumn.getName()).append("\"");
+                script.append(SQL_ALTER_TABLE).append(OracleSqlEscapes.quoteIdentifier(tableColumn.getSchemaName())).append(".").append(OracleSqlEscapes.quoteIdentifier(tableColumn.getTableName()));
+                script.append(" ").append(SQL_RENAME_COLUMN).append(OracleSqlEscapes.quoteIdentifier(tableColumn.getOldName())).append(" TO ").append(OracleSqlEscapes.quoteIdentifier(tableColumn.getName()));
 
             }
             return script.toString();
@@ -299,7 +300,7 @@ public enum OracleColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(column.getName()).append("\"").append(" ");
+        script.append(OracleSqlEscapes.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 

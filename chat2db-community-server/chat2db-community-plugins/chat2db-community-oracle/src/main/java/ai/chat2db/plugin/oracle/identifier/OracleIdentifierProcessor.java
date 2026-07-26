@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.oracle.identifier;
 
+import ai.chat2db.plugin.oracle.OracleSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
@@ -133,11 +134,11 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
         if (isValidIdentifier(identifier)) {
             if (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), majorVersion, minorVersion)) {
-                return StringUtils.wrap(identifier, '"');
+                return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
 
     }
 
@@ -145,22 +146,22 @@ public class OracleIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public String quoteIdentifier(String identifier) {
         if (isValidIdentifier(identifier)) {
             if (containsLowerCase(identifier) || isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(identifier, '"');
+                return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
     }
 
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
         if (isValidIdentifier(identifier)) {
             if (isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return StringUtils.wrap(identifier, '"');
+                return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
             }
             return identifier;
         }
-        return StringUtils.wrap(identifier, '"');
+        return StringUtils.wrap(OracleSqlEscapes.escapeIdentifier(identifier), '"');
     }
 
     @Override

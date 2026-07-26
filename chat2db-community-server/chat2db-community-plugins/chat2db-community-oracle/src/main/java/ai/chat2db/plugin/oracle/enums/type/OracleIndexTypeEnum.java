@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.oracle.enums.type;
 
+import ai.chat2db.plugin.oracle.OracleSqlEscapes;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
@@ -71,14 +72,14 @@ public enum OracleIndexTypeEnum {
     public String buildIndexScript(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
-            script.append(SQL_ALTER_TABLE_2).append(tableIndex.getSchemaName()).append("\".\"").append(tableIndex.getTableName()).append("\" ADD CONSTRAINT ").append(tableIndex.getTableName() + "_pk").append(" PRIMARY KEY ").append(buildIndexColumn(tableIndex));
+            script.append(SQL_ALTER_TABLE).append(OracleSqlEscapes.quoteIdentifier(tableIndex.getSchemaName())).append(".").append(OracleSqlEscapes.quoteIdentifier(tableIndex.getTableName())).append(" ADD CONSTRAINT ").append(OracleSqlEscapes.quoteIdentifier(tableIndex.getTableName() + "_pk")).append(" PRIMARY KEY ").append(buildIndexColumn(tableIndex));
         } else {
             if (UNIQUE.equals(this)) {
                 script.append(SQL_CREATE_UNIQUE_INDEX);
             } else {
                 script.append(SQL_CREATE_INDEX);
             }
-            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(tableIndex.getSchemaName()).append("\".\"").append(tableIndex.getTableName()).append("\" ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append(" ON ").append(OracleSqlEscapes.quoteIdentifier(tableIndex.getSchemaName())).append(".").append(OracleSqlEscapes.quoteIdentifier(tableIndex.getTableName())).append(" ").append(buildIndexColumn(tableIndex));
         }
         return script.toString();
     }
@@ -89,9 +90,9 @@ public enum OracleIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append("\"").append(column.getColumnName()).append("\"");
+                script.append(OracleSqlEscapes.quoteIdentifier(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
-                    script.append(" ").append(column.getAscOrDesc());
+                    script.append(" ").append(OracleSqlEscapes.requireAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
             }
@@ -102,7 +103,7 @@ public enum OracleIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return "\"" + tableIndex.getSchemaName() + "\"." + "\"" + tableIndex.getName() + "\"";
+        return OracleSqlEscapes.quoteIdentifier(tableIndex.getSchemaName()) + "." + OracleSqlEscapes.quoteIdentifier(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -120,7 +121,7 @@ public enum OracleIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (OracleIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            String tableName = "\"" + tableIndex.getSchemaName() + "\"." + "\"" + tableIndex.getTableName() + "\"";
+            String tableName = OracleSqlEscapes.quoteIdentifier(tableIndex.getSchemaName()) + "." + OracleSqlEscapes.quoteIdentifier(tableIndex.getTableName());
             return StringUtils.join(SQL_ALTER_TABLE, tableName, SQL_DROP_PRIMARY_KEY);
         }
         StringBuilder script = new StringBuilder();
