@@ -9,6 +9,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.xugudb.builder.XUGUDBSqlBuilder;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBColumnTypeEnum;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBIndexTypeEnum;
+import ai.chat2db.plugin.xugudb.identifier.XugudbIdentifierProcessor;
 import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
 import org.junit.jupiter.api.Test;
 
@@ -19,31 +20,31 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class XugudbSqlEscapesTest {
+class XugudbIdentifierProcessorTest {
 
     private final XUGUDBSqlBuilder builder = new XUGUDBSqlBuilder();
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("o''brien", XugudbSqlEscapes.escapeSqlLiteral("o'brien"));
-        assertEquals("''", XugudbSqlEscapes.escapeSqlLiteral("'"));
-        assertEquals("plain", XugudbSqlEscapes.escapeSqlLiteral("plain"));
-        assertEquals("", XugudbSqlEscapes.escapeSqlLiteral(null));
+        assertEquals("o''brien", XugudbIdentifierProcessor.INSTANCE.escapeString("o'brien"));
+        assertEquals("''", XugudbIdentifierProcessor.INSTANCE.escapeString("'"));
+        assertEquals("plain", XugudbIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("", XugudbIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void escapeIdentifierDoublesEmbeddedQuotesAndStripsSurroundingQuotes() {
-        assertEquals("ta\"\"ble", XugudbSqlEscapes.escapeIdentifier("ta\"ble"));
-        assertEquals("foo", XugudbSqlEscapes.escapeIdentifier("\"foo\""));
-        assertEquals("fo\"\"o", XugudbSqlEscapes.escapeIdentifier("\"fo\"o\""));
-        assertEquals("plain", XugudbSqlEscapes.escapeIdentifier("plain"));
-        assertEquals("", XugudbSqlEscapes.escapeIdentifier(null));
+        assertEquals("ta\"\"ble", XugudbIdentifierProcessor.escapeIdentifier("ta\"ble"));
+        assertEquals("foo", XugudbIdentifierProcessor.escapeIdentifier("\"foo\""));
+        assertEquals("fo\"\"o", XugudbIdentifierProcessor.escapeIdentifier("\"fo\"o\""));
+        assertEquals("plain", XugudbIdentifierProcessor.escapeIdentifier("plain"));
+        assertEquals("", XugudbIdentifierProcessor.escapeIdentifier(null));
     }
 
     @Test
     void quoteIdentifierWrapsEscapedIdentifier() {
-        assertEquals("\"plain\"", XugudbSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("\"ta\"\"ble\"", XugudbSqlEscapes.quoteIdentifier("ta\"ble"));
+        assertEquals("\"plain\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"ta\"\"ble\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("ta\"ble"));
     }
 
     @Test
@@ -238,6 +239,27 @@ class XugudbSqlEscapesTest {
         varchar.setUnit(" BYTE ");
         String varcharSql = XUGUDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(varchar);
         assertTrue(varcharSql.contains("(10 BYTE)"), varcharSql);
+    }
+
+    @Test
+    void requireDefaultValueAcceptsValidExpressionsAndRejectsInjection() {
+        assertEquals("0", XugudbSqlGuards.requireDefaultValue("0"));
+        assertEquals("-1.5", XugudbSqlGuards.requireDefaultValue("-1.5"));
+        assertEquals("CURRENT_TIMESTAMP", XugudbSqlGuards.requireDefaultValue("CURRENT_TIMESTAMP"));
+        assertEquals("now()", XugudbSqlGuards.requireDefaultValue("now()"));
+        assertEquals("f('it''s')", XugudbSqlGuards.requireDefaultValue("f('it''s')"));
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireDefaultValue("0; DROP TABLE users; --"));
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireDefaultValue("length(')"));
+    }
+
+    @Test
+    void requireUnitAcceptsLettersAndRejectsInjection() {
+        assertEquals("BYTE", XugudbSqlGuards.requireUnit(" BYTE "));
+        assertEquals("CHAR", XugudbSqlGuards.requireUnit("CHAR"));
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireUnit("BYTE); DROP TABLE t; --"));
     }
 
     private static TableColumn column(String name, String type) {

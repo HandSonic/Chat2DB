@@ -4,7 +4,7 @@ import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
-import ai.chat2db.plugin.xugudb.XugudbSqlEscapes;
+import ai.chat2db.plugin.xugudb.identifier.XugudbIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
@@ -73,14 +73,14 @@ public enum XUGUDBIndexTypeEnum {
     public String buildIndexScript(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
-            script.append(SQL_ALTER_TABLE_2).append(XugudbSqlEscapes.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(XugudbSqlEscapes.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
+            script.append(SQL_ALTER_TABLE_2).append(XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
         } else {
             if (UNIQUE.equals(this)) {
                 script.append(SQL_CREATE_UNIQUE_INDEX);
             } else {
                 script.append(SQL_CREATE_INDEX);
             }
-            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(XugudbSqlEscapes.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(XugudbSqlEscapes.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
         }
         return script.toString();
     }
@@ -91,7 +91,7 @@ public enum XUGUDBIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append("\"").append(XugudbSqlEscapes.escapeIdentifier(column.getColumnName())).append("\"");
+                script.append("\"").append(XugudbIdentifierProcessor.escapeIdentifier(column.getColumnName())).append("\"");
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     script.append(" ").append(validateAscOrDesc(column.getAscOrDesc()));
                 }
@@ -104,7 +104,7 @@ public enum XUGUDBIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return "\"" + XugudbSqlEscapes.escapeIdentifier(tableIndex.getSchemaName()) + "\"." + "\"" + XugudbSqlEscapes.escapeIdentifier(tableIndex.getName()) + "\"";
+        return "\"" + XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName()) + "\"." + "\"" + XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getName()) + "\"";
     }
 
     private static String validateAscOrDesc(String ascOrDesc) {
@@ -129,7 +129,7 @@ public enum XUGUDBIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (XUGUDBIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            String tableName = "\"" + XugudbSqlEscapes.escapeIdentifier(tableIndex.getSchemaName()) + "\"." + "\"" + XugudbSqlEscapes.escapeIdentifier(tableIndex.getTableName()) + "\"";
+            String tableName = "\"" + XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName()) + "\"." + "\"" + XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getTableName()) + "\"";
             return StringUtils.join(SQL_ALTER_TABLE,tableName,SQL_DROP_PRIMARY_KEY);
         }
         StringBuilder script = new StringBuilder();
