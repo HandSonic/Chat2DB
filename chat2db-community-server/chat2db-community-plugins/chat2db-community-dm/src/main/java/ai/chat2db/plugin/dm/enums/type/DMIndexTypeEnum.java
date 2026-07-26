@@ -91,7 +91,7 @@ public enum DMIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
+                script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     String ascOrDesc = column.getAscOrDesc();
                     if (!"ASC".equalsIgnoreCase(ascOrDesc) && !"DESC".equalsIgnoreCase(ascOrDesc)) {
@@ -108,7 +108,7 @@ public enum DMIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()) + "." + DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+        return DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()) + "." + DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -126,7 +126,7 @@ public enum DMIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (DMIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            String tableName = DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getSchemaName()) + "." + DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getTableName());
+            String tableName = DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()) + "." + DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName());
             return StringUtils.join(SQL_ALTER_TABLE,tableName,SQL_DROP_PRIMARY_KEY);
         }
         StringBuilder script = new StringBuilder();

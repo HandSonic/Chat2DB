@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -28,9 +29,29 @@ class DMIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"plain\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        assertNull(DMIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", DMIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals("plain", DMIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("plain", DMIdentifierProcessor.INSTANCE.quoteIdentifier("plain", null, null));
+        assertEquals("\"SELECT\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
+        assertEquals("\"select\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
+        assertEquals("\"weird name\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("weird name"));
         assertEquals("\"we\"\"ird\"", DMIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesUnconditionally() {
+        assertNull(DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("\"plain\"", DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("\"SELECT\"", DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways("SELECT"));
+        assertEquals("\"we\"\"ird\"", DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
+        assertEquals("\"plain\"", DMIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"MixedCase\"", DMIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("MixedCase"));
     }
 
     @Test
@@ -131,6 +152,8 @@ class DMIdentifierProcessorTest {
         org.junit.jupiter.api.Assertions.assertEquals("-1.5", DMSqlGuards.requireDefaultExpression("-1.5"));
         org.junit.jupiter.api.Assertions.assertEquals("CURRENT_TIMESTAMP", DMSqlGuards.requireDefaultExpression("CURRENT_TIMESTAMP"));
         org.junit.jupiter.api.Assertions.assertEquals("SEQ.NEXTVAL", DMSqlGuards.requireDefaultExpression("SEQ.NEXTVAL"));
+        org.junit.jupiter.api.Assertions.assertEquals("NVL(SUM(x),0)", DMSqlGuards.requireDefaultExpression("NVL(SUM(x),0)"));
+        org.junit.jupiter.api.Assertions.assertEquals("NVL(SUM('a;b'),0)", DMSqlGuards.requireDefaultExpression("NVL(SUM('a;b'),0)"));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> DMSqlGuards.requireDefaultExpression("1; DROP TABLE t"));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,

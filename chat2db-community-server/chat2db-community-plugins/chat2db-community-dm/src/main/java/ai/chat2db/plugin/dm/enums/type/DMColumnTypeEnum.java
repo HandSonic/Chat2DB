@@ -160,7 +160,7 @@ public enum DMColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -181,7 +181,7 @@ public enum DMColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 

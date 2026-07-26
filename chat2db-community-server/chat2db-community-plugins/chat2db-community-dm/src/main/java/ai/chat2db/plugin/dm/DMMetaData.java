@@ -46,7 +46,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String format(String tableName) {
-        return getSQLIdentifierProcessor().quoteIdentifier(tableName);
+        return DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     protected static String tableDDL = "SELECT dbms_metadata.get_ddl('TABLE', '%s','%s') as ddl FROM dual ;";
@@ -320,7 +320,7 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(DMIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
 

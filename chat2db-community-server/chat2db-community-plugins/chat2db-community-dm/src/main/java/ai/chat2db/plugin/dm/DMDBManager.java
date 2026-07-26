@@ -41,7 +41,7 @@ public class DMDBManager extends DefaultDBManager implements IDbManager {
 
 
     private String format(String tableName) {
-        return DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
 
@@ -235,6 +235,6 @@ public class DMDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE_EXISTS, DMIdentifierProcessor.INSTANCE.quoteIdentifier(tableName));
+        return String.format(SQL_DROP_TABLE_EXISTS, DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
     }
 }

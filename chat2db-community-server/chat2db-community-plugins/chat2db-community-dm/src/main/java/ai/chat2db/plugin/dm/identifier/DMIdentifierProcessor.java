@@ -258,7 +258,10 @@ public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     }
 
     /**
-     * Always quotes with double quotes, stripping one surrounding quote pair and
+     * SPI-facing conditional quoting: {@code null} and blank identifiers are
+     * returned unchanged; identifiers that are already valid for the dialect
+     * and are not reserved keywords are returned unquoted; anything else is
+     * wrapped with double quotes, stripping one surrounding quote pair and
      * doubling every embedded double quote.
      */
     @Override
@@ -268,12 +271,34 @@ public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifier(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier)
+                && !isReservedKeyword(identifier.toUpperCase(java.util.Locale.ROOT), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditional quoting for DDL-generation call sites: wraps with double
+     * quotes, stripping one surrounding quote pair and doubling every embedded
+     * double quote. Returns {@code null} for {@code null}.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
         return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
 
+    /**
+     * Always-quote SPI variant that preserves the original identifier case.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
     }
 
     /**

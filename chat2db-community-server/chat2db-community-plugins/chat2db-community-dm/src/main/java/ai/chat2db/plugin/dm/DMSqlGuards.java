@@ -12,11 +12,13 @@ public final class DMSqlGuards {
     /**
      * Legitimate column DEFAULT expressions: quoted string literals (with ''
      * escapes), numeric literals, or keyword/function forms such as
-     * CURRENT_TIMESTAMP, SYSDATE, USER, SEQ.NEXTVAL. Anything else is rejected
-     * because DEFAULT values are emitted verbatim.
+     * CURRENT_TIMESTAMP, SYSDATE, USER, SEQ.NEXTVAL. Function-call arguments
+     * tolerate quoted string literals and one level of nested parentheses
+     * (e.g. NVL(SUM(x),0)); semicolons are never allowed. Anything else is
+     * rejected because DEFAULT values are emitted verbatim.
      */
     private static final Pattern DEFAULT_EXPRESSION = Pattern.compile(
-            "'([^']|'')*'|[+-]?(\\d+(\\.\\d+)?|\\.\\d+)|[A-Za-z_][A-Za-z0-9_]*([.][A-Za-z_][A-Za-z0-9_]*)*(\\s*\\([^;)]*\\))?");
+            "'([^']|'')*'|[+-]?(\\d+(\\.\\d+)?|\\.\\d+)|[A-Za-z_][A-Za-z0-9_]*([.][A-Za-z_][A-Za-z0-9_]*)*(\\s*\\((?:'(?:[^']|'')*'|\\((?:'(?:[^']|'')*'|[^()';])*\\)|[^()';])*\\))?");
 
     private DMSqlGuards() {
     }

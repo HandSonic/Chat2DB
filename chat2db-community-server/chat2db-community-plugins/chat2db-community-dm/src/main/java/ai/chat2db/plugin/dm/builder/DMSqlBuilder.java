@@ -214,7 +214,7 @@ public class DMSqlBuilder  extends DefaultSqlBuilder {
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append(SQL_CREATE_SCHEMA+DMIdentifierProcessor.escapeIdentifier(schema.getName())+SQLConstants.DOUBLE_QUOTE);
         if(StringUtils.isNotBlank(schema.getOwner())){
-            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(DMIdentifierProcessor.INSTANCE.quoteIdentifier(schema.getOwner()));
+            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schema.getOwner()));
         }
 
         return sqlBuilder.toString();
