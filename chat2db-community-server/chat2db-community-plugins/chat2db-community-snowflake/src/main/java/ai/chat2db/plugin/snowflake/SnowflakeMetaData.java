@@ -80,13 +80,13 @@ public class SnowflakeMetaData extends DefaultMetaService implements IDbMetaData
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(SnowflakeIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
         StringBuilder queryBuf = new StringBuilder(SQL_SHOW_PRIMARY_KEYS);
-        queryBuf.append(getSQLIdentifierProcessor().quoteIdentifier(tableName));
+        queryBuf.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
         return DefaultSQLExecutor.getInstance().execute(connection, queryBuf.toString(), resultSet -> {
             LinkedHashMap<String, TableIndex> map = new LinkedHashMap();
             while (resultSet.next()) {
@@ -188,6 +188,6 @@ public class SnowflakeMetaData extends DefaultMetaService implements IDbMetaData
     }
 
     public static String format(String tableName) {
-        return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 }

@@ -7,21 +7,30 @@ import org.apache.commons.lang3.StringUtils;
  * Snowflake dialect identifier processor: double-quoted identifiers with embedded-quote
  * doubling, and single-quote doubling for string literals. Shared stateless
  * instance available via {@link #INSTANCE} for call sites without MetaData access.
+ * <p>
+ * {@link #quoteIdentifier(String)} is the SPI-facing conditional variant: identifiers
+ * that are already valid and non-reserved are returned unquoted. {@link #quoteIdentifierAlways(String)}
+ * is the unconditional variant reserved for DDL-generation call sites that historically
+ * always quoted.
  */
 public class SnowflakeIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     public static final SnowflakeIdentifierProcessor INSTANCE = new SnowflakeIdentifierProcessor();
 
     /**
-     * Always quotes with double quotes, stripping one surrounding quote pair and
-     * doubling every embedded double quote. Blank input is returned unchanged.
+     * Conditionally quotes: {@code null} stays {@code null}, blank is returned unchanged,
+     * identifiers already valid for the dialect (and not reserved keywords) are returned
+     * unquoted; anything else is wrapped via {@link #quoteIdentifierAlways(String)}.
      */
     @Override
     public String quoteIdentifier(String identifier) {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        return "\"" + stripAndEscape(identifier) + "\"";
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -29,9 +38,24 @@ public class SnowflakeIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         return quoteIdentifier(identifier);
     }
 
+    /**
+     * SPI always-quote variant that preserves the original identifier case.
+     */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditionally quotes with double quotes, stripping one surrounding quote pair and
+     * doubling every embedded double quote. {@code null} stays {@code null}, blank is
+     * returned unchanged. For DDL-generation call sites only.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        return "\"" + stripAndEscape(identifier) + "\"";
     }
 
     /**

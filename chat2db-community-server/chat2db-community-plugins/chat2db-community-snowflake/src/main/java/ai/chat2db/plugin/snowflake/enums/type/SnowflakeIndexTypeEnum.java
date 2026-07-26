@@ -95,7 +95,7 @@ public enum SnowflakeIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(column.getColumnName()));
+                script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     script.append(" ").append(SnowflakeSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
@@ -111,7 +111,7 @@ public enum SnowflakeIndexTypeEnum {
         if(this.equals(PRIMARY_KEY)){
             return "";
         }else {
-            return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableIndex.getName());
+            return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName());
         }
     }
 

@@ -29,9 +29,9 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getSchemaName())) {
-            script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT);
+            script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT);
         }
-        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -83,16 +83,16 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
     public String buildAlterTable(Table oldTable, Table newTable) {
         StringBuilder script = new StringBuilder();
         script.append(SQL_ALTER_TABLE);
-        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
         boolean isChangeTableName = false;
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_RENAME).append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_RENAME).append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
             isChangeTableName = true;
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             if (isChangeTableName) {
                 script.append(SQL_ALTER_TABLE);
-                script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+                script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
                 script.append(SQLConstants.TAB).append(SQL_SET_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(SnowflakeIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
             } else {
                 script.append(SQLConstants.TAB).append(SQL_SET_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(SnowflakeIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);

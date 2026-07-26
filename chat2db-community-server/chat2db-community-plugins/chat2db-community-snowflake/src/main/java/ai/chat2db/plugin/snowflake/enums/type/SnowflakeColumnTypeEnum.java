@@ -89,7 +89,7 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
+        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -109,14 +109,14 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
     @Override
     public String buildModifyColumn(TableColumn tableColumn) {
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join(SQL_DROP_COLUMN, SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                return StringUtils.join("CHANGE COLUMN ", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE COLUMN ", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
                 return StringUtils.join("MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
             }

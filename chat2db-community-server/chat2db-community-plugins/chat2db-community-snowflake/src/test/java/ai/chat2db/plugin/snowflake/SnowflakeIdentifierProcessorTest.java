@@ -15,6 +15,7 @@ import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,10 +33,46 @@ class SnowflakeIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierStripsOnePairThenDoublesEmbeddedQuotes() {
-        assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users"));
+    void quoteIdentifierReturnsValidPlainIdentifiersUnquoted() {
+        assertEquals("users", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users"));
+        assertEquals("T_1", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("T_1"));
+        assertEquals("users", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users", null, null));
+    }
+
+    @Test
+    void quoteIdentifierPassesThroughNullAndBlank() {
+        assertNull(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+        assertEquals(" ", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(" "));
+        assertNull(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(null, 1, 0));
+    }
+
+    @Test
+    void quoteIdentifierQuotesIdentifiersNeedingQuotes() {
         assertEquals("\"we\"\"ird\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
         assertEquals("\"ta\"\"ble\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("\"ta\"ble\""));
+        assertEquals("\"has space\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
+        assertEquals("\"1st\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("1st"));
+    }
+
+    @Test
+    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+        assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("users"));
+        assertNull(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysStripsOnePairThenDoublesEmbeddedQuotes() {
+        assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("users"));
+        assertEquals("\"we\"\"ird\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
+        assertEquals("\"ta\"\"ble\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"ta\"ble\""));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysPassesThroughNullAndBlank() {
+        assertNull(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals(" ", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(" "));
     }
 
     @Test

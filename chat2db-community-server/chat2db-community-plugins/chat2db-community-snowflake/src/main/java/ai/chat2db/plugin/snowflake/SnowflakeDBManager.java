@@ -75,7 +75,7 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
     }
 
     public static String format(String tableName) {
-        return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
 }
