@@ -1,7 +1,7 @@
 package ai.chat2db.plugin.oscar.enums.type;
 
 import ai.chat2db.spi.constant.SQLConstants;
-import ai.chat2db.plugin.oscar.OscarSqlEscapes;
+import ai.chat2db.plugin.oscar.OscarSqlGuards;
 import ai.chat2db.plugin.oscar.constant.OscarConstants;
 import ai.chat2db.plugin.oscar.util.OscarUtils;
 import ai.chat2db.spi.IColumnBuilder;
@@ -163,7 +163,7 @@ public enum OscarColumnTypeEnum implements IColumnBuilder {
         if (OscarConstants.NULL_TOKEN.equalsIgnoreCase(defaultValue)) {
             return SQLConstants.DEFAULT_NULL_SQL;
         }
-        return SQLConstants.DEFAULT_SQL_PREFIX + OscarSqlEscapes.requireDefaultValueExpression(defaultValue);
+        return SQLConstants.DEFAULT_SQL_PREFIX + OscarSqlGuards.requireDefaultValueExpression(defaultValue);
     }
 
     private String buildDataType(TableColumn column, OscarColumnTypeEnum type) {
@@ -194,7 +194,7 @@ public enum OscarColumnTypeEnum implements IColumnBuilder {
         if (column.getColumnSize() != null) {
             script.append(SQLConstants.OPEN_PARENTHESIS).append(column.getColumnSize());
             if (StringUtils.isNotBlank(column.getUnit())) {
-                script.append(SQLConstants.SPACE).append(OscarSqlEscapes.requireLengthUnit(column.getUnit()));
+                script.append(SQLConstants.SPACE).append(OscarSqlGuards.requireLengthUnit(column.getUnit()));
             }
             script.append(SQLConstants.CLOSE_PARENTHESIS);
         }

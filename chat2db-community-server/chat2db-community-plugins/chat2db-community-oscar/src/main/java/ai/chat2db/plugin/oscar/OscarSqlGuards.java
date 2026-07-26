@@ -1,13 +1,16 @@
 package ai.chat2db.plugin.oscar;
 
-import org.apache.commons.lang3.StringUtils;
-
 import java.util.regex.Pattern;
 
+import ai.chat2db.plugin.oscar.identifier.OscarIdentifierProcessor;
+import org.apache.commons.lang3.StringUtils;
+
 /**
- * Canonical escaping/quoting helpers for values interpolated into Oscar SQL text (#1914).
+ * Validation helpers for non-escapable SQL positions in Oscar DDL generation
+ * (column default expressions, CHAR/VARCHAR length units, index sort orders).
+ * Escaping itself lives in {@link OscarIdentifierProcessor}.
  */
-public final class OscarSqlEscapes {
+public final class OscarSqlGuards {
 
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
             "^[+-]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?$");
@@ -16,33 +19,7 @@ public final class OscarSqlEscapes {
     private static final Pattern FUNCTION_CALL_DEFAULT_PATTERN = Pattern.compile(
             "^[A-Za-z_][A-Za-z0-9_$]*\\s*\\((?:[A-Za-z0-9_$.\\s,]|'(?:[^']|'')*')*\\)$");
 
-    private OscarSqlEscapes() {
-    }
-
-    /**
-     * Escapes a value interpolated into a single-quoted Oscar string literal
-     * (surrounding quotes NOT added) by doubling every single quote.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return StringUtils.replace(value, "'", "''");
-    }
-
-    /**
-     * Quotes an identifier with double quotes: strips one surrounding double-quote
-     * pair, then doubles every embedded double quote.
-     */
-    public static String quoteIdentifier(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
-        }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return "\"" + StringUtils.replace(stripped, "\"", "\"\"") + "\"";
+    private OscarSqlGuards() {
     }
 
     /**

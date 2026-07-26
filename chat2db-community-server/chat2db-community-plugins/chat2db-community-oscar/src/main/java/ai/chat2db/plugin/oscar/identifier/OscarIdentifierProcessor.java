@@ -1,12 +1,18 @@
 package ai.chat2db.plugin.oscar.identifier;
 
-import ai.chat2db.plugin.oscar.OscarSqlEscapes;
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Set;
 
+/**
+ * Oscar dialect identifier processor: double-quoted identifiers with embedded-quote
+ * doubling, and single-quote doubling for string literals. Shared stateless
+ * instance available via {@link #INSTANCE} for call sites without MetaData access.
+ */
 public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
+
+    public static final OscarIdentifierProcessor INSTANCE = new OscarIdentifierProcessor();
 
     private static final Set<String> RESERVED_KEYWORDS = Set.of(
             "ADD", "ALL", "ALTER", "AND", "ANY", "AS", "ASC", "BEGIN", "BETWEEN", "BY", "CHAR", "CHECK",
@@ -46,20 +52,56 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         return identifier.toUpperCase();
     }
 
+    /**
+     * Escapes a value interpolated into a single-quoted SQL string literal by
+     * doubling every single quote (surrounding quotes NOT added).
+     */
+    @Override
+    public String escapeString(String str) {
+        if (str == null) {
+            return null;
+        }
+        return StringUtils.replace(str, "'", "''");
+    }
+
     private String quote(String identifier, boolean quoteLowerCase) {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
         if (isQuoteIdentifier(identifier)) {
-            return OscarSqlEscapes.quoteIdentifier(identifier);
+            return quoteAlways(identifier);
         }
         if (isValidIdentifier(identifier)) {
             if ((quoteLowerCase && containsLowerCase(identifier))
                     || isReservedKeyword(identifier.toUpperCase(), null, null)) {
-                return OscarSqlEscapes.quoteIdentifier(identifier);
+                return quoteAlways(identifier);
             }
             return identifier;
         }
-        return OscarSqlEscapes.quoteIdentifier(identifier);
+        return quoteAlways(identifier);
+    }
+
+    /**
+     * Quotes an identifier with double quotes: strips one surrounding double-quote
+     * pair, then doubles every embedded double quote.
+     */
+    private static String quoteAlways(String identifier) {
+        return "\"" + escapeIdentifier(identifier) + "\"";
+    }
+
+    /**
+     * Escapes identifier content for a position already surrounded by double
+     * quotes: strips one surrounding quote pair, then doubles every embedded
+     * double quote.
+     */
+    public static String escapeIdentifier(String identifier) {
+        if (identifier == null) {
+            return "";
+        }
+        String stripped = identifier;
+        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
+            stripped = stripped.substring(1, stripped.length() - 1);
+        }
+        return StringUtils.replace(stripped, "\"", "\"\"");
     }
 }

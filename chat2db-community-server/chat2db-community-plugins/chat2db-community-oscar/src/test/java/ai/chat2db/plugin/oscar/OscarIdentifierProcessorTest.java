@@ -6,6 +6,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.oscar.constant.OscarConstants;
 import ai.chat2db.plugin.oscar.enums.type.OscarColumnTypeEnum;
 import ai.chat2db.plugin.oscar.enums.type.OscarIndexTypeEnum;
+import ai.chat2db.plugin.oscar.identifier.OscarIdentifierProcessor;
 import ai.chat2db.plugin.oscar.util.OscarUtils;
 import org.junit.jupiter.api.Test;
 
@@ -16,22 +17,29 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class OscarSqlEscapesTest {
+class OscarIdentifierProcessorTest {
 
     @Test
-    void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", OscarSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("plain", OscarSqlEscapes.escapeSqlLiteral("plain"));
-        assertNull(OscarSqlEscapes.escapeSqlLiteral(null));
+    void escapeStringDoublesSingleQuotes() {
+        assertEquals("O''Brien", OscarIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("plain", OscarIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertNull(OscarIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void quoteIdentifierDoublesEmbeddedDoubleQuotes() {
-        assertEquals("\"plain\"", OscarSqlEscapes.quoteIdentifier("plain"));
-        assertEquals("\"MyTable\"", OscarSqlEscapes.quoteIdentifier("\"MyTable\""));
-        assertEquals("\"a\"\"b\"", OscarSqlEscapes.quoteIdentifier("a\"b"));
+        assertEquals("\"plain\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"MyTable\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("\"MyTable\""));
+        assertEquals("\"a\"\"b\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
         assertEquals("\"x\"\"; DROP TABLE t; --\"",
-                OscarSqlEscapes.quoteIdentifier("x\"; DROP TABLE t; --"));
+                OscarIdentifierProcessor.INSTANCE.quoteIdentifier("x\"; DROP TABLE t; --"));
+    }
+
+    @Test
+    void escapeIdentifierStripsOneQuotePairAndDoublesEmbedded() {
+        assertEquals("a\"\"b", OscarIdentifierProcessor.escapeIdentifier("a\"b"));
+        assertEquals("MyTable", OscarIdentifierProcessor.escapeIdentifier("\"MyTable\""));
+        assertEquals("", OscarIdentifierProcessor.escapeIdentifier(null));
     }
 
     @Test
@@ -47,14 +55,14 @@ class OscarSqlEscapesTest {
     void metadataSqlTemplatesNeutralizeMaliciousLiterals() {
         String malicious = "X' OR '1'='1";
         String sql = String.format(OscarConstants.VIEW_DDL_SQL,
-                OscarSqlEscapes.escapeSqlLiteral(malicious),
-                OscarSqlEscapes.escapeSqlLiteral(malicious));
+                OscarIdentifierProcessor.INSTANCE.escapeString(malicious),
+                OscarIdentifierProcessor.INSTANCE.escapeString(malicious));
         assertTrue(sql.contains("OWNER = 'X'' OR ''1''=''1'"));
         assertTrue(sql.contains("VIEW_NAME = 'X'' OR ''1''=''1'"));
 
         String triggerSql = String.format(OscarConstants.TRIGGER_DETAIL_SQL,
-                OscarSqlEscapes.escapeSqlLiteral("SYSDBA"),
-                OscarSqlEscapes.escapeSqlLiteral(malicious));
+                OscarIdentifierProcessor.INSTANCE.escapeString("SYSDBA"),
+                OscarIdentifierProcessor.INSTANCE.escapeString(malicious));
         assertTrue(triggerSql.contains("TRIGGER_NAME = 'X'' OR ''1''=''1'"));
     }
 
@@ -85,34 +93,34 @@ class OscarSqlEscapesTest {
 
     @Test
     void defaultValueWhitelistAcceptsLegitimateValues() {
-        assertEquals("0", OscarSqlEscapes.requireDefaultValueExpression("0"));
-        assertEquals("-1", OscarSqlEscapes.requireDefaultValueExpression("-1"));
-        assertEquals("3.14", OscarSqlEscapes.requireDefaultValueExpression("3.14"));
-        assertEquals("1e10", OscarSqlEscapes.requireDefaultValueExpression("1e10"));
-        assertEquals("SYSDATE", OscarSqlEscapes.requireDefaultValueExpression("SYSDATE"));
-        assertEquals("CURRENT_TIMESTAMP", OscarSqlEscapes.requireDefaultValueExpression("CURRENT_TIMESTAMP"));
-        assertEquals("sys_guid()", OscarSqlEscapes.requireDefaultValueExpression("sys_guid()"));
+        assertEquals("0", OscarSqlGuards.requireDefaultValueExpression("0"));
+        assertEquals("-1", OscarSqlGuards.requireDefaultValueExpression("-1"));
+        assertEquals("3.14", OscarSqlGuards.requireDefaultValueExpression("3.14"));
+        assertEquals("1e10", OscarSqlGuards.requireDefaultValueExpression("1e10"));
+        assertEquals("SYSDATE", OscarSqlGuards.requireDefaultValueExpression("SYSDATE"));
+        assertEquals("CURRENT_TIMESTAMP", OscarSqlGuards.requireDefaultValueExpression("CURRENT_TIMESTAMP"));
+        assertEquals("sys_guid()", OscarSqlGuards.requireDefaultValueExpression("sys_guid()"));
         assertEquals("to_date('2024-01-01', 'YYYY-MM-DD')",
-                OscarSqlEscapes.requireDefaultValueExpression("to_date('2024-01-01', 'YYYY-MM-DD')"));
+                OscarSqlGuards.requireDefaultValueExpression("to_date('2024-01-01', 'YYYY-MM-DD')"));
     }
 
     @Test
     void defaultValueWhitelistAcceptsQuotedStringDefaults() {
-        assertEquals("'abc'", OscarSqlEscapes.requireDefaultValueExpression("'abc'"));
-        assertEquals("'O''Brien'", OscarSqlEscapes.requireDefaultValueExpression("'O''Brien'"));
-        assertEquals("''", OscarSqlEscapes.requireDefaultValueExpression("''"));
+        assertEquals("'abc'", OscarSqlGuards.requireDefaultValueExpression("'abc'"));
+        assertEquals("'O''Brien'", OscarSqlGuards.requireDefaultValueExpression("'O''Brien'"));
+        assertEquals("''", OscarSqlGuards.requireDefaultValueExpression("''"));
     }
 
     @Test
     void defaultValueWhitelistRejectsInjection() {
         assertThrows(IllegalArgumentException.class,
-                () -> OscarSqlEscapes.requireDefaultValueExpression("'; DROP TABLE t; --"));
+                () -> OscarSqlGuards.requireDefaultValueExpression("'; DROP TABLE t; --"));
         assertThrows(IllegalArgumentException.class,
-                () -> OscarSqlEscapes.requireDefaultValueExpression("1; DROP TABLE t"));
+                () -> OscarSqlGuards.requireDefaultValueExpression("1; DROP TABLE t"));
         assertThrows(IllegalArgumentException.class,
-                () -> OscarSqlEscapes.requireDefaultValueExpression("a' OR '1'='1"));
+                () -> OscarSqlGuards.requireDefaultValueExpression("a' OR '1'='1"));
         assertThrows(IllegalArgumentException.class,
-                () -> OscarSqlEscapes.requireDefaultValueExpression("f(''); DROP TABLE t; --('x')"));
+                () -> OscarSqlGuards.requireDefaultValueExpression("f(''); DROP TABLE t; --('x')"));
     }
 
     @Test
@@ -139,18 +147,18 @@ class OscarSqlEscapesTest {
 
     @Test
     void lengthUnitWhitelistAcceptsByteAndChar() {
-        assertEquals("BYTE", OscarSqlEscapes.requireLengthUnit("BYTE"));
-        assertEquals("char", OscarSqlEscapes.requireLengthUnit("char"));
+        assertEquals("BYTE", OscarSqlGuards.requireLengthUnit("BYTE"));
+        assertEquals("char", OscarSqlGuards.requireLengthUnit("char"));
         assertThrows(IllegalArgumentException.class,
-                () -> OscarSqlEscapes.requireLengthUnit("BYTE; DROP TABLE t"));
+                () -> OscarSqlGuards.requireLengthUnit("BYTE; DROP TABLE t"));
     }
 
     @Test
     void sortOrderWhitelistAcceptsAscDesc() {
-        assertEquals("ASC", OscarSqlEscapes.requireSortOrder("ASC"));
-        assertEquals("desc", OscarSqlEscapes.requireSortOrder("desc"));
+        assertEquals("ASC", OscarSqlGuards.requireSortOrder("ASC"));
+        assertEquals("desc", OscarSqlGuards.requireSortOrder("desc"));
         assertThrows(IllegalArgumentException.class,
-                () -> OscarSqlEscapes.requireSortOrder("ASC; DROP TABLE t; --"));
+                () -> OscarSqlGuards.requireSortOrder("ASC; DROP TABLE t; --"));
     }
 
     @Test
