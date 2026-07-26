@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.snowflake.enums.type;
 
-import ai.chat2db.plugin.snowflake.SnowflakeSqlEscapes;
+import ai.chat2db.plugin.snowflake.SnowflakeSqlGuards;
+import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
 import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
@@ -88,7 +89,7 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
         }
         StringBuilder script = new StringBuilder();
 
-        script.append(SnowflakeSqlEscapes.quoteIdentifier(column.getName())).append(" ");
+        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
@@ -108,14 +109,14 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
     @Override
     public String buildModifyColumn(TableColumn tableColumn) {
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join(SQL_DROP_COLUMN, SnowflakeSqlEscapes.quoteIdentifier(tableColumn.getName()));
+            return StringUtils.join(SQL_DROP_COLUMN, SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
             return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                return StringUtils.join("CHANGE COLUMN ", SnowflakeSqlEscapes.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
+                return StringUtils.join("CHANGE COLUMN ", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableColumn.getOldName()), " ", buildCreateColumnSql(tableColumn));
             } else {
                 return StringUtils.join("MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
             }
@@ -166,7 +167,7 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
         if(!type.getColumnType().isSupportCollation() || StringUtils.isEmpty(column.getCollationName())){
             return "";
         }
-        return StringUtils.join("COLLATE ", "'", SnowflakeSqlEscapes.escapeSqlLiteral(column.getCollationName()), "'");
+        return StringUtils.join("COLLATE ", "'", SnowflakeIdentifierProcessor.INSTANCE.escapeString(column.getCollationName()), "'");
     }
 
     private String buildNullable(TableColumn column, SnowflakeColumnTypeEnum type) {
@@ -206,21 +207,21 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
         }
 
         if(Arrays.asList(CHAR,VARCHAR,BINARY,VARBINARY).contains(type)){
-            return StringUtils.join(SQL_SET_DEFAULT_2,SnowflakeSqlEscapes.escapeSqlLiteral(column.getDefaultValue()),"'");
+            return StringUtils.join(SQL_SET_DEFAULT_2,SnowflakeIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()),"'");
         }
 
         if(Arrays.asList(DATE,TIME).contains(type)){
-            return StringUtils.join(SQL_SET_DEFAULT_2,SnowflakeSqlEscapes.escapeSqlLiteral(column.getDefaultValue()),"'");
+            return StringUtils.join(SQL_SET_DEFAULT_2,SnowflakeIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()),"'");
         }
 
         if(Arrays.asList(DATETIME,TIMESTAMP).contains(type)){
             if("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())){
                 return StringUtils.join(SQL_SET_DEFAULT,column.getDefaultValue());
             }
-            return StringUtils.join(SQL_SET_DEFAULT_2,SnowflakeSqlEscapes.escapeSqlLiteral(column.getDefaultValue()),"'");
+            return StringUtils.join(SQL_SET_DEFAULT_2,SnowflakeIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()),"'");
         }
 
-        return StringUtils.join(SQL_SET_DEFAULT,SnowflakeSqlEscapes.requireDefaultExpression(column.getDefaultValue()));
+        return StringUtils.join(SQL_SET_DEFAULT,SnowflakeSqlGuards.requireDefaultExpression(column.getDefaultValue()));
     }
 
     private String buildAutoIncrement(TableColumn column, SnowflakeColumnTypeEnum type) {
@@ -237,7 +238,7 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
         if(!type.columnType.isSupportComments() || StringUtils.isEmpty(column.getComment())){
             return "";
         }
-        return StringUtils.join(SQL_COMMENT,SnowflakeSqlEscapes.escapeSqlLiteral(column.getComment()),"'");
+        return StringUtils.join(SQL_COMMENT,SnowflakeIdentifierProcessor.INSTANCE.escapeString(column.getComment()),"'");
     }
 
     public static List<ColumnType> getTypes(){

@@ -8,6 +8,7 @@ import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.plugin.snowflake.builder.SnowflakeSqlBuilder;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeColumnTypeEnum;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeIndexTypeEnum;
+import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -17,24 +18,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SnowflakeSqlEscapesTest {
+class SnowflakeIdentifierProcessorTest {
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
-        assertEquals("O''Brien", SnowflakeSqlEscapes.escapeSqlLiteral("O'Brien"));
-        assertEquals("plain", SnowflakeSqlEscapes.escapeSqlLiteral("plain"));
+        assertEquals("O''Brien", SnowflakeIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
+        assertEquals("plain", SnowflakeIdentifierProcessor.INSTANCE.escapeString("plain"));
     }
 
     @Test
     void escapeIdentifierDoublesDoubleQuotes() {
-        assertEquals("we\"\"ird", SnowflakeSqlEscapes.escapeIdentifier("we\"ird"));
+        assertEquals("we\"\"ird", SnowflakeIdentifierProcessor.escapeIdentifier("we\"ird"));
     }
 
     @Test
     void quoteIdentifierStripsOnePairThenDoublesEmbeddedQuotes() {
-        assertEquals("\"users\"", SnowflakeSqlEscapes.quoteIdentifier("users"));
-        assertEquals("\"we\"\"ird\"", SnowflakeSqlEscapes.quoteIdentifier("we\"ird"));
-        assertEquals("\"ta\"\"ble\"", SnowflakeSqlEscapes.quoteIdentifier("\"ta\"ble\""));
+        assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users"));
+        assertEquals("\"we\"\"ird\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
+        assertEquals("\"ta\"\"ble\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("\"ta\"ble\""));
     }
 
     @Test
@@ -82,37 +83,37 @@ class SnowflakeSqlEscapesTest {
 
     @Test
     void requireSnowflakeNameAcceptsLegitValuesAndRejectsInjection() {
-        assertEquals("utf8", SnowflakeSqlEscapes.requireSnowflakeName("utf8", "charset"));
-        assertEquals("en_US", SnowflakeSqlEscapes.requireSnowflakeName("en_US", "collation"));
+        assertEquals("utf8", SnowflakeSqlGuards.requireSnowflakeName("utf8", "charset"));
+        assertEquals("en_US", SnowflakeSqlGuards.requireSnowflakeName("en_US", "collation"));
         assertThrows(IllegalArgumentException.class,
-                () -> SnowflakeSqlEscapes.requireSnowflakeName("utf8'; DROP TABLE t; --", "charset"));
+                () -> SnowflakeSqlGuards.requireSnowflakeName("utf8'; DROP TABLE t; --", "charset"));
     }
 
     @Test
     void requireDefaultExpressionAcceptsLiteralsKeywordsAndQuotedStrings() {
-        assertEquals("123", SnowflakeSqlEscapes.requireDefaultExpression("123"));
-        assertEquals("-1.5", SnowflakeSqlEscapes.requireDefaultExpression(" -1.5 "));
-        assertEquals("true", SnowflakeSqlEscapes.requireDefaultExpression("true"));
-        assertEquals("CURRENT_TIMESTAMP", SnowflakeSqlEscapes.requireDefaultExpression("CURRENT_TIMESTAMP"));
-        assertEquals("CURRENT_TIMESTAMP()", SnowflakeSqlEscapes.requireDefaultExpression("CURRENT_TIMESTAMP()"));
-        assertEquals("'abc'", SnowflakeSqlEscapes.requireDefaultExpression("'abc'"));
-        assertEquals("'O''Brien'", SnowflakeSqlEscapes.requireDefaultExpression("'O'Brien'"));
+        assertEquals("123", SnowflakeSqlGuards.requireDefaultExpression("123"));
+        assertEquals("-1.5", SnowflakeSqlGuards.requireDefaultExpression(" -1.5 "));
+        assertEquals("true", SnowflakeSqlGuards.requireDefaultExpression("true"));
+        assertEquals("CURRENT_TIMESTAMP", SnowflakeSqlGuards.requireDefaultExpression("CURRENT_TIMESTAMP"));
+        assertEquals("CURRENT_TIMESTAMP()", SnowflakeSqlGuards.requireDefaultExpression("CURRENT_TIMESTAMP()"));
+        assertEquals("'abc'", SnowflakeSqlGuards.requireDefaultExpression("'abc'"));
+        assertEquals("'O''Brien'", SnowflakeSqlGuards.requireDefaultExpression("'O'Brien'"));
     }
 
     @Test
     void requireDefaultExpressionRejectsInjection() {
         assertThrows(IllegalArgumentException.class,
-                () -> SnowflakeSqlEscapes.requireDefaultExpression("1; DROP TABLE t; --"));
+                () -> SnowflakeSqlGuards.requireDefaultExpression("1; DROP TABLE t; --"));
         assertThrows(IllegalArgumentException.class,
-                () -> SnowflakeSqlEscapes.requireDefaultExpression("(SELECT 1)"));
+                () -> SnowflakeSqlGuards.requireDefaultExpression("(SELECT 1)"));
     }
 
     @Test
     void requireAscOrDescAcceptsOnlyAscDesc() {
-        assertEquals("ASC", SnowflakeSqlEscapes.requireAscOrDesc("asc"));
-        assertEquals("DESC", SnowflakeSqlEscapes.requireAscOrDesc("DESC"));
+        assertEquals("ASC", SnowflakeSqlGuards.requireAscOrDesc("asc"));
+        assertEquals("DESC", SnowflakeSqlGuards.requireAscOrDesc("DESC"));
         assertThrows(IllegalArgumentException.class,
-                () -> SnowflakeSqlEscapes.requireAscOrDesc("ASC; DROP TABLE t; --"));
+                () -> SnowflakeSqlGuards.requireAscOrDesc("ASC; DROP TABLE t; --"));
     }
 
     @Test

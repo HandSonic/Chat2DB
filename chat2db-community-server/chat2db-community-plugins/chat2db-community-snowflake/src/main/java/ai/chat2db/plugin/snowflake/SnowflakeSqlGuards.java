@@ -1,56 +1,22 @@
 package ai.chat2db.plugin.snowflake;
 
-import org.apache.commons.lang3.StringUtils;
-
 import java.util.regex.Pattern;
 
+import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
+import org.apache.commons.lang3.StringUtils;
+
 /**
- * Canonical escaping/quoting helpers for values interpolated into Snowflake SQL text (#1914).
+ * Validation helpers for non-escapable SQL positions in Snowflake DDL generation
+ * (engine/charset/collation tokens, raw DEFAULT expressions, index sort direction).
+ * Escaping itself lives in {@link SnowflakeIdentifierProcessor}.
  */
-public final class SnowflakeSqlEscapes {
+public final class SnowflakeSqlGuards {
 
     private static final Pattern SNOWFLAKE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_$]+$");
     private static final Pattern DEFAULT_EXPRESSION_PATTERN = Pattern.compile(
             "^([-+]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?|(?i:TRUE|FALSE)|[A-Za-z_][A-Za-z0-9_]*(\\s*\\([^;)]*\\))?)$");
 
-    private SnowflakeSqlEscapes() {
-    }
-
-    /**
-     * Escape a value interpolated into a single-quoted SQL string literal (surrounding quotes NOT added).
-     * Standard single-quote doubling.
-     */
-    public static String escapeSqlLiteral(String value) {
-        if (value == null) {
-            return null;
-        }
-        return StringUtils.replace(value, "'", "''");
-    }
-
-    /**
-     * Escape a value interpolated into a double-quoted identifier position (surrounding quotes NOT added):
-     * every embedded double-quote is doubled.
-     */
-    public static String escapeIdentifier(String name) {
-        if (name == null) {
-            return null;
-        }
-        return StringUtils.replace(name, "\"", "\"\"");
-    }
-
-    /**
-     * Quote an identifier with double quotes: strips one surrounding double-quote pair, then doubles every
-     * embedded double-quote.
-     */
-    public static String quoteIdentifier(String name) {
-        if (StringUtils.isBlank(name)) {
-            return name;
-        }
-        String identifier = name;
-        if (identifier.length() >= 2 && identifier.startsWith("\"") && identifier.endsWith("\"")) {
-            identifier = identifier.substring(1, identifier.length() - 1);
-        }
-        return "\"" + escapeIdentifier(identifier) + "\"";
+    private SnowflakeSqlGuards() {
     }
 
     /**
@@ -75,7 +41,7 @@ public final class SnowflakeSqlEscapes {
         }
         String trimmed = value.trim();
         if (trimmed.length() >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-            return "'" + escapeSqlLiteral(trimmed.substring(1, trimmed.length() - 1)) + "'";
+            return "'" + SnowflakeIdentifierProcessor.INSTANCE.escapeString(trimmed.substring(1, trimmed.length() - 1)) + "'";
         }
         if (!DEFAULT_EXPRESSION_PATTERN.matcher(trimmed).matches()) {
             throw new IllegalArgumentException("Invalid Snowflake default value: " + value);

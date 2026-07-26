@@ -1,7 +1,8 @@
 package ai.chat2db.plugin.snowflake.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
-import ai.chat2db.plugin.snowflake.SnowflakeSqlEscapes;
+import ai.chat2db.plugin.snowflake.SnowflakeSqlGuards;
+import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeColumnTypeEnum;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeIndexTypeEnum;
 import ai.chat2db.spi.DefaultSqlBuilder;
@@ -28,9 +29,9 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
         if (StringUtils.isNotBlank(table.getSchemaName())) {
-            script.append(SnowflakeSqlEscapes.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT);
+            script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(table.getSchemaName())).append(SQLConstants.DOT);
         }
-        script.append(SnowflakeSqlEscapes.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
@@ -51,15 +52,15 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
 
 
         if (StringUtils.isNotBlank(table.getEngine())) {
-            script.append(SQLConstants.ENGINE_SQL).append(SnowflakeSqlEscapes.requireSnowflakeName(table.getEngine(), "engine"));
+            script.append(SQLConstants.ENGINE_SQL).append(SnowflakeSqlGuards.requireSnowflakeName(table.getEngine(), "engine"));
         }
 
         if (StringUtils.isNotBlank(table.getCharset())) {
-            script.append(SQLConstants.DEFAULT_CHARACTER_SET_SQL).append(SnowflakeSqlEscapes.requireSnowflakeName(table.getCharset(), "charset"));
+            script.append(SQLConstants.DEFAULT_CHARACTER_SET_SQL).append(SnowflakeSqlGuards.requireSnowflakeName(table.getCharset(), "charset"));
         }
 
         if (StringUtils.isNotBlank(table.getCollate())) {
-            script.append(SQLConstants.COLLATE_SQL).append(SnowflakeSqlEscapes.requireSnowflakeName(table.getCollate(), "collation"));
+            script.append(SQLConstants.COLLATE_SQL).append(SnowflakeSqlGuards.requireSnowflakeName(table.getCollate(), "collation"));
         }
 
         if (table.getIncrementValue() != null) {
@@ -67,7 +68,7 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
         }
 
         if (StringUtils.isNotBlank(table.getComment())) {
-            script.append(SQL_COMMENT).append(SnowflakeSqlEscapes.escapeSqlLiteral(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
+            script.append(SQL_COMMENT).append(SnowflakeIdentifierProcessor.INSTANCE.escapeString(table.getComment())).append(SQLConstants.SINGLE_QUOTE);
         }
 
         if (StringUtils.isNotBlank(table.getPartition())) {
@@ -82,19 +83,19 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
     public String buildAlterTable(Table oldTable, Table newTable) {
         StringBuilder script = new StringBuilder();
         script.append(SQL_ALTER_TABLE);
-        script.append(SnowflakeSqlEscapes.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+        script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(oldTable.getName())).append(SQLConstants.LINE_SEPARATOR);
         boolean isChangeTableName = false;
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
-            script.append(SQL_RENAME).append(SnowflakeSqlEscapes.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
+            script.append(SQL_RENAME).append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);
             isChangeTableName = true;
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             if (isChangeTableName) {
                 script.append(SQL_ALTER_TABLE);
-                script.append(SnowflakeSqlEscapes.quoteIdentifier(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
-                script.append(SQLConstants.TAB).append(SQL_SET_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(SnowflakeSqlEscapes.escapeSqlLiteral(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
+                script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(newTable.getName())).append(SQLConstants.LINE_SEPARATOR);
+                script.append(SQLConstants.TAB).append(SQL_SET_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(SnowflakeIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
             } else {
-                script.append(SQLConstants.TAB).append(SQL_SET_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(SnowflakeSqlEscapes.escapeSqlLiteral(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
+                script.append(SQLConstants.TAB).append(SQL_SET_COMMENT).append(SQLConstants.SINGLE_QUOTE).append(SnowflakeIdentifierProcessor.INSTANCE.escapeString(newTable.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQLConstants.COMMA_LINE_SEPARATOR);
             }
         }
         if (!Objects.equals(oldTable.getIncrementValue(), newTable.getIncrementValue())) {

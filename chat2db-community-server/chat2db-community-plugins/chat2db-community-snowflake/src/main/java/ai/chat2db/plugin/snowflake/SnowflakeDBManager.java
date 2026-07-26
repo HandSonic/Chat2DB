@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.snowflake;
 
+import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.spi.DefaultDBManager;
 import ai.chat2db.community.domain.api.model.datasource.KeyValue;
@@ -53,15 +54,15 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
         if (ObjectUtils.anyNull(connectInfo) || StringUtils.isEmpty(connectInfo.getSchemaName())) {
             try {
                 DefaultSQLExecutor.getInstance().execute(connection,
-                        String.format(SQL_USE_DATABASE, SnowflakeSqlEscapes.escapeIdentifier(database)));
+                        String.format(SQL_USE_DATABASE, SnowflakeIdentifierProcessor.escapeIdentifier(database)));
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
         } else {
             try {
                 DefaultSQLExecutor.getInstance().execute(connection,
-                        String.format(SQL_USE_SCHEMA, SnowflakeSqlEscapes.escapeIdentifier(database),
-                                SnowflakeSqlEscapes.requireSnowflakeName(connectInfo.getSchemaName(), "schema name")));
+                        String.format(SQL_USE_SCHEMA, SnowflakeIdentifierProcessor.escapeIdentifier(database),
+                                SnowflakeSqlGuards.requireSnowflakeName(connectInfo.getSchemaName(), "schema name")));
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -74,7 +75,7 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
     }
 
     public static String format(String tableName) {
-        return SnowflakeSqlEscapes.quoteIdentifier(tableName);
+        return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
     }
 
 }
