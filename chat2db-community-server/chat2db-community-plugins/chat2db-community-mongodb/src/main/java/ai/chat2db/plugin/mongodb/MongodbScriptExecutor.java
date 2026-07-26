@@ -62,7 +62,7 @@ public class MongodbScriptExecutor extends DefaultSQLExecutor {
         if (StringUtils.isEmpty(command.getTableName())) {
             return Collections.emptyList();
         }
-        String sql = String.format(EXECUTE_SQL, command.getTableName());
+        String sql = String.format(EXECUTE_SQL, MongodbSqlEscapes.requireMongoName(command.getTableName(), "collection name"));
         command.setScript(sql);
         return execute(command);
     }

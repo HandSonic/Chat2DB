@@ -82,7 +82,7 @@ public class MongodbMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public List columns(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(SELECT_TABLE_COLUMNS, tableName);
+        String sql = String.format(SELECT_TABLE_COLUMNS, MongodbSqlEscapes.requireMongoName(tableName, "collection name"));
         List<TableColumn> tableColumns = new ArrayList();
         return (List) DefaultSQLExecutor.getInstance().execute(connection, sql, (resultSet) -> {
             while (resultSet.next()) {
@@ -106,7 +106,7 @@ public class MongodbMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = String.format(SELECT_TABLE_INDEX, tableName);
+        String sql = String.format(SELECT_TABLE_INDEX, MongodbSqlEscapes.requireMongoName(tableName, "collection name"));
         List<TableIndex> tableIndexes = new ArrayList<>();
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
@@ -141,7 +141,7 @@ public class MongodbMetaData extends DefaultMetaService implements IDbMetaData {
             return;
         }
         Connection connection = Chat2DBContext.getConnection();
-        String sql = String.format(SCRIPT_USE_SCHEMA, schemaName);
+        String sql = String.format(SCRIPT_USE_SCHEMA, MongodbSqlEscapes.requireMongoName(schemaName, "database name"));
         try {
             DefaultSQLExecutor.getInstance().execute(connection, sql);
         } catch (SQLException e) {
