@@ -62,7 +62,7 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
                     String defaultValue = columns.getString("COLUMN_DEF");
                     String nullable = columns.getInt("NULLABLE") == ResultSetMetaData.columnNullable ? "NULL" : "NOT NULL";
                     StringBuilder columnDefinition = new StringBuilder();
-                    columnDefinition.append(getSQLIdentifierProcessor().quoteIdentifier(columnName)).append(" ")
+                    columnDefinition.append(H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(columnName)).append(" ")
                         .append(H2SqlGuards.requireSafeTypeName(columnType));
                     if (columnSize != 0) {
                         columnDefinition.append("(").append(columnSize).append(")");
@@ -94,16 +94,16 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
             }
 
             StringBuilder createTableDDL = new StringBuilder(SQL_CREATE_TABLE);
-            createTableDDL.append(getSQLIdentifierProcessor().quoteIdentifier(tableName)).append(" (\n");
+            createTableDDL.append(H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName)).append(" (\n");
             createTableDDL.append(String.join(",\n", columnDefinitions));
             createTableDDL.append("\n);\n");
             for (Map.Entry<String, List<String>> entry : indexMap.entrySet()) {
                 String indexName = entry.getKey();
                 List<String> columnList = entry.getValue();
-                String indexColumns = columnList.stream().map(getSQLIdentifierProcessor()::quoteIdentifier)
+                String indexColumns = columnList.stream().map(H2IdentifierProcessor.INSTANCE::quoteIdentifierAlways)
                     .collect(Collectors.joining(", "));
-                String createIndexDDL = String.format(SQL_CREATE_INDEX, getSQLIdentifierProcessor().quoteIdentifier(indexName),
-                    getSQLIdentifierProcessor().quoteIdentifier(tableName), indexColumns);
+                String createIndexDDL = String.format(SQL_CREATE_INDEX, H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(indexName),
+                    H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName), indexColumns);
                 createTableDDL.append(createIndexDDL);
             }
             return createTableDDL.toString();
@@ -218,7 +218,7 @@ public class H2Meta extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(H2IdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 
     @Override

@@ -53,8 +53,12 @@ class H2IdentifierProcessorTest {
     @Test
     void escapeIdentifierHandlesNullAndQuoteOnlyInput() {
         assertEquals("", H2IdentifierProcessor.escapeIdentifier(null));
-        assertEquals("\"\"", H2IdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        org.junit.jupiter.api.Assertions.assertNull(H2IdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        org.junit.jupiter.api.Assertions.assertNull(H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("", H2IdentifierProcessor.INSTANCE.quoteIdentifier(""));
         assertEquals("\"\"\"\"", H2IdentifierProcessor.INSTANCE.quoteIdentifier("\""));
+        assertEquals("plain", H2IdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"plain\"", H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
         assertEquals("", H2IdentifierProcessor.escapeIdentifier("\"\""));
     }
 

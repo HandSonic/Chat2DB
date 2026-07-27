@@ -31,14 +31,14 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
 
     @Override
     public String quoteIdentifier(String identifier) {
-        return H2IdentifierProcessor.INSTANCE.quoteIdentifier(identifier);
+        return H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(identifier);
     }
 
     @Override
     public String quoteQualifiedIdentifier(String... identifiers) {
         return Arrays.stream(identifiers)
             .filter(StringUtils::isNotBlank)
-            .map(H2IdentifierProcessor.INSTANCE::quoteIdentifier)
+            .map(H2IdentifierProcessor.INSTANCE::quoteIdentifierAlways)
             .collect(Collectors.joining(SQLConstants.DOT));
     }
 
@@ -51,7 +51,7 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
     protected void buildColumns(List<String> columnList, StringBuilder script) {
         if (CollectionUtils.isNotEmpty(columnList)) {
             script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
-                .append(columnList.stream().map(H2IdentifierProcessor.INSTANCE::quoteIdentifier)
+                .append(columnList.stream().map(H2IdentifierProcessor.INSTANCE::quoteIdentifierAlways)
                     .collect(Collectors.joining(SQLConstants.COMMA)))
                 .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
         }
