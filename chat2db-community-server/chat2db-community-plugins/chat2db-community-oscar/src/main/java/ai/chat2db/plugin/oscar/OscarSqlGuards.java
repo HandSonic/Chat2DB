@@ -14,12 +14,7 @@ public final class OscarSqlGuards {
 
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
             "^[+-]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?$");
-    // Unrolled-loop forms ([^']*(?:''[^']*)*) are used instead of ([^']|'')* to avoid
-    // regex backtracking (CodeQL polynomial-regex alert); they accept the same language.
-    private static final Pattern QUOTED_STRING_DEFAULT_PATTERN = Pattern.compile("^'[^']*(?:''[^']*)*'$");
     private static final Pattern KEYWORD_DEFAULT_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_$]*$");
-    private static final Pattern FUNCTION_CALL_DEFAULT_PATTERN = Pattern.compile(
-            "^[A-Za-z_][A-Za-z0-9_$]*\\s*\\((?:[A-Za-z0-9_$.\\s,]|'[^']*(?:''[^']*)*')*\\)$");
 
     private OscarSqlGuards() {
     }
@@ -29,6 +24,8 @@ public final class OscarSqlGuards {
      * quoting would change semantics). Accepts numeric literals, single-quoted string
      * literals (with '' escapes), plain keywords such as SYSDATE/CURRENT_TIMESTAMP,
      * and simple function calls such as sys_guid() or to_date('2024-01-01','YYYY-MM-DD').
+     * Quoted-literal and function-call shapes are recognized with linear-time scanners
+     * (no regex), so the check cannot be driven into regex backtracking.
      */
     public static String requireDefaultValueExpression(String defaultValue) {
         if (StringUtils.isBlank(defaultValue)) {
@@ -36,12 +33,83 @@ public final class OscarSqlGuards {
         }
         String value = defaultValue.trim();
         if (NUMERIC_DEFAULT_PATTERN.matcher(value).matches()
-                || QUOTED_STRING_DEFAULT_PATTERN.matcher(value).matches()
                 || KEYWORD_DEFAULT_PATTERN.matcher(value).matches()
-                || FUNCTION_CALL_DEFAULT_PATTERN.matcher(value).matches()) {
+                || isQuotedStringLiteral(value)
+                || isSimpleFunctionCall(value)) {
             return value;
         }
         throw new IllegalArgumentException("Invalid Oscar default value: " + defaultValue);
+    }
+
+    /**
+     * True when {@code s} is exactly one single-quoted string literal with '' escapes.
+     * Linear scan, no backtracking.
+     */
+    static boolean isQuotedStringLiteral(String s) {
+        return s.length() >= 2 && s.charAt(0) == '\'' && quotedLiteralEnd(s, 0) == s.length();
+    }
+
+    /**
+     * Returns the index just past the single-quoted literal that starts at
+     * {@code start} (where {@code s.charAt(start) == '\''}), or -1 when the literal
+     * is unterminated. Doubled quotes are consumed as escapes.
+     */
+    private static int quotedLiteralEnd(String s, int start) {
+        int i = start + 1;
+        int n = s.length();
+        while (i < n) {
+            if (s.charAt(i) == '\'') {
+                if (i + 1 < n && s.charAt(i + 1) == '\'') {
+                    i += 2;
+                    continue;
+                }
+                return i + 1;
+            }
+            i++;
+        }
+        return -1;
+    }
+
+    /**
+     * True for {@code name(args)} where args contain only identifier characters,
+     * digits, dots, whitespace, commas, and single-quoted string literals (no nested
+     * parentheses). Linear scan.
+     */
+    static boolean isSimpleFunctionCall(String s) {
+        int n = s.length();
+        if (n == 0 || !(Character.isLetter(s.charAt(0)) || s.charAt(0) == '_')) {
+            return false;
+        }
+        int i = 1;
+        while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_' || s.charAt(i) == '$')) {
+            i++;
+        }
+        while (i < n && Character.isWhitespace(s.charAt(i))) {
+            i++;
+        }
+        if (i >= n || s.charAt(i) != '(') {
+            return false;
+        }
+        i++;
+        while (i < n) {
+            char c = s.charAt(i);
+            if (c == ')') {
+                return i == n - 1;
+            }
+            if (c == '\'') {
+                int end = quotedLiteralEnd(s, i);
+                if (end < 0) {
+                    return false;
+                }
+                i = end;
+            } else if (Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '.'
+                    || c == ',' || Character.isWhitespace(c)) {
+                i++;
+            } else {
+                return false;
+            }
+        }
+        return false;
     }
 
     /**
