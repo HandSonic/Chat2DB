@@ -70,7 +70,7 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String format(String tableName) {
-        return getSQLIdentifierProcessor().quoteIdentifier(tableName);
+        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     @Override

@@ -173,7 +173,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
         if (!FALLBACK_TYPE_PATTERN.matcher(columnType).matches()) {
             throw new IllegalArgumentException("Unsupported column type: " + column.getColumnType());
         }
-        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(column.getName()) + " " + columnType;
+        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()) + " " + columnType;
     }
 
     private String buildAutoIncrement(TableColumn column, XUGUDBColumnTypeEnum type) {

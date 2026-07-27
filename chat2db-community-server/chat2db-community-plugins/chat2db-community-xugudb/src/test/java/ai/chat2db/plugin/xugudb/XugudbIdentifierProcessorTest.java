@@ -17,6 +17,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -42,9 +43,19 @@ class XugudbIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierWrapsEscapedIdentifier() {
-        assertEquals("\"plain\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+    void quoteIdentifierIsConditionalForSpiConsumers() {
+        assertEquals("plain", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
         assertEquals("\"ta\"\"ble\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("ta\"ble"));
+        assertNull(XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertEquals("", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(""));
+    }
+
+    @Test
+    void quoteIdentifierAlwaysQuotesExceptNullAndBlank() {
+        assertEquals("\"plain\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("\"ta\"\"ble\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways("ta\"ble"));
+        assertNull(XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
     }
 
     @Test
@@ -180,7 +191,9 @@ class XugudbIdentifierProcessorTest {
     void selectTableNeutralizesMaliciousSchemaName() {
         String sql = builder.dql().buildSelectTable(null, "evil\";DROP TABLE t;--", "sample_table");
 
-        assertEquals("SELECT * FROM \"evil\"\";DROP TABLE t;--\".\"sample_table\"", sql);
+        // Hostile names are quoted and escaped; benign plain identifiers stay unquoted
+        // (conditional SPI quoting, identical to pre-branch output for valid names).
+        assertEquals("SELECT * FROM \"evil\"\";DROP TABLE t;--\".sample_table", sql);
     }
 
     @Test

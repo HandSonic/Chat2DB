@@ -13,12 +13,19 @@ public class XugudbIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public static final XugudbIdentifierProcessor INSTANCE = new XugudbIdentifierProcessor();
 
     /**
-     * Always quotes with double quotes, stripping one surrounding quote pair and
-     * doubling every embedded double quote.
+     * SPI-facing conditional quoting: null/blank pass through unchanged; valid plain
+     * identifiers stay unquoted (completion and matching paths rely on this); anything
+     * else is double-quoted with one surrounding pair stripped and embedded quotes doubled.
      */
     @Override
     public String quoteIdentifier(String identifier) {
-        return "\"" + escapeIdentifierContent(identifier) + "\"";
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier, null, null)) {
+            return identifier;
+        }
+        return quoteIdentifierAlways(identifier);
     }
 
     @Override
@@ -28,7 +35,18 @@ public class XugudbIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifier(identifier);
+        return quoteIdentifierAlways(identifier);
+    }
+
+    /**
+     * Unconditional quoting for DDL-generation call sites: null passes through,
+     * anything else is wrapped in double quotes with doubling.
+     */
+    public String quoteIdentifierAlways(String identifier) {
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
 
     /**

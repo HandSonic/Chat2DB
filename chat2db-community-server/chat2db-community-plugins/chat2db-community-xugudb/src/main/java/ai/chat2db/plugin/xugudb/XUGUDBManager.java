@@ -28,7 +28,7 @@ public class XUGUDBManager extends DefaultDBManager implements IDbManager {
 
 
     private String format(String tableName) {
-        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(tableName);
+        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
 

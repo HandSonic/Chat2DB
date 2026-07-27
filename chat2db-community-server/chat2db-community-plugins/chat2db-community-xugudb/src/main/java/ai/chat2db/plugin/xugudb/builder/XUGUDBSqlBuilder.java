@@ -159,7 +159,7 @@ public class XUGUDBSqlBuilder extends DefaultSqlBuilder {
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append(SQL_CREATE_SCHEMA+XugudbIdentifierProcessor.escapeIdentifier(schema.getName())+SQLConstants.DOUBLE_QUOTE);
         if(StringUtils.isNotBlank(schema.getOwner())){
-            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(schema.getOwner()));
+            sqlBuilder.append(SQLConstants.SCHEMA_AUTHORIZATION_SQL).append(XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schema.getOwner()));
         }
 
         return sqlBuilder.toString();
@@ -167,7 +167,7 @@ public class XUGUDBSqlBuilder extends DefaultSqlBuilder {
 
     @Override
     public String quoteIdentifier(String identifier) {
-        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(identifier);
+        return XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(identifier);
     }
 
     @Override
