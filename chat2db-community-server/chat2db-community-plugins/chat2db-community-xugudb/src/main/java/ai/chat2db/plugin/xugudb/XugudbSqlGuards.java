@@ -18,7 +18,7 @@ public final class XugudbSqlGuards {
      * Anything else is rejected so a hostile default cannot break out of the DDL statement.
      */
     private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile(
-            "^(-?\\d+(\\.\\d+)?|'([^']|'')*'|[A-Za-z_][A-Za-z0-9_]*(\\(([A-Za-z0-9_ ,.\\-+]|'([^']|'')*')*\\))?)$");
+            "^(-?\\d+(\\.\\d+)?|'[^']*(?:''[^']*)*'|[A-Za-z_][A-Za-z0-9_]*(\\(([A-Za-z0-9_ ,.\\-+]|'[^']*(?:''[^']*)*')*\\))?)$");
 
     /**
      * Conservative allow-list for length units (e.g. {@code BYTE}, {@code CHAR}).
