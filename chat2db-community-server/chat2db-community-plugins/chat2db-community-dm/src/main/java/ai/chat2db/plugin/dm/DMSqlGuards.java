@@ -18,7 +18,7 @@ public final class DMSqlGuards {
      * rejected because DEFAULT values are emitted verbatim.
      */
     private static final Pattern DEFAULT_EXPRESSION = Pattern.compile(
-            "'([^']|'')*'|[+-]?(\\d+(\\.\\d+)?|\\.\\d+)|[A-Za-z_][A-Za-z0-9_]*([.][A-Za-z_][A-Za-z0-9_]*)*(\\s*\\((?:'(?:[^']|'')*'|\\((?:'(?:[^']|'')*'|[^()';])*\\)|[^()';])*\\))?");
+            "'[^']*(?:''[^']*)*'|[+-]?(\\d+(\\.\\d+)?|\\.\\d+)|[A-Za-z_][A-Za-z0-9_]*([.][A-Za-z_][A-Za-z0-9_]*)*(\\s*\\((?:'[^']*(?:''[^']*)*'|\\((?:'[^']*(?:''[^']*)*'|[^()';])*\\)|[^()';])*\\))?");
 
     private DMSqlGuards() {
     }
