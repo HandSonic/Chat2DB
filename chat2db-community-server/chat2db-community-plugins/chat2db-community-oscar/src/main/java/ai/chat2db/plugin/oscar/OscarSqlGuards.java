@@ -14,10 +14,12 @@ public final class OscarSqlGuards {
 
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
             "^[+-]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?$");
-    private static final Pattern QUOTED_STRING_DEFAULT_PATTERN = Pattern.compile("^'([^']|'')*'$");
+    // Unrolled-loop forms ([^']*(?:''[^']*)*) are used instead of ([^']|'')* to avoid
+    // regex backtracking (CodeQL polynomial-regex alert); they accept the same language.
+    private static final Pattern QUOTED_STRING_DEFAULT_PATTERN = Pattern.compile("^'[^']*(?:''[^']*)*'$");
     private static final Pattern KEYWORD_DEFAULT_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_$]*$");
     private static final Pattern FUNCTION_CALL_DEFAULT_PATTERN = Pattern.compile(
-            "^[A-Za-z_][A-Za-z0-9_$]*\\s*\\((?:[A-Za-z0-9_$.\\s,]|'(?:[^']|'')*')*\\)$");
+            "^[A-Za-z_][A-Za-z0-9_$]*\\s*\\((?:[A-Za-z0-9_$.\\s,]|'[^']*(?:''[^']*)*')*\\)$");
 
     private OscarSqlGuards() {
     }
