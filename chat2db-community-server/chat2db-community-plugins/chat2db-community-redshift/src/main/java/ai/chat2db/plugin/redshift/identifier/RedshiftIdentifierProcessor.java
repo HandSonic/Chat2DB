@@ -53,13 +53,13 @@ public class RedshiftIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     }
 
     /**
-     * Unconditional quoting for DDL-generation call sites: {@code null} returns
-     * {@code null}, otherwise wraps with double quotes after stripping one
+     * Unconditional quoting for DDL-generation call sites: {@code null}/blank pass
+     * through unchanged, otherwise wraps with double quotes after stripping one
      * surrounding quote pair and doubling every embedded double quote.
      */
     public String quoteIdentifierAlways(String identifier) {
-        if (identifier == null) {
-            return null;
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
         }
         return "\"" + escapeIdentifierContent(identifier) + "\"";
     }

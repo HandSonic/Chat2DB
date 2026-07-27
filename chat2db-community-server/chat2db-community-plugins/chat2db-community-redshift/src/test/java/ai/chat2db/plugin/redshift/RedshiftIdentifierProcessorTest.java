@@ -74,7 +74,8 @@ class RedshiftIdentifierProcessorTest {
         assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("foo"));
         assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"foo\""));
         assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
-        assertEquals("\"\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        // blank passes through unchanged instead of producing an empty quoted identifier
+        assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
         assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
     }
 
