@@ -54,13 +54,13 @@ public class OceanbaseOracleIdentifierProcessor extends OracleIdentifierProcesso
     }
 
     /**
-     * Unconditional quoting for DDL-generation call sites: {@code null} passes
-     * through, otherwise wraps with double quotes, stripping one surrounding
+     * Unconditional quoting for DDL-generation call sites: {@code null}/blank pass
+     * through unchanged, otherwise wraps with double quotes, stripping one surrounding
      * quote pair and doubling every embedded double quote.
      */
     public String quoteIdentifierAlways(String identifier) {
-        if (identifier == null) {
-            return null;
+        if (org.apache.commons.lang3.StringUtils.isBlank(identifier)) {
+            return identifier;
         }
         return "\"" + escapeIdentifierContent(identifier) + "\"";
     }
