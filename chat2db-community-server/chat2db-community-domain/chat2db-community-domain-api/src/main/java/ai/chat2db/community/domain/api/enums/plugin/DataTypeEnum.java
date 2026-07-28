@@ -113,7 +113,7 @@ public enum DataTypeEnum implements IBaseEnum<String> {
             if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
                 return value;
             } else {
-                return "'" + value + "'";
+                return getStringValue(value);
             }
         }
         if (this == DataTypeEnum.NUMERIC) {
@@ -123,39 +123,39 @@ public enum DataTypeEnum implements IBaseEnum<String> {
             return getStringValue(value);
         }
         if (this == DataTypeEnum.DATETIME) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.BINARY) {
             return "''";
         }
         if (this == DataTypeEnum.CONTENT) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.STRUCT) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.DOCUMENT) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.ARRAY) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.OBJECT) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.REFERENCE) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.ROWID) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.ANY) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.UNKNOWN) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
-        return "'" + value + "'";
+        return getStringValue(value);
     }
 
     public static String getStringValue(String value) {
