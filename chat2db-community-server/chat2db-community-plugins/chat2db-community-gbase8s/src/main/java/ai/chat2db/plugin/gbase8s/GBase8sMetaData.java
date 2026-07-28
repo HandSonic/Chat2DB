@@ -22,6 +22,10 @@ public class GBase8sMetaData extends GenericMetaData implements IDbMetaData {
         if (size == 0) return "";
         if (size == 1) return validNames.get(0);
 
-        return validNames.get(size - 2) + "." + validNames.get(size - 1);
+        // GBase 8s (Informix lineage) parses 'database.table' as owner.table in the current
+        // database, so database-qualified references must use the Informix-style colon separator.
+        if (size == 2) return validNames.get(0) + ":" + validNames.get(1);
+
+        return validNames.get(0) + ":" + validNames.get(size - 2) + "." + validNames.get(size - 1);
     }
 }

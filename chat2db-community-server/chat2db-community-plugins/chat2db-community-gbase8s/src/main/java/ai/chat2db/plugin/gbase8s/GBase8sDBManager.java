@@ -15,11 +15,11 @@ public class GBase8sDBManager extends GenericDBManager implements IDbManager {
     public Connection getConnection(ConnectInfo connectInfo) {
         String url = connectInfo.getUrl();
         String service = connectInfo.getServiceName();
-        if(StringUtils.isNotBlank(service)){
-            url = url + ":" + "GBASEDBTSERVER=" + service;
+        // The shared ConnectInfo is reused on every (re)connect, so append the server
+        // attribute at most once; otherwise each reconnect adds another ':GBASEDBTSERVER=' segment.
+        if (StringUtils.isNotBlank(service) && url != null && !url.contains("GBASEDBTSERVER=")) {
+            connectInfo.setUrl(url + ":" + "GBASEDBTSERVER=" + service);
         }
-        connectInfo.setUrl(url);
-        Connection connection = super.getConnection(connectInfo);
-        return connection;
+        return super.getConnection(connectInfo);
     }
 }
