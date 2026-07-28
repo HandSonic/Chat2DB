@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DBStructUtilsTest {
 
@@ -66,5 +68,17 @@ class DBStructUtilsTest {
                 CREATE TABLE orders (
                 \tamount DECIMAL(12)
                 );""", sql);
+    }
+
+    @Test
+    void generateCreateTableSQLToleratesNullColumnType() {
+        TableColumn column = new TableColumn();
+        column.setName("expr");
+        column.setColumnType(null);
+        column.setColumnSize(10);
+
+        String sql = assertDoesNotThrow(() -> DBStructUtils.generateCreateTableSQL("users", List.of(column)));
+
+        assertTrue(sql.contains("expr"));
     }
 }

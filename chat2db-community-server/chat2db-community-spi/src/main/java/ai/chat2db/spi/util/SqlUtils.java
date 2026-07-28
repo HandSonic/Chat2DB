@@ -281,23 +281,55 @@ public class SqlUtils {
     }
 
 
+    private static final Pattern DEFAULT_NOW_PATTERN = Pattern.compile("(?i)default now ?\\(\\)");
+
     private static String updateNow(String sql, DbType dbType) {
         if (StringUtils.isBlank(sql) || !DbType.mysql.equals(dbType)) {
             return sql;
         }
-        if (sql.contains("default now()")) {
-            return sql.replace("default now()", "default CURRENT_TIMESTAMP");
+        Matcher matcher = DEFAULT_NOW_PATTERN.matcher(sql);
+        if (!matcher.find()) {
+            return sql;
         }
-        if (sql.contains("DEFAULT now()")) {
-            return sql.replace("DEFAULT now()", "default CURRENT_TIMESTAMP");
+        StringBuilder result = new StringBuilder(sql.length());
+        char quote = 0;
+        for (int i = 0; i < sql.length(); ) {
+            char c = sql.charAt(i);
+            if (quote != 0) {
+                // inside a quoted region: copy verbatim, never rewrite 'default now()' here
+                result.append(c);
+                if (c == '\\' && quote != '`' && i + 1 < sql.length()) {
+                    result.append(sql.charAt(i + 1));
+                    i += 2;
+                    continue;
+                }
+                if (c == quote) {
+                    if (i + 1 < sql.length() && sql.charAt(i + 1) == quote) {
+                        result.append(quote);
+                        i += 2;
+                        continue;
+                    }
+                    quote = 0;
+                }
+                i++;
+                continue;
+            }
+            if (c == '\'' || c == '"' || c == '`') {
+                quote = c;
+                result.append(c);
+                i++;
+                continue;
+            }
+            matcher.region(i, sql.length());
+            if (matcher.lookingAt()) {
+                result.append("default CURRENT_TIMESTAMP");
+                i = matcher.end();
+                continue;
+            }
+            result.append(c);
+            i++;
         }
-        if (sql.contains("default now ()")) {
-            return sql.replace("default now ()", "default CURRENT_TIMESTAMP");
-        }
-        if (sql.contains("DEFAULT now ()")) {
-            return sql.replace("DEFAULT now ()", "DEFAULT CURRENT_TIMESTAMP");
-        }
-        return sql;
+        return result.toString();
     }
 
     public static String getSqlValue(String value, String dataType) {
