@@ -91,7 +91,9 @@ public class ListTypeScript extends BaseTypeScript implements ITypeScript {
         // which makes value-based LREM/LINSERT reconciliation unsafe.
         List<ListValue> desired = desiredValues(newKey);
         if (desired.isEmpty()) {
-            return Lists.newArrayList();
+            // Every element was deleted in the editor: remove the key itself,
+            // mirroring the newKey == null path, instead of silently keeping old data.
+            return Lists.newArrayList(delete(newKey.getName()));
         }
         List<String> scripts = new ArrayList<>();
         scripts.add(delete(newKey.getName()));
