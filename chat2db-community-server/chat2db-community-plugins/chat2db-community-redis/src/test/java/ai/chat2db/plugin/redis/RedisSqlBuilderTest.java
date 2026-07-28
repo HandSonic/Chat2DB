@@ -110,7 +110,10 @@ class RedisSqlBuilderTest {
                         operation("DELETE", List.of("1", "x"), null)),
                 new HashMap<>());
 
-        assertEquals("MULTI \n" + "LSET 'k' 1 'b'\n" + "RPUSH 'k' 'c'\n" + "LREM 'k' 1 'x'\n" + "EXEC",
+        // DELETE on row 1 is positional now (tombstone via LSET+LREM) so duplicate
+        // values cannot remove the wrong occurrence.
+        assertEquals("MULTI \n" + "LSET 'k' 1 'b'\n" + "RPUSH 'k' 'c'\n"
+                        + "LSET 'k' 0 '__chat2db_deleted__0'\n" + "LREM 'k' 1 '__chat2db_deleted__0'\n" + "EXEC",
                 RedisSqlBuilder.getInstance().buildByQueryResult(queryResult));
     }
 

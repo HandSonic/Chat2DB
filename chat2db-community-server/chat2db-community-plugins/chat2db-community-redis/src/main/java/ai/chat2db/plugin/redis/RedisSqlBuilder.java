@@ -298,10 +298,26 @@ public class RedisSqlBuilder implements ISqlBuilder, IDqlSqlBuilder, IDmlSqlBuil
                         .append(SQLConstants.LINE_SEPARATOR);
             }
         } else if (SQLConstants.DELETE_KEYWORD.equals(operationType)) {
-            script.append(RedisConstants.COMMAND_LIST_REMOVE_PREFIX).append(getRedisValue(keyName))
-                    .append(RedisConstants.COMMAND_LIST_REMOVE_ONE_FRAGMENT)
-                    .append(getRedisValue(StringUtils.defaultString(oldRow.get(RedisConstants.FIELD_VALUE))))
-                    .append(SQLConstants.LINE_SEPARATOR);
+            Integer index = rowNumberIndex(operation.getOldDataList());
+            if (index != null) {
+                // Positional delete so a later duplicate occurrence removes exactly the
+                // edited row: LSET idx <tombstone> then LREM 1 <tombstone>. Value-based
+                // LREM would always hit the FIRST duplicate instead.
+                String tombstone = "__chat2db_deleted__" + index;
+                script.append("LSET ").append(getRedisValue(keyName))
+                        .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR).append(index)
+                        .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR).append(getRedisValue(tombstone))
+                        .append(SQLConstants.LINE_SEPARATOR);
+                script.append(RedisConstants.COMMAND_LIST_REMOVE_PREFIX).append(getRedisValue(keyName))
+                        .append(RedisConstants.COMMAND_LIST_REMOVE_ONE_FRAGMENT)
+                        .append(getRedisValue(tombstone))
+                        .append(SQLConstants.LINE_SEPARATOR);
+            } else {
+                script.append(RedisConstants.COMMAND_LIST_REMOVE_PREFIX).append(getRedisValue(keyName))
+                        .append(RedisConstants.COMMAND_LIST_REMOVE_ONE_FRAGMENT)
+                        .append(getRedisValue(StringUtils.defaultString(oldRow.get(RedisConstants.FIELD_VALUE))))
+                        .append(SQLConstants.LINE_SEPARATOR);
+            }
         }
     }
 

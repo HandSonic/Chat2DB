@@ -41,7 +41,9 @@ class ListTypeScriptTest {
 
         List<String> scripts = typeScript.updateKey(oldKey, newKey);
 
-        assertEquals(List.of("DEL 'k'\n", "RPUSH 'k' 'a' 'edited' "), scripts);
+        // DEL + RPUSH are wrapped in MULTI/EXEC so a connection drop cannot leave the
+        // key deleted without its replacement values.
+        assertEquals(List.of("MULTI", "DEL 'k'\n", "RPUSH 'k' 'a' 'edited' ", "EXEC"), scripts);
     }
 
     @Test
