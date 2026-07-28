@@ -94,8 +94,11 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
         List<DataSource> dataSources = DataSourceStorage.INSTANCE.getDataList();
         List<WorkspaceDataSource> result = storageConverter.dataSource2workspace(dataSources);
         result.forEach(dataSource -> dataSource.setStorageType(StorageTypeEnum.LOCAL.name()));
-        return PageResponse.of(result, (long) result.size(), dataSourcePageQueryRequest.getPageNo(),
-                dataSourcePageQueryRequest.getPageSize());
+        int pageNo = normalizePageNo(dataSourcePageQueryRequest.getPageNo());
+        int pageSize = normalizePageSize(dataSourcePageQueryRequest.getPageSize());
+        int fromIndex = Math.min((pageNo - 1) * pageSize, result.size());
+        int toIndex = Math.min(fromIndex + pageSize, result.size());
+        return PageResponse.of(result.subList(fromIndex, toIndex), (long) result.size(), pageNo, pageSize);
     }
 
     @Override
@@ -154,7 +157,11 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
     @Override
     public PageResponse<Task> taskList(TaskRecordPageRequest taskPageRequest) {
         List<Task> tasks = TaskStorage.INSTANCE.getDataList();
-        return PageResponse.of(tasks, (long) tasks.size(), taskPageRequest.getPageNo(), taskPageRequest.getPageSize());
+        int pageNo = normalizePageNo(taskPageRequest.getPageNo());
+        int pageSize = normalizePageSize(taskPageRequest.getPageSize());
+        int fromIndex = Math.min((pageNo - 1) * pageSize, tasks.size());
+        int toIndex = Math.min(fromIndex + pageSize, tasks.size());
+        return PageResponse.of(tasks.subList(fromIndex, toIndex), (long) tasks.size(), pageNo, pageSize);
     }
 
     @Override
@@ -189,8 +196,11 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
     @Override
     public PageResponse<OperationLog> operationLogList(OpsOperationLogPageQueryRequest operationLogPageQueryRequest) {
         List<OperationLog> logs = OperationLogStorage.INSTANCE.getDataList();
-        return PageResponse.of(logs, (long) logs.size(), operationLogPageQueryRequest.getPageNo(),
-                operationLogPageQueryRequest.getPageSize());
+        int pageNo = normalizePageNo(operationLogPageQueryRequest.getPageNo());
+        int pageSize = normalizePageSize(operationLogPageQueryRequest.getPageSize());
+        int fromIndex = Math.min((pageNo - 1) * pageSize, logs.size());
+        int toIndex = Math.min(fromIndex + pageSize, logs.size());
+        return PageResponse.of(logs.subList(fromIndex, toIndex), (long) logs.size(), pageNo, pageSize);
     }
 
     @Override
@@ -201,10 +211,12 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
     @Override
     public PageResponse<Operation> consoleList(OpsOperationPageQueryRequest operationPageQueryRequest) {
         Operation operation = storageConverter.operationPageParam2model(operationPageQueryRequest);
-        List<Operation> consoles = ConsoleStorage.INSTANCE.getDataList(operation, operationPageQueryRequest.getPageNo(),
-                operationPageQueryRequest.getPageSize());
-        return PageResponse.of(consoles, (long) consoles.size(), operationPageQueryRequest.getPageNo(),
-                operationPageQueryRequest.getPageSize());
+        int pageNo = normalizePageNo(operationPageQueryRequest.getPageNo());
+        int pageSize = normalizePageSize(operationPageQueryRequest.getPageSize());
+        List<Operation> allConsoles = ConsoleStorage.INSTANCE.getDataList(operation, 1, Integer.MAX_VALUE);
+        int fromIndex = Math.min((pageNo - 1) * pageSize, allConsoles.size());
+        int toIndex = Math.min(fromIndex + pageSize, allConsoles.size());
+        return PageResponse.of(allConsoles.subList(fromIndex, toIndex), (long) allConsoles.size(), pageNo, pageSize);
     }
 
     @Override
@@ -242,5 +254,13 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
             return password;
         }
         return AesGcmUtil.configured().encrypt(password);
+    }
+
+    private int normalizePageNo(Integer pageNo) {
+        return Math.max(1, pageNo == null ? 1 : pageNo);
+    }
+
+    private int normalizePageSize(Integer pageSize) {
+        return Math.max(1, pageSize == null ? 100 : pageSize);
     }
 }
