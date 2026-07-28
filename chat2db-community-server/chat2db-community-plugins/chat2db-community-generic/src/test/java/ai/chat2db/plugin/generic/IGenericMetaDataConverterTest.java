@@ -32,10 +32,30 @@ class IGenericMetaDataConverterTest {
         ColumnType columnType = IGenericMetaDataConverter.INSTANCE.type2columnType(type);
 
         assertEquals("INT", columnType.getTypeName());
-        assertTrue(columnType.isSupportLength());
+        // PRECISION alone is not proof of a length clause (INTEGER(10) is rejected by
+        // most engines): without CREATE_PARAMS the flag stays off.
+        assertFalse(columnType.isSupportLength());
         assertFalse(columnType.isSupportScale());
         assertTrue(columnType.isSupportNullable());
         assertTrue(columnType.isSupportAutoIncrement());
+    }
+
+    @Test
+    void createParamsDrivesLengthAndScaleSupport() {
+        Type type = Type.builder()
+                .typeName("DECIMAL")
+                .dataType(java.sql.Types.DECIMAL)
+                .createParams("precision,scale")
+                .precision(38)
+                .maximumScale((short) 18)
+                .nullable((short) DatabaseMetaData.typeNullable)
+                .autoIncrement(Boolean.FALSE)
+                .build();
+
+        ColumnType columnType = IGenericMetaDataConverter.INSTANCE.type2columnType(type);
+
+        assertTrue(columnType.isSupportLength());
+        assertTrue(columnType.isSupportScale());
     }
 
     @Test
@@ -43,6 +63,7 @@ class IGenericMetaDataConverterTest {
         Type type = Type.builder()
                 .typeName("DECIMAL")
                 .dataType(java.sql.Types.DECIMAL)
+                .createParams("precision,scale")
                 .precision(38)
                 .maximumScale((short) 18)
                 .nullable((short) DatabaseMetaData.typeNullable)

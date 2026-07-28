@@ -29,10 +29,24 @@ public interface IGenericMetaDataConverter {
         if (type == null || columnType == null) {
             return;
         }
-        columnType.setSupportLength(type.getPrecision() != null && type.getPrecision() > 0);
-        columnType.setSupportScale(type.getMaximumScale() != null && type.getMaximumScale() > 0);
+        // CREATE_PARAMS tells us which clauses the type actually accepts (e.g. "length",
+        // "precision,scale"); PRECISION alone is not proof — INTEGER reports precision
+        // but rejects a length clause on most engines. Fall back to precision only when
+        // the driver does not report CREATE_PARAMS and the type is character-like.
+        String params = type.getCreateParams() == null ? "" : type.getCreateParams().toLowerCase();
+        boolean lengthLike = params.contains("length") || params.contains("precision");
+        boolean scaleLike = params.contains("scale") || params.contains(",");
+        if (params.isEmpty()) {
+            String name = type.getTypeName() == null ? "" : type.getTypeName().toUpperCase();
+            lengthLike = name.contains("CHAR") && type.getPrecision() != null && type.getPrecision() > 0;
+        }
+        columnType.setSupportLength(lengthLike);
+        columnType.setSupportScale(scaleLike);
         columnType.setSupportNullable(type.getNullable() != null
                 && type.getNullable() != DatabaseMetaData.typeNoNulls);
+        // DEFAULT is standard SQL for SQL-like engines served by this generic fallback;
+        // drivers that lack it can still be overridden via explicit columnTypes config.
+        columnType.setSupportDefaultValue(true);
         columnType.setSupportAutoIncrement(Boolean.TRUE.equals(type.getAutoIncrement()));
     }
 }
