@@ -54,7 +54,7 @@ class PrestoMetaDataTest {
         String ddl = new PrestoMetaData().tableDDL(connection, request);
 
         assertEquals(EXPECTED_DDL, ddl);
-        assertEquals("SHOW CREATE TABLE web.page_views", executedSql.get());
+        assertEquals("SHOW CREATE TABLE \"web\".\"page_views\"", executedSql.get());
     }
 
     private static Connection stubConnection(String ddl, AtomicReference<String> executedSql) {

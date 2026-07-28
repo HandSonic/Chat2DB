@@ -10,7 +10,9 @@ public class PrestoMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "SHOW CREATE TABLE " + schemaName + "." + tableName;
+        // Quote each part with Presto double-quote identifiers (embedded quotes doubled)
+        // so reserved words, spaces, punctuation and case-sensitive names resolve.
+        String sql = "SHOW CREATE TABLE " + quoteIdentifier(schemaName) + "." + quoteIdentifier(tableName);
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 // Presto returns the DDL in a single "Create Table" column
@@ -18,5 +20,9 @@ public class PrestoMetaData extends DefaultMetaService implements IDbMetaData {
             }
             return null;
         });
+    }
+
+    private static String quoteIdentifier(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 }
