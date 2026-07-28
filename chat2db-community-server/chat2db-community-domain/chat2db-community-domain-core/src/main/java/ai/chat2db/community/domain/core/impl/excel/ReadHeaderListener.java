@@ -165,7 +165,10 @@ public class ReadHeaderListener implements ReadListener<Map<Integer, Object>> {
                 valueList.add("null");
             } else {
                 allNull = false;
-                valueList.add(EasyStringUtils.escapeAndQuoteString(v.toString()));
+                // H2 string literals treat backslash as a plain character, so doubling it
+                // (EasyStringUtils.escapeAndQuoteString) would corrupt values like C:\temp.
+                // Quote-double apostrophes only, matching the H2 target of this import path.
+                valueList.add("'" + v.toString().replace("'", "''") + "'");
             }
         }
         if (allNull) {
