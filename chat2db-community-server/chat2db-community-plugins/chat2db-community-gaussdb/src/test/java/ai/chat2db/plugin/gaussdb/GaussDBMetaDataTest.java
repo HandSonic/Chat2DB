@@ -1,8 +1,12 @@
 package ai.chat2db.plugin.gaussdb;
 
+import ai.chat2db.plugin.postgresql.PostgreSQLMetaData;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -11,8 +15,31 @@ import java.util.List;
 
 import static ai.chat2db.plugin.gaussdb.constant.GaussDBMetaDataConstants.TABLE_DDL_SQL;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class GaussDBMetaDataTest {
+
+    @Test
+    void indexesInheritsPostgreSqlImplementationWithTypesAndForeignKeys() throws Exception {
+        Method indexes = GaussDBMetaData.class.getMethod(
+                "indexes", Connection.class, String.class, String.class, String.class);
+
+        assertEquals(PostgreSQLMetaData.class, indexes.getDeclaringClass());
+    }
+
+    @Test
+    void gaussdbJsonDoesNotMarkPublicSchemaAsSystem() throws Exception {
+        String json;
+        try (InputStream in = GaussDBMetaDataTest.class.getResourceAsStream(
+                "/ai/chat2db/plugin/gaussdb/gaussdb.json")) {
+            assertNotNull(in, "gaussdb.json must be on the test classpath");
+            json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        assertFalse(json.contains("\"public\""),
+                "the default user schema 'public' must not be listed in systemSchemas");
+    }
 
     @Test
     void tableDdlUsesTableOidAndRemovesSearchPath() {
