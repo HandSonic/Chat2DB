@@ -13,7 +13,7 @@ public enum DatabaseTypeEnum {
     SQLITE,
     MARIADB,
     SNOWFLAKE,
-    COCKROACH,
+    COCKROACHDB,
     DB2,
     DM,
     OSCAR,
