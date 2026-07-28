@@ -13,10 +13,9 @@ public class TaskThreadPoolManager {
     }
 
     public static void cancelTask(Long taskId) {
-        TaskThread thread = taskMap.get(taskId);
+        TaskThread thread = taskMap.remove(taskId);
         if (thread != null) {
             thread.cancel();
-            thread.stop();
         }
     }
 

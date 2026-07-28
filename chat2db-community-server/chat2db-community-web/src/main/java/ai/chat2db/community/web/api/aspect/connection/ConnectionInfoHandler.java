@@ -87,6 +87,7 @@ public class ConnectionInfoHandler {
                 connectionContextService.bind(param);
             }
         }catch (Exception e) {
+            log.warn("Failed to resolve custom connection info, dataSourceId: {}", dataSourceId, e);
         }
     }
 

@@ -354,7 +354,7 @@ public class ConsoleHelper {
             if (com.dtflys.forest.utils.StringUtils.isNotEmpty(language)) {
                 if (language.startsWith("zh")) {
                     LocaleContextHolder.setLocale(Locale.CHINA);
-                } else if (language.startsWith("jp")) {
+                } else if (language.startsWith("ja")) {
                     LocaleContextHolder.setLocale(Locale.JAPAN);
                 } else {
                     LocaleContextHolder.setLocale(Locale.US);
