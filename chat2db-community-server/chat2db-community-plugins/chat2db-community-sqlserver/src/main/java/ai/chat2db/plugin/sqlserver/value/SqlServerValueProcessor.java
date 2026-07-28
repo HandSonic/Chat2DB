@@ -101,6 +101,9 @@ public class SqlServerValueProcessor extends DefaultValueProcessor {
     public boolean isStringDataType(String dataType) {
         return StringUtils.equalsAnyIgnoreCase(dataType, SqlServerColumnTypeEnum.CHAR.name(),
                                                SqlServerColumnTypeEnum.VARCHAR.name(),
-                                               SqlServerColumnTypeEnum.TEXT.name());
+                                               SqlServerColumnTypeEnum.TEXT.name(),
+                                               SqlServerColumnTypeEnum.NCHAR.name(),
+                                               SqlServerColumnTypeEnum.NVARCHAR.name(),
+                                               SqlServerColumnTypeEnum.NTEXT.name());
     }
 }
