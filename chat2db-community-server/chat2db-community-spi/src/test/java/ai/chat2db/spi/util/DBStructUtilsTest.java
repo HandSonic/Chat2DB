@@ -5,9 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DBStructUtilsTest {
 
@@ -77,8 +75,9 @@ class DBStructUtilsTest {
         column.setColumnType(null);
         column.setColumnSize(10);
 
-        String sql = assertDoesNotThrow(() -> DBStructUtils.generateCreateTableSQL("users", List.of(column)));
-
-        assertTrue(sql.contains("expr"));
+        assertEquals("""
+                CREATE TABLE users (
+                \texpr VARCHAR(10)
+                );""", DBStructUtils.generateCreateTableSQL("users", List.of(column)));
     }
 }

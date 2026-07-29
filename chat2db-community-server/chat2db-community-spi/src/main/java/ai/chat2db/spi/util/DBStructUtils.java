@@ -57,7 +57,7 @@ public class DBStructUtils {
                 createTableSQL.append(",\n");
             }
             String columnName = column.getName();
-            String dataType = column.getColumnType();
+            String dataType = StringUtils.defaultIfBlank(column.getColumnType(), "VARCHAR");
             String nullable = Objects.equals(column.getNullable(), 0) ? " NOT NULL" : "";
             Integer columnSize = column.getColumnSize();
             Integer decimalDigits = column.getDecimalDigits();

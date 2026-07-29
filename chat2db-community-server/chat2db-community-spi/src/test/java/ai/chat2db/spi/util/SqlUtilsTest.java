@@ -41,6 +41,24 @@ class SqlUtilsTest {
     }
 
     @Test
+    void updateNowLeavesCommentsAndLongerIdentifiersUntouched() throws Exception {
+        String sql = """
+                -- default now()
+                # DEFAULT now ()
+                /* default now() */
+                SELECT nodefault now();
+                """;
+
+        assertEquals(sql, updateNow(sql));
+    }
+
+    @Test
+    void updateNowAcceptsSqlWhitespaceAroundFunctionTokens() throws Exception {
+        assertEquals("x default CURRENT_TIMESTAMP",
+                updateNow("x default\t now ( \n )"));
+    }
+
+    @Test
     void updateNowEmitsConsistentCasingAcrossVariants() throws Exception {
         assertEquals("x default CURRENT_TIMESTAMP", updateNow("x DEFAULT now()"));
         assertEquals("x default CURRENT_TIMESTAMP", updateNow("x default now()"));
