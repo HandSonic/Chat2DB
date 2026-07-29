@@ -35,12 +35,15 @@ public class GenericMetaData extends DefaultMetaService implements IDbMetaData {
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         DBConfig dbConfig = Chat2DBContext.getDBConfig();
         String template = dbConfig.getSql(DBConfigConstants.SQL_TABLE_DDL);
+        String templateDatabaseName = databaseName;
+        String templateSchemaName = schemaName;
+        String templateTableName = tableName;
         if (template != null) {
-            databaseName = GenericSqlGuards.sanitizeTemplateValue(template, "{database}", databaseName);
-            schemaName = GenericSqlGuards.sanitizeTemplateValue(template, "{schema}", schemaName);
-            tableName = GenericSqlGuards.sanitizeTemplateValue(template, "{table}", tableName);
+            templateDatabaseName = GenericSqlGuards.sanitizeTemplateValue(template, "{database}", databaseName);
+            templateSchemaName = GenericSqlGuards.sanitizeTemplateValue(template, "{schema}", schemaName);
+            templateTableName = GenericSqlGuards.sanitizeTemplateValue(template, "{table}", tableName);
         }
-        String sql = dbConfig.getTableDdl(databaseName, schemaName, tableName);
+        String sql = dbConfig.getTableDdl(templateDatabaseName, templateSchemaName, templateTableName);
         String sqlResult = dbConfig.getTableDdlResult();
         String ddl = null;
         if (sql != null && sqlResult!=null) {

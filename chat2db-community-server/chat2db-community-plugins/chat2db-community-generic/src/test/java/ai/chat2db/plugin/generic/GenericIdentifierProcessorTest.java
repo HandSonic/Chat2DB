@@ -49,11 +49,20 @@ class GenericIdentifierProcessorTest {
 
     @Test
     void quoteIdentifierAlwaysWrapsUnconditionally() {
-        assertNull(GenericIdentifierProcessor.quoteIdentifierAlways(null));
-        assertEquals("", GenericIdentifierProcessor.quoteIdentifierAlways(""));
-        assertEquals("\"plain\"", GenericIdentifierProcessor.quoteIdentifierAlways("plain"));
-        assertEquals("\"a\"\"b\"", GenericIdentifierProcessor.quoteIdentifierAlways("a\"b"));
-        assertEquals("\"we\"\"\"\"ird\"", GenericIdentifierProcessor.quoteIdentifierAlways("\"we\"\"ird\""));
+        assertNull(GenericIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("", GenericIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("\"plain\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
+        assertEquals("\"a\"\"b\"", GenericIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a\"b"));
+        assertEquals("\"we\"\"\"\"ird\"",
+                GenericIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"we\"\"ird\""));
+    }
+
+    @Test
+    void alwaysQuoteAndRemoveRoundTripRawIdentifiers() {
+        for (String raw : new String[] {"plain", "\"", "\"edge", "edge\"", "a\"\"b"}) {
+            assertEquals(raw, GenericIdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                    GenericIdentifierProcessor.INSTANCE.quoteIdentifierAlways(raw)));
+        }
     }
 
     @Test

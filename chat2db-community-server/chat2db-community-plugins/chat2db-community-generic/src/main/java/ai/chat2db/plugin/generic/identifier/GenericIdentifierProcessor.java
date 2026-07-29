@@ -53,7 +53,8 @@ public class GenericIdentifierProcessor extends DefaultSQLIdentifierProcessor {
      * Unconditional double-quote wrapping: strips one surrounding quote pair, then
      * doubles every embedded double quote. Null/blank input is returned unchanged.
      */
-    public static String quoteIdentifierAlways(String identifier) {
+    @Override
+    public String quoteIdentifierAlways(String identifier) {
         return quoteIdentifier(identifier, '"');
     }
 
