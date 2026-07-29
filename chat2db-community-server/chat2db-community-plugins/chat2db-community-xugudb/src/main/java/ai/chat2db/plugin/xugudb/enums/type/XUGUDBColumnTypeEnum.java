@@ -10,7 +10,6 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
-import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.xugudb.constant.XUGUDBColumnTypeEnumConstants.*;
 public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
@@ -96,7 +95,10 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
     private ColumnType columnType;
 
     public static XUGUDBColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        if (dataType == null) {
+            return null;
+        }
+        return COLUMN_TYPE_MAP.get(dataType.trim().toUpperCase(Locale.ROOT));
     }
 
     private static Map<String, XUGUDBColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
@@ -118,7 +120,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
 
     @Override
     public String buildCreateColumnSql(TableColumn column) {
-        XUGUDBColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
+        XUGUDBColumnTypeEnum type = getByType(column.getColumnType());
         if (type == null) {
             return buildFallbackColumn(column);
         }
@@ -138,10 +140,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
     }
 
     public String buildUpdateColumnSql(TableColumn column) {
-        XUGUDBColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
-        if (type == null) {
-            return "";
-        }
+        XUGUDBColumnTypeEnum type = getByType(column.getColumnType());
         StringBuilder script = new StringBuilder();
         script.append(SQL_ALTER_TABLE).append("\"").append(XugudbIdentifierProcessor.escapeIdentifier(column.getSchemaName())).append("\".\"").append(XugudbIdentifierProcessor.escapeIdentifier(column.getTableName())).append("\"");
         script.append(" ").append("MODIFY (").append("\"").append(XugudbIdentifierProcessor.escapeIdentifier(column.getName())).append("\"").append(" ");
@@ -152,13 +151,15 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
 
         Integer newColumnSize = Optional.ofNullable(column.getColumnSize())
                 .orElse(null);
-        if (!column.getOldColumn().getColumnType().equals(column.getColumnType())
+        if (!Objects.equals(column.getOldColumn().getColumnType(), column.getColumnType())
                 || !Objects.equals(oldColumnSize, newColumnSize)) {
-            script.append(buildDataType(column, type)).append(" ");
+            script.append(type == null
+                    ? XugudbSqlGuards.requireColumnTypeExpression(column.getColumnType())
+                    : buildDataType(column, type)).append(" ");
             isModify = true;
         }
         if (!Objects.equals(column.getOldColumn().getNullable(), column.getNullable())) {
-            script.append(buildNullable(column, type)).append(" ");
+            script.append(type == null ? buildFallbackNullable(column) : buildNullable(column, type)).append(" ");
             isModify = true;
         }
         script.append(") \n");
@@ -166,14 +167,13 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
         return isModify ? script.toString() : "";
     }
 
-    private static final Pattern FALLBACK_TYPE_PATTERN = Pattern.compile("\\A[A-Za-z]+(\\(\\d+(,\\d+)?\\))?\\z");
-
     private static String buildFallbackColumn(TableColumn column) {
-        String columnType = column.getColumnType() == null ? "" : column.getColumnType().trim();
-        if (!FALLBACK_TYPE_PATTERN.matcher(columnType).matches()) {
-            throw new IllegalArgumentException("Unsupported column type: " + column.getColumnType());
-        }
+        String columnType = XugudbSqlGuards.requireColumnTypeExpression(column.getColumnType());
         return XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()) + " " + columnType;
+    }
+
+    private static String buildFallbackNullable(TableColumn column) {
+        return column.getNullable() != null && column.getNullable() == 1 ? "DROP NOT NULL" : "SET NOT NULL";
     }
 
     private String buildAutoIncrement(TableColumn column, XUGUDBColumnTypeEnum type) {
@@ -299,7 +299,7 @@ public enum XUGUDBColumnTypeEnum implements IColumnBuilder {
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
+            if (!StringUtils.equals(tableColumn.getOldName(), tableColumn.getName())) {
                 script.append(SQL_ALTER_TABLE).append("\"").append(XugudbIdentifierProcessor.escapeIdentifier(tableColumn.getSchemaName())).append("\".\"").append(XugudbIdentifierProcessor.escapeIdentifier(tableColumn.getTableName())).append("\"");
                 script.append(" ").append(SQL_RENAME_COLUMN).append("\"").append(XugudbIdentifierProcessor.escapeIdentifier(tableColumn.getOldName())).append("\"").append(" TO ").append("\"").append(XugudbIdentifierProcessor.escapeIdentifier(tableColumn.getName())).append("\" ").append(";\n").append(buildUpdateColumnSql(tableColumn));
             } else {

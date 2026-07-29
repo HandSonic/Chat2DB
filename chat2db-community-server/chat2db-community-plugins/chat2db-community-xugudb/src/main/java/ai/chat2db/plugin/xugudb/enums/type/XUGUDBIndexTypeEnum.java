@@ -108,10 +108,14 @@ public enum XUGUDBIndexTypeEnum {
     }
 
     private static String validateAscOrDesc(String ascOrDesc) {
-        if (!"ASC".equalsIgnoreCase(ascOrDesc.trim()) && !"DESC".equalsIgnoreCase(ascOrDesc.trim())) {
-            throw new IllegalArgumentException("Unsupported index sort order: " + ascOrDesc);
+        String trimmed = ascOrDesc.trim();
+        if ("ASC".equalsIgnoreCase(trimmed)) {
+            return "ASC";
         }
-        return ascOrDesc;
+        if ("DESC".equalsIgnoreCase(trimmed)) {
+            return "DESC";
+        }
+        throw new IllegalArgumentException("Unsupported index sort order: " + ascOrDesc);
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -128,7 +132,7 @@ public enum XUGUDBIndexTypeEnum {
     }
 
     private String buildDropIndex(TableIndex tableIndex) {
-        if (XUGUDBIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
+        if (PRIMARY_KEY.equals(this)) {
             String tableName = "\"" + XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName()) + "\"." + "\"" + XugudbIdentifierProcessor.escapeIdentifier(tableIndex.getTableName()) + "\"";
             return StringUtils.join(SQL_ALTER_TABLE,tableName,SQL_DROP_PRIMARY_KEY);
         }

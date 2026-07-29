@@ -1,19 +1,27 @@
 package ai.chat2db.plugin.xugudb;
 
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
+import ai.chat2db.community.domain.api.model.metadata.Database;
 import ai.chat2db.community.domain.api.model.metadata.Schema;
 import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
+import ai.chat2db.community.domain.api.model.value.SQLDataValue;
 import ai.chat2db.plugin.xugudb.builder.XUGUDBSqlBuilder;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBColumnTypeEnum;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBIndexTypeEnum;
 import ai.chat2db.plugin.xugudb.identifier.XugudbIdentifierProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.MultiInsertSqlRequest;
 import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
+import ai.chat2db.spi.model.request.TruncateTableRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -30,32 +38,63 @@ class XugudbIdentifierProcessorTest {
         assertEquals("o''brien", XugudbIdentifierProcessor.INSTANCE.escapeString("o'brien"));
         assertEquals("''", XugudbIdentifierProcessor.INSTANCE.escapeString("'"));
         assertEquals("plain", XugudbIdentifierProcessor.INSTANCE.escapeString("plain"));
-        assertEquals("", XugudbIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(XugudbIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
-    void escapeIdentifierDoublesEmbeddedQuotesAndStripsSurroundingQuotes() {
+    void valueProcessorPreservesBackslashesAndEscapesSingleQuotes() {
+        SQLDataValue value = new SQLDataValue();
+        value.setValue("C:\\tmp\\o'Brien");
+
+        assertEquals("'C:\\tmp\\o''Brien'", new XUGUDBMetaData().getValueProcessor().getSqlValueString(value));
+    }
+
+    @Test
+    void escapeIdentifierDoublesEveryRawQuote() {
         assertEquals("ta\"\"ble", XugudbIdentifierProcessor.escapeIdentifier("ta\"ble"));
-        assertEquals("foo", XugudbIdentifierProcessor.escapeIdentifier("\"foo\""));
-        assertEquals("fo\"\"o", XugudbIdentifierProcessor.escapeIdentifier("\"fo\"o\""));
+        assertEquals("\"\"foo\"\"", XugudbIdentifierProcessor.escapeIdentifier("\"foo\""));
+        assertEquals("\"\"fo\"\"o\"\"", XugudbIdentifierProcessor.escapeIdentifier("\"fo\"o\""));
         assertEquals("plain", XugudbIdentifierProcessor.escapeIdentifier("plain"));
-        assertEquals("", XugudbIdentifierProcessor.escapeIdentifier(null));
+        assertNull(XugudbIdentifierProcessor.escapeIdentifier(null));
     }
 
     @Test
     void quoteIdentifierIsConditionalForSpiConsumers() {
         assertEquals("plain", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
         assertEquals("\"ta\"\"ble\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("ta\"ble"));
+        assertEquals("\"SELECT\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
+        assertEquals("\"already\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("\"already\""));
         assertNull(XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(null));
         assertEquals("", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier(""));
     }
 
     @Test
-    void quoteIdentifierAlwaysQuotesExceptNullAndBlank() {
+    void quoteIdentifierAlwaysRoundTripsEveryNonNullValue() {
         assertEquals("\"plain\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
         assertEquals("\"ta\"\"ble\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways("ta\"ble"));
         assertNull(XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
-        assertEquals("", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("\"\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("\" \"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(" "));
+        assertEquals("\"\"\"abc\"\"\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"abc\""));
+
+        for (String raw : List.of("", " ", "\"abc\"", "A\"B")) {
+            assertEquals(raw, XugudbIdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                    XugudbIdentifierProcessor.INSTANCE.quoteIdentifierAlways(raw)));
+        }
+    }
+
+    @Test
+    void reservedWordAndIgnoreCaseQuotingAreLocaleStable() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertEquals("\"insert\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifier("insert"));
+            assertEquals("plain", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+            assertEquals("\"select\"", XugudbIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("select"));
+            assertEquals(XUGUDBColumnTypeEnum.TINYINT, XUGUDBColumnTypeEnum.getByType("tinyint"));
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
@@ -150,6 +189,28 @@ class XugudbIdentifierProcessorTest {
     }
 
     @Test
+    void nestedCastSequenceAndParenthesizedDefaultsAreAccepted() {
+        assertEquals("COALESCE(NULLIF(name, ''), 'unknown')",
+                XugudbSqlGuards.requireDefaultValue("COALESCE(NULLIF(name, ''), 'unknown')"));
+        assertEquals("CAST(1 AS DECIMAL(10,2))",
+                XugudbSqlGuards.requireDefaultValue("CAST(1 AS DECIMAL(10,2))"));
+        assertEquals("app.seq.NEXTVAL", XugudbSqlGuards.requireDefaultValue("app.seq.NEXTVAL"));
+        assertEquals("(0)", XugudbSqlGuards.requireDefaultValue("(0)"));
+    }
+
+    @Test
+    void defaultScannerRejectsCommentsStatementsAndUnbalancedDelimiters() {
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireDefaultValue("f(1--comment)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireDefaultValue("f(1, DROP TABLE users)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireDefaultValue("f(/* comment */1)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> XugudbSqlGuards.requireDefaultValue("(0"));
+    }
+
+    @Test
     void validDefaultValuesAreAccepted() {
         TableColumn numeric = column("id", "INTEGER");
         numeric.setDefaultValue("0");
@@ -191,9 +252,7 @@ class XugudbIdentifierProcessorTest {
     void selectTableNeutralizesMaliciousSchemaName() {
         String sql = builder.dql().buildSelectTable(null, "evil\";DROP TABLE t;--", "sample_table");
 
-        // Hostile names are quoted and escaped; benign plain identifiers stay unquoted
-        // (conditional SPI quoting, identical to pre-branch output for valid names).
-        assertEquals("SELECT * FROM \"evil\"\";DROP TABLE t;--\".sample_table", sql);
+        assertEquals("SELECT * FROM \"evil\"\";DROP TABLE t;--\".\"sample_table\"", sql);
     }
 
     @Test
@@ -210,6 +269,68 @@ class XugudbIdentifierProcessorTest {
         assertTrue(sql.contains("INSERT INTO \"app\"\";DROP TABLE t;--\".\"tab\"\";DROP TABLE t;--\""), sql);
         assertTrue(sql.contains("(\"col\"\"; DROP TABLE t; --\")"), sql);
         assertFalse(sql.contains("INTO \"app\";"), sql);
+    }
+
+    @Test
+    void inheritedBuildersAlwaysQuoteIdentifiers() {
+        assertEquals("SELECT * FROM \"App\".\"MixedTable\"",
+                builder.dql().buildSelectTable(null, "App", "MixedTable"));
+        assertEquals("SELECT COUNT(1) FROM \"App\".\"MixedTable\"",
+                builder.dql().buildSelectCount(null, "App", "MixedTable"));
+
+        SingleInsertSqlRequest insert = SingleInsertSqlRequest.builder()
+                .schemaName("App")
+                .tableName("MixedTable")
+                .columnList(List.of("MixedColumn"))
+                .valueList(List.of("1"))
+                .build();
+        assertEquals("INSERT INTO \"App\".\"MixedTable\" (\"MixedColumn\")  VALUES (1)",
+                builder.dml().buildInsert(insert));
+
+        MultiInsertSqlRequest batchInsert = MultiInsertSqlRequest.builder()
+                .schemaName("App")
+                .tableName("MixedTable")
+                .columnList(List.of("MixedColumn"))
+                .valueLists(List.of(List.of("1"), List.of("2")))
+                .build();
+        String batchSql = builder.dml().buildBatchInsert(batchInsert);
+        assertTrue(batchSql.startsWith("INSERT INTO \"App\".\"MixedTable\" (\"MixedColumn\")  VALUES "), batchSql);
+
+        assertEquals("DROP TABLE \"App\".\"MixedTable\"",
+                builder.ddl().table().buildDropTable(new DropTableRequest(null, "App", "MixedTable")));
+        assertEquals("TRUNCATE TABLE \"App\".\"MixedTable\"",
+                builder.ddl().table().buildTruncateTable(new TruncateTableRequest(null, "App", "MixedTable")));
+
+        Database database = new Database();
+        database.setName("MixedDatabase");
+        assertEquals("CREATE DATABASE \"MixedDatabase\"", builder.ddl().database().buildCreateDatabase(database));
+    }
+
+    @Test
+    void updateQuotesSetAndPrimaryKeyColumns() {
+        UpdateSqlRequest request = UpdateSqlRequest.builder()
+                .schemaName("App")
+                .tableName("MixedTable")
+                .row(Map.of("set\"; DROP TABLE t; --", "1"))
+                .primaryKeyMap(Map.of("pk\"; DROP TABLE t; --", "2"))
+                .build();
+
+        String sql = builder.dml().buildUpdate(request);
+
+        assertEquals("UPDATE \"App\".\"MixedTable\" SET \"set\"\"; DROP TABLE t; --\" = 1"
+                + " WHERE \"pk\"\"; DROP TABLE t; --\" = 2", sql);
+    }
+
+    @Test
+    void metadataAndManagerRespectRawVersusPrequotedNames() throws Exception {
+        XUGUDBMetaData metaData = new XUGUDBMetaData();
+        assertEquals("\"App\".\"MixedTable\"", metaData.getMetaDataName("ignored", "App", "MixedTable"));
+
+        XUGUDBManager manager = new XUGUDBManager();
+        assertEquals("DROP TABLE IF EXISTS \"ta\"\"ble\"",
+                manager.dropTable(null, null, null, "ta\"ble"));
+        assertEquals("TRUNCATE TABLE \"App\".\"MixedTable\"",
+                manager.truncateTable(null, null, null, "\"App\".\"MixedTable\""));
     }
 
     @Test
@@ -237,6 +358,79 @@ class XugudbIdentifierProcessorTest {
         TableColumn maliciousType = column("id", "INT); DROP TABLE t; --");
         assertThrows(IllegalArgumentException.class,
                 () -> XUGUDBColumnTypeEnum.INTEGER.buildCreateColumnSql(maliciousType));
+    }
+
+    @Test
+    void createTableUsesSafeFallbackForUnknownTypes() {
+        Table valid = Table.builder()
+                .schemaName("App")
+                .name("CustomTable")
+                .columnList(List.of(column("custom_col", "types.CustomType(10,2)")))
+                .indexList(List.of())
+                .build();
+        String sql = builder.buildCreateTable(valid, TableBuilderConfig.defaultConfig());
+        assertTrue(sql.contains("\"custom_col\" types.CustomType(10,2)"), sql);
+
+        Table invalid = Table.builder()
+                .schemaName("App")
+                .name("CustomTable")
+                .columnList(List.of(column("custom_col", "CustomType); DROP TABLE t; --")))
+                .indexList(List.of())
+                .build();
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.buildCreateTable(invalid, TableBuilderConfig.defaultConfig()));
+    }
+
+    @Test
+    void caseOnlyTableAndColumnRenamesAreGenerated() {
+        Table oldTable = Table.builder()
+                .schemaName("App")
+                .name("MixedTable")
+                .columnList(List.of())
+                .indexList(List.of())
+                .build();
+        Table newTable = Table.builder()
+                .schemaName("App")
+                .name("mixedTable")
+                .columnList(List.of())
+                .indexList(List.of())
+                .build();
+        assertTrue(builder.buildAlterTable(oldTable, newTable)
+                .contains("RENAME TO \"mixedTable\""));
+
+        TableColumn oldColumn = column("MixedColumn", "INTEGER");
+        TableColumn renamed = column("mixedColumn", "INTEGER");
+        renamed.setOldName("MixedColumn");
+        renamed.setOldColumn(oldColumn);
+        renamed.setEditStatus("MODIFY");
+        assertTrue(XUGUDBColumnTypeEnum.INTEGER.buildModifyColumn(renamed)
+                .contains("RENAME COLUMN \"MixedColumn\" TO \"mixedColumn\""));
+    }
+
+    @Test
+    void primaryDropIsCaseInsensitiveAndSortDirectionIsCanonical() {
+        TableIndex primary = TableIndex.builder()
+                .schemaName("App")
+                .tableName("MixedTable")
+                .type("primary")
+                .editStatus("DELETE")
+                .build();
+        assertTrue(XUGUDBIndexTypeEnum.getByType(primary.getType()).buildModifyIndex(primary)
+                .contains("DROP PRIMARY KEY"));
+
+        TableIndex normal = TableIndex.builder()
+                .schemaName("App")
+                .tableName("MixedTable")
+                .name("idx")
+                .type("Normal")
+                .columnList(List.of(TableIndexColumn.builder()
+                        .columnName("id")
+                        .ascOrDesc(" desc ")
+                        .build()))
+                .build();
+        String sql = XUGUDBIndexTypeEnum.NORMAL.buildIndexScript(normal);
+        assertTrue(sql.contains("\"id\" DESC"), sql);
+        assertFalse(sql.contains(" desc "), sql);
     }
 
     @Test

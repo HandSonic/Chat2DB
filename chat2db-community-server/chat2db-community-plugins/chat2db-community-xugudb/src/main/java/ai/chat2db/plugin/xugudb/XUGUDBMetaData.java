@@ -5,9 +5,11 @@ import ai.chat2db.plugin.xugudb.enums.type.XUGUDBColumnTypeEnum;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBDefaultValueEnum;
 import ai.chat2db.plugin.xugudb.enums.type.XUGUDBIndexTypeEnum;
 import ai.chat2db.plugin.xugudb.identifier.XugudbIdentifierProcessor;
+import ai.chat2db.plugin.xugudb.value.XugudbValueProcessor;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.ISQLIdentifierProcessor;
 import ai.chat2db.spi.ISqlBuilder;
+import ai.chat2db.spi.IValueProcessor;
 import ai.chat2db.spi.DefaultMetaService;
 import ai.chat2db.community.domain.api.model.account.*;
 import ai.chat2db.community.domain.api.model.async.*;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import static ai.chat2db.spi.util.SortUtils.sortDatabase;
@@ -42,6 +45,11 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public ISQLIdentifierProcessor getSQLIdentifierProcessor() {
         return XugudbIdentifierProcessor.INSTANCE;
+    }
+
+    @Override
+    public IValueProcessor getValueProcessor() {
+        return new XugudbValueProcessor();
     }
 
     @Override
@@ -311,13 +319,13 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
                 column.setOldName(resultSet.getString("COL_NAME"));
                 column.setName(resultSet.getString("COL_NAME"));
                 if (resultSet.getBoolean("VARYING")) {
-                    if (resultSet.getString("TYPE_NAME").toUpperCase().equals(XUGUDBColumnTypeEnum.CHAR.name())) {
-                        column.setColumnType("VAR" + resultSet.getString("TYPE_NAME").toUpperCase());
+                    if (resultSet.getString("TYPE_NAME").toUpperCase(Locale.ROOT).equals(XUGUDBColumnTypeEnum.CHAR.name())) {
+                        column.setColumnType("VAR" + resultSet.getString("TYPE_NAME").toUpperCase(Locale.ROOT));
                     } else {
-                        column.setColumnType(resultSet.getString("TYPE_NAME").toUpperCase());
+                        column.setColumnType(resultSet.getString("TYPE_NAME").toUpperCase(Locale.ROOT));
                     }
                 } else {
-                    column.setColumnType(resultSet.getString("TYPE_NAME").toUpperCase());
+                    column.setColumnType(resultSet.getString("TYPE_NAME").toUpperCase(Locale.ROOT));
                 }
                 column.setDefaultValue(resultSet.getString("DEF_VAL"));
                 column.setComment(resultSet.getString("COMMENTS"));
@@ -349,9 +357,13 @@ public class XUGUDBMetaData extends DefaultMetaService implements IDbMetaData {
     @Override
     public String getMetaDataName(String... names) {
         if (Arrays.stream(names).count() > 1) {
-            return Arrays.stream(names).skip(1).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+            return Arrays.stream(names).skip(1).filter(StringUtils::isNotBlank)
+                    .map(XugudbIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                    .collect(Collectors.joining("."));
         }
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(getSQLIdentifierProcessor()::quoteIdentifier).collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(StringUtils::isNotBlank)
+                .map(XugudbIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                .collect(Collectors.joining("."));
     }
 
 

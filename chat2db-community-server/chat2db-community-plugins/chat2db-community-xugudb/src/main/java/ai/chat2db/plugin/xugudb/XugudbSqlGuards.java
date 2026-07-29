@@ -1,148 +1,199 @@
 package ai.chat2db.plugin.xugudb;
 
-import java.util.regex.Pattern;
+import org.apache.commons.lang3.StringUtils;
 
-import ai.chat2db.plugin.xugudb.identifier.XugudbIdentifierProcessor;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
- * Validation helpers for non-escapable SQL positions in XUGUDB DDL generation
- * (column default expressions and length units supplied through table metadata).
- * Escaping itself lives in {@link XugudbIdentifierProcessor}.
- * Quoted-literal and function-call shapes are recognized with linear-time scanners
- * (no regex), so the checks cannot be driven into regex backtracking.
+ * Structural validation for XuguDB SQL fragments emitted as syntax rather
+ * than identifiers or string literals.
  */
 public final class XugudbSqlGuards {
 
-    /**
-     * Conservative allow-list for length units (e.g. {@code BYTE}, {@code CHAR}).
-     */
-    private static final Pattern UNIT_PATTERN = Pattern.compile("^[A-Za-z]+$");
+    private static final Set<String> COLUMN_CLAUSE_KEYWORDS = Set.of(
+            "COLLATE", "CONSTRAINT", "DEFAULT", "GENERATED", "IDENTITY",
+            "PRIMARY", "REFERENCES", "UNIQUE");
+
+    private static final Set<String> STATEMENT_KEYWORDS = Set.of(
+            "ALTER", "CREATE", "DELETE", "DROP", "GRANT", "INSERT", "MERGE",
+            "REVOKE", "SELECT", "TRUNCATE", "UPDATE");
 
     private XugudbSqlGuards() {
     }
 
     /**
-     * Validates a column default expression before it is embedded into generated DDL.
-     * Accepts negative/positive numeric literals, single-quoted string literals with
-     * '' escapes, and identifiers or function calls whose arguments are drawn from a
-     * safe character set. Anything else is rejected so a hostile default cannot break
-     * out of the DDL statement.
+     * Validates one DEFAULT expression while preserving quoted literal content.
+     * Nested calls, casts, sequence expressions, qualified names, and outer
+     * parentheses are accepted when all delimiters are balanced.
      */
     public static String requireDefaultValue(String defaultValue) {
-        String trimmed = defaultValue.trim();
-        if (!isNumericLiteral(trimmed) && !isQuotedStringLiteral(trimmed) && !isIdentifierOrCall(trimmed)) {
-            throw new IllegalArgumentException("Unsupported column default value: " + defaultValue);
+        String trimmed = StringUtils.trimToNull(defaultValue);
+        if (trimmed == null) {
+            throw invalid("DEFAULT expression", defaultValue);
         }
+        scanExpression(trimmed, false, "DEFAULT expression");
         return trimmed;
     }
 
-    private static boolean isNumericLiteral(String s) {
-        int n = s.length();
-        int i = s.startsWith("-") ? 1 : 0;
-        boolean intDigits = false;
-        while (i < n && Character.isDigit(s.charAt(i))) {
-            i++;
-            intDigits = true;
+    /**
+     * Validates a complete XuguDB column type expression, including
+     * parameterized and schema-qualified user-defined types.
+     */
+    public static String requireColumnTypeExpression(String columnType) {
+        String trimmed = StringUtils.trimToNull(columnType);
+        if (trimmed == null) {
+            throw invalid("column type", columnType);
         }
-        if (!intDigits) {
-            return false;
-        }
-        if (i == n) {
-            return true;
-        }
-        if (s.charAt(i) != '.') {
-            return false;
-        }
-        i++;
-        int fracStart = i;
-        while (i < n && Character.isDigit(s.charAt(i))) {
-            i++;
-        }
-        return i == n && i > fracStart;
+        scanExpression(trimmed, true, "column type");
+        return trimmed;
     }
 
-    /**
-     * True when {@code s} is exactly one single-quoted string literal with '' escapes.
-     * Linear scan, no backtracking.
-     */
-    static boolean isQuotedStringLiteral(String s) {
-        return s.length() >= 2 && s.charAt(0) == '\'' && quotedLiteralEnd(s, 0) == s.length();
+    public static String requireUnit(String unit) {
+        String trimmed = StringUtils.trimToEmpty(unit);
+        if ("BYTE".equalsIgnoreCase(trimmed)) {
+            return "BYTE";
+        }
+        if ("CHAR".equalsIgnoreCase(trimmed)) {
+            return "CHAR";
+        }
+        throw new IllegalArgumentException("Unsupported XuguDB length unit: " + unit);
     }
 
-    /**
-     * Returns the index just past the single-quoted literal that starts at
-     * {@code start} (where {@code s.charAt(start) == '\''}), or -1 when the literal
-     * is unterminated. Doubled quotes are consumed as escapes.
-     */
-    private static int quotedLiteralEnd(String s, int start) {
-        int i = start + 1;
-        int n = s.length();
-        while (i < n) {
-            if (s.charAt(i) == '\'') {
-                if (i + 1 < n && s.charAt(i + 1) == '\'') {
-                    i += 2;
+    private static void scanExpression(String expression, boolean typeExpression, String description) {
+        Deque<Character> parentheses = new ArrayDeque<>();
+        List<String> topLevelWords = new ArrayList<>();
+        boolean sawToken = false;
+
+        for (int i = 0; i < expression.length(); i++) {
+            char c = expression.charAt(i);
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            sawToken = true;
+
+            if (!typeExpression && isAlternativeQuoteStart(expression, i)) {
+                i = scanAlternativeQuote(expression, i, description);
+                continue;
+            }
+            if (c == '\'' || c == '"') {
+                if (typeExpression && c == '\'') {
+                    throw invalid(description, expression);
+                }
+                i = scanQuoted(expression, i, c, description);
+                continue;
+            }
+            if (c == ';' || Character.isISOControl(c)
+                    || startsWith(expression, i, "--")
+                    || startsWith(expression, i, "/*")
+                    || startsWith(expression, i, "*/")) {
+                throw invalid(description, expression);
+            }
+            if (c == '(') {
+                parentheses.push(c);
+                continue;
+            }
+            if (c == ')') {
+                if (parentheses.isEmpty()) {
+                    throw invalid(description, expression);
+                }
+                parentheses.pop();
+                continue;
+            }
+            if (c == '[' || c == ']' || c == '{' || c == '}') {
+                throw invalid(description, expression);
+            }
+            if (c == ',' && parentheses.isEmpty()) {
+                throw invalid(description, expression);
+            }
+            if (typeExpression && !isTypeCharacter(c)) {
+                throw invalid(description, expression);
+            }
+            if (Character.isLetter(c) || c == '_') {
+                int wordEnd = i + 1;
+                while (wordEnd < expression.length() && isWordCharacter(expression.charAt(wordEnd))) {
+                    wordEnd++;
+                }
+                String word = expression.substring(i, wordEnd).toUpperCase(Locale.ROOT);
+                if (STATEMENT_KEYWORDS.contains(word)) {
+                    throw invalid(description, expression);
+                }
+                if (parentheses.isEmpty()) {
+                    topLevelWords.add(word);
+                }
+                i = wordEnd - 1;
+            }
+        }
+
+        if (!sawToken || !parentheses.isEmpty()) {
+            throw invalid(description, expression);
+        }
+        for (String word : topLevelWords) {
+            if (COLUMN_CLAUSE_KEYWORDS.contains(word)) {
+                throw invalid(description, expression);
+            }
+        }
+        for (int i = 0; i + 1 < topLevelWords.size(); i++) {
+            if ("NOT".equals(topLevelWords.get(i)) && "NULL".equals(topLevelWords.get(i + 1))) {
+                throw invalid(description, expression);
+            }
+        }
+    }
+
+    private static int scanQuoted(String expression, int start, char quote, String description) {
+        for (int i = start + 1; i < expression.length(); i++) {
+            if (expression.charAt(i) == quote) {
+                if (i + 1 < expression.length() && expression.charAt(i + 1) == quote) {
+                    i++;
                     continue;
                 }
+                return i;
+            }
+        }
+        throw invalid(description, expression);
+    }
+
+    private static boolean isAlternativeQuoteStart(String expression, int offset) {
+        return offset + 2 < expression.length()
+                && (expression.charAt(offset) == 'q' || expression.charAt(offset) == 'Q')
+                && expression.charAt(offset + 1) == '\'';
+    }
+
+    private static int scanAlternativeQuote(String expression, int start, String description) {
+        char open = expression.charAt(start + 2);
+        char close = switch (open) {
+            case '[' -> ']';
+            case '{' -> '}';
+            case '(' -> ')';
+            case '<' -> '>';
+            default -> open;
+        };
+        for (int i = start + 3; i + 1 < expression.length(); i++) {
+            if (expression.charAt(i) == close && expression.charAt(i + 1) == '\'') {
                 return i + 1;
             }
-            i++;
         }
-        return -1;
+        throw invalid(description, expression);
     }
 
-    /**
-     * True for an identifier ({@code [A-Za-z_][A-Za-z0-9_]*}) optionally followed by
-     * a parenthesized argument list whose characters are letters, digits, underscores,
-     * spaces, commas, dots, '-', '+' or single-quoted string literals (no nested
-     * parentheses). Linear scan.
-     */
-    static boolean isIdentifierOrCall(String s) {
-        int n = s.length();
-        if (n == 0 || !(Character.isLetter(s.charAt(0)) || s.charAt(0) == '_')) {
-            return false;
-        }
-        int i = 1;
-        while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) {
-            i++;
-        }
-        if (i == n) {
-            return true;
-        }
-        if (s.charAt(i) != '(') {
-            return false;
-        }
-        i++;
-        while (i < n) {
-            char c = s.charAt(i);
-            if (c == ')') {
-                return i == n - 1;
-            }
-            if (c == '\'') {
-                int end = quotedLiteralEnd(s, i);
-                if (end < 0) {
-                    return false;
-                }
-                i = end;
-            } else if (Character.isLetterOrDigit(c) || c == '_' || c == ' ' || c == ','
-                    || c == '.' || c == '-' || c == '+') {
-                i++;
-            } else {
-                return false;
-            }
-        }
-        return false;
+    private static boolean isTypeCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#'
+                || c == '.' || c == '%' || c == '*' || c == '+' || c == '-' || c == ',';
     }
 
-    /**
-     * Validates a length unit before it is embedded into generated DDL. Returns the
-     * trimmed unit unchanged when it matches the allow-list; throws otherwise
-     * (fail closed).
-     */
-    public static String requireUnit(String unit) {
-        String trimmed = unit.trim();
-        if (!UNIT_PATTERN.matcher(trimmed).matches()) {
-            throw new IllegalArgumentException("Unsupported length unit: " + unit);
-        }
-        return trimmed;
+    private static boolean isWordCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#';
+    }
+
+    private static boolean startsWith(String value, int offset, String candidate) {
+        return offset + candidate.length() <= value.length() && value.startsWith(candidate, offset);
+    }
+
+    private static IllegalArgumentException invalid(String description, String value) {
+        return new IllegalArgumentException("Invalid XuguDB " + description + ": " + value);
     }
 }
