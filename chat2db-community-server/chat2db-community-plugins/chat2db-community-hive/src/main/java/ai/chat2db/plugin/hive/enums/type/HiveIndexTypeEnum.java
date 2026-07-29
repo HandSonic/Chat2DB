@@ -93,6 +93,10 @@ public enum HiveIndexTypeEnum {
     private String buildIndexColumn(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         script.append("(");
+        boolean appended = false;
+        if (tableIndex.getColumnList() == null) {
+            throw new IllegalArgumentException("Hive index requires at least one named column");
+        }
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
                 script.append(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
@@ -100,7 +104,11 @@ public enum HiveIndexTypeEnum {
                     script.append(" ").append(HiveSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
+                appended = true;
             }
+        }
+        if (!appended) {
+            throw new IllegalArgumentException("Hive index requires at least one named column");
         }
         script.deleteCharAt(script.length() - 1);
         script.append(")");

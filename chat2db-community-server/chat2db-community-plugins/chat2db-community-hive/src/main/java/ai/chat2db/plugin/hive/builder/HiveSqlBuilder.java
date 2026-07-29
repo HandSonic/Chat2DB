@@ -2,31 +2,106 @@ package ai.chat2db.plugin.hive.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
 
+import ai.chat2db.community.domain.api.enums.plugin.DmlTypeEnum;
 import ai.chat2db.plugin.hive.HiveSqlGuards;
 import ai.chat2db.plugin.hive.identifier.HiveIdentifierProcessor;
 import ai.chat2db.plugin.hive.enums.type.HiveColumnTypeEnum;
 import ai.chat2db.plugin.hive.enums.type.HiveIndexTypeEnum;
 import ai.chat2db.spi.DefaultSqlBuilder;
 import ai.chat2db.spi.model.request.PageLimitRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import ai.chat2db.community.domain.api.model.metadata.Database;
 import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.hive.constant.HiveSqlBuilderConstants.*;
 public class HiveSqlBuilder extends DefaultSqlBuilder {
 
+    @Override
+    public String quoteIdentifier(String identifier) {
+        return HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(identifier);
+    }
 
+    @Override
+    public String quoteQualifiedIdentifier(String... identifiers) {
+        return Arrays.stream(identifiers)
+                .filter(StringUtils::isNotBlank)
+                .map(HiveIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                .collect(Collectors.joining(SQLConstants.DOT));
+    }
 
+    @Override
+    public String quoteAlias(String alias) {
+        return quoteIdentifier(alias);
+    }
 
+    @Override
+    protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
+        script.append(quoteQualifiedIdentifier(databaseName, schemaName, tableName));
+    }
 
+    @Override
+    protected void buildColumns(List<String> columnList, StringBuilder script) {
+        if (CollectionUtils.isNotEmpty(columnList)) {
+            script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
+                    .append(columnList.stream()
+                            .map(HiveIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                            .collect(Collectors.joining(SQLConstants.COMMA)))
+                    .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
+        }
+    }
 
+    @Override
+    public String buildUpdate(UpdateSqlRequest request) {
+        StringBuilder script = new StringBuilder(SQLConstants.UPDATE_KEYWORD + SQLConstants.SPACE);
+        buildTableName(request.getDatabaseName(), request.getSchemaName(), request.getTableName(), script);
+        script.append(" SET ").append(request.getRow().entrySet().stream()
+                .map(entry -> quoteIdentifier(entry.getKey()) + SQLConstants.EQUAL_SQL + entry.getValue())
+                .collect(Collectors.joining(SQLConstants.COMMA)));
+        if (MapUtils.isNotEmpty(request.getPrimaryKeyMap())) {
+            script.append(" WHERE ").append(request.getPrimaryKeyMap().entrySet().stream()
+                    .map(entry -> quoteIdentifier(entry.getKey()) + SQLConstants.EQUAL_SQL + entry.getValue())
+                    .collect(Collectors.joining(SQLConstants.SQL_AND)));
+        }
+        return script.toString();
+    }
 
-
-
+    @Override
+    public String buildTemplate(Table table, String type) {
+        if (table == null || CollectionUtils.isEmpty(table.getColumnList()) || StringUtils.isBlank(type)) {
+            return SQLConstants.EMPTY;
+        }
+        String tableName = quoteQualifiedIdentifier(table.getDatabaseName(), table.getName());
+        List<String> columnNames = table.getColumnList().stream()
+                .map(column -> quoteIdentifier(column.getName()))
+                .toList();
+        if (DmlTypeEnum.INSERT.name().equalsIgnoreCase(type)) {
+            return "INSERT INTO " + tableName + " (" + String.join(SQLConstants.COMMA, columnNames)
+                    + ") VALUES (" + columnNames.stream().map(name -> SQLConstants.SPACE)
+                    .collect(Collectors.joining(SQLConstants.COMMA)) + ")";
+        }
+        if (DmlTypeEnum.UPDATE.name().equalsIgnoreCase(type)) {
+            return "UPDATE " + tableName + " SET " + columnNames.stream()
+                    .map(name -> name + SQLConstants.EQUAL_SQL + SQLConstants.SPACE)
+                    .collect(Collectors.joining(SQLConstants.COMMA)) + " WHERE ";
+        }
+        if (DmlTypeEnum.DELETE.name().equalsIgnoreCase(type)) {
+            return "DELETE FROM " + tableName + " WHERE ";
+        }
+        if (DmlTypeEnum.SELECT.name().equalsIgnoreCase(type)) {
+            return "SELECT " + String.join(SQLConstants.COMMA, columnNames) + " FROM " + tableName;
+        }
+        return SQLConstants.EMPTY;
+    }
     @Override
     public String buildCreateTable(Table table, TableBuilderConfig tableBuilderConfig) {
         StringBuilder script = new StringBuilder();
@@ -39,19 +114,16 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
             }
-            HiveColumnTypeEnum typeEnum = HiveColumnTypeEnum.getByType(column.getColumnType());
-            if(typeEnum == null){
-                continue;
-            }
-            script.append(SQLConstants.TAB).append(typeEnum.buildCreateColumnSql(column)).append(SQLConstants.COMMA_LINE_SEPARATOR);
+            script.append(SQLConstants.TAB).append(HiveColumnTypeEnum.buildCreateColumnSqlSafely(column))
+                    .append(SQLConstants.COMMA_LINE_SEPARATOR);
         }
         for (TableIndex tableIndex : table.getIndexList()) {
             if (StringUtils.isBlank(tableIndex.getName()) || StringUtils.isBlank(tableIndex.getType())) {
                 continue;
             }
             HiveIndexTypeEnum hiveIndexTypeEnum = HiveIndexTypeEnum.getByType(tableIndex.getType());
-            if(hiveIndexTypeEnum == null){
-                continue;
+            if (hiveIndexTypeEnum == null) {
+                throw new IllegalArgumentException("Unsupported Hive index type: " + tableIndex.getType());
             }
             script.append(SQLConstants.TAB).append(SQLConstants.EMPTY).append(hiveIndexTypeEnum.buildIndexScript(tableIndex)).append(SQLConstants.COMMA_LINE_SEPARATOR);
         }
@@ -81,7 +153,7 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         }
 
         if (StringUtils.isNotBlank(table.getPartition())) {
-            script.append(VALUE_LOCAL_SQL_PART).append(table.getPartition());
+            script.append(VALUE_LOCAL_SQL_PART).append(HiveSqlGuards.requirePartitionClause(table.getPartition()));
         }
         script.append(SQLConstants.SEMICOLON);
 
@@ -113,18 +185,15 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
-                HiveColumnTypeEnum typeEnum = HiveColumnTypeEnum.getByType(tableColumn.getColumnType());
-                if(typeEnum == null){
-                    continue;
-                }
-                script.append(SQLConstants.TAB).append(typeEnum.buildModifyColumn(tableColumn)).append(SQLConstants.COMMA_LINE_SEPARATOR);
+                script.append(SQLConstants.TAB).append(HiveColumnTypeEnum.buildModifyColumnSafely(tableColumn))
+                        .append(SQLConstants.COMMA_LINE_SEPARATOR);
             }
         }
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 HiveIndexTypeEnum hiveIndexTypeEnum = HiveIndexTypeEnum.getByType(tableIndex.getType());
-                if(hiveIndexTypeEnum == null){
-                    continue;
+                if (hiveIndexTypeEnum == null) {
+                    throw new IllegalArgumentException("Unsupported Hive index type: " + tableIndex.getType());
                 }
                 script.append(SQLConstants.TAB).append(hiveIndexTypeEnum.buildModifyIndex(tableIndex)).append(SQLConstants.COMMA_LINE_SEPARATOR);
             }

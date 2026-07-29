@@ -9,9 +9,11 @@ import ai.chat2db.plugin.hive.builder.HiveSqlBuilder;
 import ai.chat2db.plugin.hive.enums.type.HiveColumnTypeEnum;
 import ai.chat2db.plugin.hive.enums.type.HiveIndexTypeEnum;
 import ai.chat2db.plugin.hive.identifier.HiveIdentifierProcessor;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -39,8 +41,11 @@ class HiveIdentifierProcessorTest {
         // non-plain identifiers are wrapped with embedded-backtick doubling
         assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name"));
         assertEquals("`a``; DROP TABLE b; --`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("a`; DROP TABLE b; --"));
-        // already-quoted input round-trips through one strip + rewrap
-        assertEquals("`quoted`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
+        assertEquals("`SELECT`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
+        assertEquals("`rLiKe`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("rLiKe"));
+        assertEquals("`UTC_TMESTAMP`", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("UTC_TMESTAMP"));
+        // boundary backticks are raw identifier content
+        assertEquals("```quoted```", HiveIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
     }
 
     @Test
@@ -55,17 +60,15 @@ class HiveIdentifierProcessorTest {
         assertEquals("`plain`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
         assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("weird`name"));
         assertEquals("`a``; DROP TABLE b; --`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a`; DROP TABLE b; --"));
-        // one surrounding backtick pair is stripped before doubling
-        assertEquals("`a``b`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
-        assertEquals("`quoted`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
-        // null/blank pass through unchanged
+        assertEquals("```a``b```", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
+        assertEquals("```quoted```", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
         assertNull(HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
-        assertEquals("", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("``", HiveIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
     }
 
     @Test
-    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
-        assertEquals("`plain`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+    void quoteIdentifierIgnoreCaseUsesConditionalSpiRules() {
+        assertEquals("plain", HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
         assertEquals("`weird``name`", HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("weird`name"));
         assertNull(HiveIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
     }
@@ -79,10 +82,20 @@ class HiveIdentifierProcessorTest {
     }
 
     @Test
+    void alwaysQuoteAndRemoveQuoteRoundTripExactRawIdentifiers() {
+        HiveIdentifierProcessor processor = HiveIdentifierProcessor.INSTANCE;
+        for (String raw : List.of("plain", "a`b", "`leading", "trailing`", "`both`", "", " ")) {
+            assertEquals(raw, processor.removeIdentifierQuote(processor.quoteIdentifierAlways(raw)), raw);
+        }
+    }
+
+    @Test
     void isQuoteIdentifierRecognizesBackticks() {
         assertTrue(HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("`quoted`"));
         assertTrue(HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("\"quoted\""));
         assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("plain"));
+        assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("`"));
+        assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier("\""));
         assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier(null));
         assertTrue(!HiveIdentifierProcessor.INSTANCE.isQuoteIdentifier(""));
     }
@@ -250,5 +263,84 @@ class HiveIdentifierProcessorTest {
         assertEquals("`a``b`", HiveMetaData.format("a`b"));
         assertEquals("`a``; DROP TABLE b; --`", HiveMetaData.format("a`; DROP TABLE b; --"));
         assertEquals("`db`.`a``b`", new HiveMetaData().getMetaDataName("ignored", "db", "a`b"));
+    }
+
+    @Test
+    void complexTypeFallbackPreservesTypeAndQuotesNameAndComment() {
+        TableColumn column = TableColumn.builder()
+                .name("payload`x")
+                .columnType("STRUCT<name:STRING,tags:ARRAY<STRING>>")
+                .comment("it's")
+                .build();
+
+        assertEquals("`payload``x` STRUCT<name:STRING,tags:ARRAY<STRING>> COMMENT 'it''s'",
+                HiveColumnTypeEnum.buildCreateColumnSqlSafely(column));
+
+        column.setColumnType("STRING DEFAULT 'x'");
+        assertThrows(IllegalArgumentException.class,
+                () -> HiveColumnTypeEnum.buildCreateColumnSqlSafely(column));
+        column.setColumnType("STRING, injected STRING");
+        assertThrows(IllegalArgumentException.class,
+                () -> HiveColumnTypeEnum.buildCreateColumnSqlSafely(column));
+        column.setColumnType("STRING UNION SELECT secret");
+        assertThrows(IllegalArgumentException.class,
+                () -> HiveColumnTypeEnum.buildCreateColumnSqlSafely(column));
+
+        column.setColumnType("ARRAY<STRUCT<code:STRING>>");
+        column.setEditStatus("ADD");
+        assertEquals("ADD COLUMNS (`payload``x` ARRAY<STRUCT<code:STRING>> COMMENT 'it''s')",
+                HiveColumnTypeEnum.buildModifyColumnSafely(column));
+    }
+
+    @Test
+    void partitionClauseAcceptsTypedColumnsAndRejectsAppendedStatements() {
+        assertEquals("PARTITIONED BY (`day` STRING, region STRUCT<code:STRING>)",
+                HiveSqlGuards.requirePartitionClause(
+                        "partitioned by (`day` STRING, region STRUCT<code:STRING>)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> HiveSqlGuards.requirePartitionClause(
+                        "PARTITIONED BY (`day` STRING); DROP TABLE users"));
+        assertThrows(IllegalArgumentException.class,
+                () -> HiveSqlGuards.requirePartitionClause(
+                        "PARTITIONED BY (`day` STRING) STORED AS ORC (`other` STRING)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> HiveSqlGuards.requirePartitionClause("STORED AS ORC"));
+    }
+
+    @Test
+    void indexRequiresAtLeastOneNamedColumn() {
+        TableIndex index = TableIndex.builder().name("idx").type("Normal").columnList(List.of()).build();
+        assertThrows(IllegalArgumentException.class, () -> HiveIndexTypeEnum.NORMAL.buildIndexScript(index));
+
+        index.setColumnList(null);
+        assertThrows(IllegalArgumentException.class, () -> HiveIndexTypeEnum.NORMAL.buildIndexScript(index));
+
+        index.setColumnList(List.of(TableIndexColumn.builder().columnName(" ").build()));
+        assertThrows(IllegalArgumentException.class, () -> HiveIndexTypeEnum.NORMAL.buildIndexScript(index));
+    }
+
+    @Test
+    void inheritedDmlBuilderPathsQuoteQualifiedNamesAndColumns() {
+        HiveSqlBuilder builder = new HiveSqlBuilder();
+        assertEquals("SELECT * FROM `db``x`.`sc``x`.`ta``ble`",
+                builder.buildSelectTable("db`x", "sc`x", "ta`ble"));
+
+        UpdateSqlRequest request = UpdateSqlRequest.builder()
+                .databaseName("db`x")
+                .schemaName("sc`x")
+                .tableName("ta`ble")
+                .row(Map.of("co`l", "1"))
+                .primaryKeyMap(Map.of("i`d", "2"))
+                .build();
+        assertEquals("UPDATE `db``x`.`sc``x`.`ta``ble` SET `co``l` = 1 WHERE `i``d` = 2",
+                builder.buildUpdate(request));
+
+        Table table = Table.builder()
+                .databaseName("db`x")
+                .name("ta`ble")
+                .columnList(List.of(TableColumn.builder().name("co`l").columnType("STRING").build()))
+                .indexList(List.of())
+                .build();
+        assertEquals("SELECT `co``l` FROM `db``x`.`ta``ble`", builder.buildTemplate(table, "SELECT"));
     }
 }
