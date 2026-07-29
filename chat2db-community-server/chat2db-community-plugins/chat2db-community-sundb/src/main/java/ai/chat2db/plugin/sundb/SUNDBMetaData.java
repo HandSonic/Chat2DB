@@ -54,9 +54,10 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "SELECT * FROM \"%s\".\"%s\" LIMIT 1";
         StringBuilder ddlBuilder = new StringBuilder();
-        String tableDDLSql = String.format(sql, SUNDBIdentifierProcessor.escapeIdentifier(schemaName), SUNDBIdentifierProcessor.escapeIdentifier(tableName));
+        String tableDDLSql = "SELECT * FROM "
+                + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "."
+                + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + " LIMIT 1";
 
         try {
             Integer Scale;
@@ -70,14 +71,16 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
             while (true) {
                 if (i >= colCount) {
                     ddlBuilder.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(rsMetaData.getColumnName(colCount))).append(" ");
-                    ddlBuilder.append(rsMetaData.getColumnTypeName(colCount));
+                    String columnTypeName = SUNDBSqlGuards.requireColumnTypeExpression(
+                            rsMetaData.getColumnTypeName(colCount));
+                    ddlBuilder.append(columnTypeName);
                     Integer Precision = 0;
                     Scale = 0;
                     Precision = rsMetaData.getPrecision(colCount);
                     Scale = rsMetaData.getScale(colCount);
                     if (Precision != null && Precision != 0) {
                         ddlBuilder.append("(").append(Precision);
-                        if ("NUMBER".equals(rsMetaData.getColumnTypeName(colCount))) {
+                        if ("NUMBER".equalsIgnoreCase(columnTypeName)) {
                             ddlBuilder.append(",").append(Scale).append(")");
                         } else {
                             ddlBuilder.append(" )");
@@ -90,10 +93,18 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                          ResultSet constraintSet = constraintStatement.executeQuery()) {
                     while (constraintSet.next()) {
                         if (!constraintSet.isLast()) {
-                            ddlBuilder.append(" ,\nCONSTRAINT " + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(5)) + " ) ");
+                            ddlBuilder.append(" ,\nCONSTRAINT ")
+                                    .append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(3)))
+                                    .append(" ").append(SUNDBSqlGuards.requireConstraintType(constraintSet.getString(4)))
+                                    .append(" ( ").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(5)))
+                                    .append(" ) ");
                             ddlBuilder.append(", ");
                         } else {
-                            ddlBuilder.append(" ,\nCONSTRAINT " + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(3)) + " " + constraintSet.getString(4) + " ( " + SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(5)) + " ) ");
+                            ddlBuilder.append(" ,\nCONSTRAINT ")
+                                    .append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(3)))
+                                    .append(" ").append(SUNDBSqlGuards.requireConstraintType(constraintSet.getString(4)))
+                                    .append(" ( ").append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintSet.getString(5)))
+                                    .append(" ) ");
                         }
                     }
                     }
@@ -121,12 +132,13 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                 Scale = 0;
                 Integer Scale1 = 0;
                 ddlBuilder.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(rsMetaData.getColumnName(i))).append(" ");
-                ddlBuilder.append(rsMetaData.getColumnTypeName(i));
+                String columnTypeName = SUNDBSqlGuards.requireColumnTypeExpression(rsMetaData.getColumnTypeName(i));
+                ddlBuilder.append(columnTypeName);
                 Scale1 = rsMetaData.getPrecision(i);
                 Scale = rsMetaData.getScale(i);
                 if (Scale1 != null && Scale1 != 0) {
                     ddlBuilder.append("(").append(Scale1);
-                    if ("NUMBER".equals(rsMetaData.getColumnTypeName(i))) {
+                    if ("NUMBER".equalsIgnoreCase(columnTypeName)) {
                         ddlBuilder.append(",").append(Scale).append(") ,");
                     } else {
                         ddlBuilder.append(")").append(" ,");
@@ -157,8 +169,11 @@ public class SUNDBMetaData extends DefaultMetaService implements IDbMetaData {
                 while (indexResultSet.next()) {
 
                     ddlBuilder.append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(indexResultSet.getString(5))).append(" ");
-                    ddlBuilder.append(indexResultSet.getString(6) + " ");
-                    ddlBuilder.append(indexResultSet.getString(7));
+                    ddlBuilder.append(SUNDBSqlGuards.requireAscOrDesc(indexResultSet.getString(6)));
+                    String nullOrder = SUNDBSqlGuards.requireNullOrder(indexResultSet.getString(7));
+                    if (StringUtils.isNotBlank(nullOrder)) {
+                        ddlBuilder.append(" ").append(nullOrder);
+                    }
                     if (!indexResultSet.isLast()) {
                         ddlBuilder.append(", ");
                     } else {

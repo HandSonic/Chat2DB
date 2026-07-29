@@ -131,7 +131,8 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
         }
         String schemaName = connectInfo.getSchemaName();
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_SET_SCHEMA, SUNDBIdentifierProcessor.escapeIdentifier(schemaName)));
+            DefaultSQLExecutor.getInstance().execute(connection,
+                    String.format(SQL_SET_SCHEMA, SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)));
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -139,7 +140,9 @@ public class SUNDBDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE_EXISTS, SUNDBIdentifierProcessor.escapeIdentifier(schemaName), SUNDBIdentifierProcessor.escapeIdentifier(tableName));
+        return String.format(SQL_DROP_TABLE_EXISTS,
+                SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName),
+                SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
     }
 
     @Override

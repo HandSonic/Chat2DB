@@ -1,5 +1,6 @@
 package ai.chat2db.plugin.sundb;
 
+import ai.chat2db.community.domain.api.model.metadata.Database;
 import ai.chat2db.community.domain.api.model.metadata.Schema;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
@@ -8,12 +9,18 @@ import ai.chat2db.plugin.sundb.builder.SUNDBSqlBuilder;
 import ai.chat2db.plugin.sundb.enums.type.SUNDBColumnTypeEnum;
 import ai.chat2db.plugin.sundb.enums.type.SUNDBIndexTypeEnum;
 import ai.chat2db.plugin.sundb.identifier.SUNDBIdentifierProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.TruncateTableRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,15 +36,15 @@ class SUNDBIdentifierProcessorTest {
         assertEquals("O''Brien", SUNDBIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
         assertEquals("a''b''c", SUNDBIdentifierProcessor.INSTANCE.escapeString("a'b'c"));
         assertEquals("plain", SUNDBIdentifierProcessor.INSTANCE.escapeString("plain"));
-        assertEquals("", SUNDBIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(SUNDBIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
-    void escapeIdentifierDoublesEmbeddedDoubleQuotesAndStripsOuterQuotes() {
+    void escapeIdentifierDoublesEveryEmbeddedDoubleQuote() {
         assertEquals("we\"\"ird", SUNDBIdentifierProcessor.escapeIdentifier("we\"ird"));
-        assertEquals("abc", SUNDBIdentifierProcessor.escapeIdentifier("\"abc\""));
-        assertEquals("a\"\"b", SUNDBIdentifierProcessor.escapeIdentifier("\"a\"b\""));
-        assertEquals("", SUNDBIdentifierProcessor.escapeIdentifier(null));
+        assertEquals("\"\"abc\"\"", SUNDBIdentifierProcessor.escapeIdentifier("\"abc\""));
+        assertEquals("\"\"a\"\"b\"\"", SUNDBIdentifierProcessor.escapeIdentifier("\"a\"b\""));
+        assertNull(SUNDBIdentifierProcessor.escapeIdentifier(null));
         assertEquals("\"we\"\"ird\"", SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
     }
 
@@ -48,17 +55,18 @@ class SUNDBIdentifierProcessorTest {
         assertEquals(null, processor.quoteIdentifier(null));
         assertEquals("", processor.quoteIdentifier(""));
         assertEquals("  ", processor.quoteIdentifier("  "));
-        // valid plain identifiers are returned unquoted
-        assertEquals("plain", processor.quoteIdentifier("plain"));
+        // uppercase plain identifiers are returned unquoted; lowercase is quoted to preserve case
+        assertEquals("\"plain\"", processor.quoteIdentifier("plain"));
         assertEquals("T_PRIMARY_KEY_INDEX", processor.quoteIdentifier("T_PRIMARY_KEY_INDEX"));
-        assertEquals("col_1", processor.quoteIdentifier("col_1"));
+        assertEquals("\"col_1\"", processor.quoteIdentifier("col_1"));
+        assertEquals("\"SELECT\"", processor.quoteIdentifier("SELECT"));
         // anything needing quotes is wrapped with embedded-quote doubling
         assertEquals("\"we\"\"ird\"", processor.quoteIdentifier("we\"ird"));
         assertEquals("\"has space\"", processor.quoteIdentifier("has space"));
         assertEquals("\"1abc\"", processor.quoteIdentifier("1abc"));
         assertEquals("\"abc\"", processor.quoteIdentifier("\"abc\""));
         // versioned overload delegates to the conditional single-arg form
-        assertEquals("plain", processor.quoteIdentifier("plain", 1, 0));
+        assertEquals("\"plain\"", processor.quoteIdentifier("plain", 1, 0));
         assertEquals(null, processor.quoteIdentifier(null, 1, 0));
         assertEquals("\"has space\"", processor.quoteIdentifier("has space", 1, 0));
     }
@@ -71,18 +79,36 @@ class SUNDBIdentifierProcessorTest {
         // valid plain identifiers are still quoted
         assertEquals("\"plain\"", processor.quoteIdentifierAlways("plain"));
         assertEquals("\"T_PRIMARY_KEY_INDEX\"", processor.quoteIdentifierAlways("T_PRIMARY_KEY_INDEX"));
-        // embedded quotes are doubled, one surrounding pair is stripped
+        // every quote is raw identifier content, including boundary quotes
         assertEquals("\"we\"\"ird\"", processor.quoteIdentifierAlways("we\"ird"));
-        assertEquals("\"abc\"", processor.quoteIdentifierAlways("\"abc\""));
+        assertEquals("\"\"\"abc\"\"\"", processor.quoteIdentifierAlways("\"abc\""));
+        for (String raw : List.of("", "A\"B", "\"abc\"", "\"A", "A\"", "A\"\"B")) {
+            assertEquals(raw, processor.removeIdentifierQuote(processor.quoteIdentifierAlways(raw)), raw);
+        }
     }
 
     @Test
-    void quoteIdentifierIgnoreCaseIsTheAlwaysQuoteVariant() {
+    void quoteIdentifierIgnoreCaseIsConditional() {
         SUNDBIdentifierProcessor processor = SUNDBIdentifierProcessor.INSTANCE;
-        assertEquals(null, processor.quoteIdentifierIgnoreCase(null));
-        assertEquals("\"plain\"", processor.quoteIdentifierIgnoreCase("plain"));
-        assertEquals("\"MixedCase\"", processor.quoteIdentifierIgnoreCase("MixedCase"));
+        assertNull(processor.quoteIdentifierIgnoreCase(null));
+        assertEquals("plain", processor.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("MixedCase", processor.quoteIdentifierIgnoreCase("MixedCase"));
+        assertEquals("\"select\"", processor.quoteIdentifierIgnoreCase("select"));
         assertEquals("\"we\"\"ird\"", processor.quoteIdentifierIgnoreCase("we\"ird"));
+    }
+
+    @Test
+    void reservedWordsAndCaseConversionAreLocaleIndependent() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertTrue(SUNDBIdentifierProcessor.INSTANCE.isReservedKeyword("insert", null, null));
+            assertEquals("ID", SUNDBIdentifierProcessor.INSTANCE.convertIdentifierCase("id"));
+            assertEquals("\"insert\"", SUNDBIdentifierProcessor.INSTANCE.quoteIdentifier("insert"));
+            assertEquals(SUNDBColumnTypeEnum.INT, SUNDBColumnTypeEnum.getByType("int"));
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
@@ -158,7 +184,7 @@ class SUNDBIdentifierProcessorTest {
         valid.setColumnType("VARCHAR");
         valid.setColumnSize(10);
         valid.setUnit("byte");
-        assertTrue(SUNDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(valid).contains("VARCHAR(10 byte)"));
+        assertTrue(SUNDBColumnTypeEnum.VARCHAR.buildCreateColumnSql(valid).contains("VARCHAR(10 BYTE)"));
 
         TableColumn malicious = new TableColumn();
         malicious.setName("c1");
@@ -209,6 +235,17 @@ class SUNDBIdentifierProcessorTest {
         validSequence.setDefaultValue("SEQ.NEXTVAL");
         assertTrue(SUNDBColumnTypeEnum.INT.buildCreateColumnSql(validSequence).contains("DEFAULT SEQ.NEXTVAL"));
 
+        String[] validExpressions = {"now()", "SYS_GUID()", "TO_DATE('2024-01-01','YYYY-MM-DD')",
+                "CURRENT_DATE + 1", "'a'||'b'"};
+        for (String expression : validExpressions) {
+            TableColumn column = new TableColumn();
+            column.setName("c1");
+            column.setColumnType("INT");
+            column.setDefaultValue(expression);
+            assertTrue(SUNDBColumnTypeEnum.INT.buildCreateColumnSql(column)
+                    .contains("DEFAULT " + expression), expression);
+        }
+
         TableColumn malicious = new TableColumn();
         malicious.setName("c1");
         malicious.setColumnType("BOOLEAN");
@@ -237,16 +274,16 @@ class SUNDBIdentifierProcessorTest {
                 "0) --",          // closes the column definition, comments out the line remainder
                 "0 --",           // comment sequence in a bare token
                 "1, x INT",       // injects an extra column definition into CREATE TABLE
-                "now()",          // parentheses could close the column def; functions work without them
                 "0); DROP TABLE x--",
                 "'abc",           // unbalanced quote
                 "'a' 'b'",        // literal concatenation smuggling
-                "'a'||'b'",       // concatenation operator
                 "'a'--",          // comment after literal
                 "'a'; DROP TABLE x--",
-                "TO_DATE('2024-01-01','YYYY-MM-DD')", // parens/comma could reshape DDL
-                "SYS_GUID()",
-                "DATE '2024-01-01'--" // comment after typed literal
+                "DATE '2024-01-01'--", // comment after typed literal
+                "0 NULL",
+                "0 NOT NULL",
+                "NULL REFERENCES victims",
+                "CURRENT_TIMESTAMP UNIQUE"
         };
         for (String payload : payloads) {
             TableColumn column = new TableColumn();
@@ -319,6 +356,62 @@ class SUNDBIdentifierProcessorTest {
         assertEquals("\"sch\"\"ema\".\"idx\"\"name\"", method.invoke(metaData, "sch\"ema", "idx\"name"));
         // system-style primary key index names get the same quoting as normal names
         assertEquals("\"sch\".\"T_PRIMARY_KEY_INDEX\"", method.invoke(metaData, "sch", "T_PRIMARY_KEY_INDEX"));
+    }
+
+    @Test
+    void unknownColumnTypesAreQuotedAndStructurallyValidated() {
+        TableColumn column = new TableColumn();
+        column.setName("co\"l");
+        column.setColumnType("APP.MONEY_TYPE(12,2)");
+        assertEquals("\"co\"\"l\" APP.MONEY_TYPE(12,2)",
+                SUNDBColumnTypeEnum.INT.buildCreateColumnSql(column));
+
+        String[] invalidTypes = {"INT NOT NULL", "INT DEFAULT 0", "INT); DROP TABLE x--", "VARCHAR(10), x INT"};
+        for (String invalidType : invalidTypes) {
+            column.setColumnType(invalidType);
+            assertThrows(IllegalArgumentException.class,
+                    () -> SUNDBColumnTypeEnum.INT.buildCreateColumnSql(column), invalidType);
+        }
+    }
+
+    @Test
+    void metadataSyntaxFragmentsAreAllowlisted() {
+        assertEquals("PRIMARY KEY", SUNDBSqlGuards.requireConstraintType("primary key"));
+        assertEquals("NULLS FIRST", SUNDBSqlGuards.requireNullOrder("null first"));
+        assertEquals("NULLS LAST", SUNDBSqlGuards.requireNullOrder("NULLS LAST"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SUNDBSqlGuards.requireConstraintType("PRIMARY KEY); DROP TABLE x--"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SUNDBSqlGuards.requireNullOrder("NULLS LAST); DROP TABLE x--"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SUNDBSqlGuards.requireColumnTypeExpression("NUMBER) NOT NULL"));
+    }
+
+    @Test
+    void inheritedBuilderPathsUseSundbSchemaQualification() {
+        SUNDBSqlBuilder builder = new SUNDBSqlBuilder();
+        assertEquals("SELECT * FROM \"sch\"\"ema\".\"ta\"\"ble\"",
+                builder.buildSelectTable("ignored_database", "sch\"ema", "ta\"ble"));
+        assertEquals("SELECT COUNT(1) FROM \"sch\"\"ema\".\"ta\"\"ble\"",
+                builder.buildSelectCount("ignored_database", "sch\"ema", "ta\"ble"));
+        assertEquals("DROP TABLE \"sch\"\"ema\".\"ta\"\"ble\"",
+                builder.buildDropTable(new DropTableRequest("ignored_database", "sch\"ema", "ta\"ble")));
+        assertEquals("TRUNCATE TABLE \"sch\"\"ema\".\"ta\"\"ble\"",
+                builder.buildTruncateTable(new TruncateTableRequest("ignored_database", "sch\"ema", "ta\"ble")));
+
+        Database database = new Database();
+        database.setName("db\"name");
+        assertEquals("CREATE DATABASE \"db\"\"name\"", builder.buildCreateDatabase(database));
+
+        assertEquals("UPDATE \"sch\"\"ema\".\"ta\"\"ble\" SET \"co\"\"l\" = 1"
+                        + " WHERE \"i\"\"d\" = 2",
+                builder.buildUpdate(UpdateSqlRequest.builder()
+                        .databaseName("ignored_database")
+                        .schemaName("sch\"ema")
+                        .tableName("ta\"ble")
+                        .row(Map.of("co\"l", "1"))
+                        .primaryKeyMap(Map.of("i\"d", "2"))
+                        .build()));
     }
 
     private static java.sql.Connection stubConnectionCapturingSql(String[] capturedSql) {

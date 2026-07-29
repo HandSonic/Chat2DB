@@ -74,14 +74,22 @@ public enum SUNDBIndexTypeEnum {
     public String buildIndexScript(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
-            script.append(SQL_ALTER_TABLE_2).append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
+            script.append(SQL_ALTER_TABLE)
+                    .append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()))
+                    .append(".")
+                    .append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName()))
+                    .append(" ADD PRIMARY KEY ").append(buildIndexColumn(tableIndex));
         } else {
             if (UNIQUE.equals(this)) {
                 script.append(SQL_CREATE_UNIQUE_INDEX);
             } else {
                 script.append(SQL_CREATE_INDEX);
             }
-            script.append(buildIndexName(tableIndex)).append(SQL_ON).append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("\".\"").append(SUNDBIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("\" ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append(SQL_ON)
+                    .append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()))
+                    .append(".")
+                    .append(SUNDBIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName()))
+                    .append(" ").append(buildIndexColumn(tableIndex));
         }
         return script.toString();
     }
