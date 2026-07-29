@@ -69,14 +69,14 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         validateDb2LookName(schemaName);
         validateDb2LookName(tableName);
-        String ddlTokenSql = String.format(GET_DDL_TOKEN, getSQLIdentifierProcessor().escapeString(schemaName), getSQLIdentifierProcessor().escapeString(tableName));
-        log.info("ddlSql : {}", ddlTokenSql);
+        String db2LookOptions = String.format(DB2LOOK_OPTIONS, schemaName, tableName);
 
         log.info("try to execute PROC");
-        try (CallableStatement callableStatement = connection.prepareCall(ddlTokenSql)) {
-            callableStatement.registerOutParameter(1, Types.INTEGER);
+        try (CallableStatement callableStatement = connection.prepareCall(GET_DDL_TOKEN)) {
+            callableStatement.setString(1, db2LookOptions);
+            callableStatement.registerOutParameter(2, Types.INTEGER);
             callableStatement.executeUpdate();
-            int token = callableStatement.getInt(1);
+            int token = callableStatement.getInt(2);
             log.info("ddlToken: {}", token);
             StringBuilder ddlBuilder = new StringBuilder(2048);
             retrieveDDL(connection, token, ddlBuilder);
@@ -90,9 +90,8 @@ public class DB2MetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     /**
-     * GET_DDL_TOKEN embeds names inside a double-quoted db2look option string. Single quotes
-     * are neutralized by {@link ai.chat2db.spi.ISQLIdentifierProcessor#escapeString}, but a
-     * double quote would break out of the option-argument context, so reject such names up front.
+     * Names are JDBC-bound as one db2look option string, but a double quote would still
+     * break out of an option argument, so reject such names up front.
      */
     private static void validateDb2LookName(String name) {
         if (name != null && name.contains("\"")) {

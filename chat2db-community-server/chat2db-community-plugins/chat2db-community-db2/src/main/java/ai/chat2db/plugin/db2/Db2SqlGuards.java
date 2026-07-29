@@ -10,13 +10,26 @@ import java.util.regex.Pattern;
  */
 public final class Db2SqlGuards {
 
-    /**
-     * Conservative allow-list for unquoted column default expressions
-     * (e.g. {@code 42}, {@code -1}, {@code CURRENT_TIMESTAMP}). Excludes quotes,
-     * parentheses and commas so a default value cannot break out of the column
-     * definition; comment markers are rejected separately.
-     */
-    private static final Pattern DEFAULT_VALUE_PATTERN = Pattern.compile("\\A[A-Za-z0-9_+/: \\t.-]+\\z");
+    private static final String STRING_LITERAL_SOURCE = "'(?:''|[^'])*'";
+    private static final String IDENTIFIER_SOURCE =
+            "(?:[A-Za-z_][A-Za-z0-9_$#@]*|\"(?:\"\"|[^\"])+\")";
+    private static final Pattern STRING_LITERAL = Pattern.compile("\\A" + STRING_LITERAL_SOURCE + "\\z");
+    private static final Pattern NUMERIC_LITERAL = Pattern.compile(
+            "\\A[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?\\z");
+    private static final Pattern SIMPLE_CONSTANT = Pattern.compile("(?i)\\A(?:NULL|TRUE|FALSE)\\z");
+    private static final Pattern CURRENT_TEMPORAL = Pattern.compile(
+            "(?i)\\ACURRENT(?:_|\\s+)(?:DATE|TIME|TIMESTAMP)(?:\\(\\d+\\))?\\z");
+    private static final Pattern SPECIAL_REGISTER = Pattern.compile(
+            "(?i)\\A(?:USER|SESSION_USER|SYSTEM_USER|CURRENT(?:_|\\s+)(?:USER|SCHEMA|SERVER|SQLID|PATH|"
+                    + "TIMEZONE|ROLE|CLIENT_ACCTNG|CLIENT_APPLNAME|CLIENT_USERID|CLIENT_WRKSTNNAME|CLIENT_CORR_TOKEN))\\z");
+    private static final Pattern SAFE_NO_ARG_FUNCTION = Pattern.compile(
+            "(?i)\\A(?:GENERATE_UNIQUE|EMPTY_BLOB|EMPTY_CLOB|EMPTY_DBCLOB)\\(\\s*\\)\\z");
+    private static final Pattern TYPED_LITERAL = Pattern.compile(
+            "(?i)\\A(?:DATE|TIME|TIMESTAMP)\\s+" + STRING_LITERAL_SOURCE + "\\z");
+    private static final Pattern BINARY_LITERAL = Pattern.compile("(?i)\\AX'[0-9A-F]*'\\z");
+    private static final Pattern SEQUENCE_EXPRESSION = Pattern.compile(
+            "(?i)\\A(?:NEXT\\s+VALUE|NEXTVAL)\\s+FOR\\s+" + IDENTIFIER_SOURCE
+                    + "(?:\\." + IDENTIFIER_SOURCE + ")?\\z");
 
     /**
      * Conservative allow-list for DB2 length units (e.g. {@code OCTETS}).
@@ -34,16 +47,26 @@ public final class Db2SqlGuards {
     }
 
     /**
-     * Validates an unquoted column default expression before it is embedded into
-     * generated DDL. Returns the value unchanged when it matches the allow-list
-     * and carries no comment markers; throws otherwise (fail closed).
+     * Keeps complete DB2 literal and generated-default forms intact while rejecting
+     * text that could terminate the surrounding column definition.
      */
     public static String requireDefaultExpression(String defaultValue) {
-        if (!DEFAULT_VALUE_PATTERN.matcher(defaultValue).matches() || defaultValue.contains("--")
-                || defaultValue.contains("/*")) {
-            throw new IllegalArgumentException("Invalid DB2 default value: " + defaultValue);
+        if (defaultValue == null) {
+            return null;
         }
-        return defaultValue;
+        String trimmed = defaultValue.trim();
+        if (STRING_LITERAL.matcher(trimmed).matches()
+                || NUMERIC_LITERAL.matcher(trimmed).matches()
+                || SIMPLE_CONSTANT.matcher(trimmed).matches()
+                || CURRENT_TEMPORAL.matcher(trimmed).matches()
+                || SPECIAL_REGISTER.matcher(trimmed).matches()
+                || SAFE_NO_ARG_FUNCTION.matcher(trimmed).matches()
+                || TYPED_LITERAL.matcher(trimmed).matches()
+                || BINARY_LITERAL.matcher(trimmed).matches()
+                || SEQUENCE_EXPRESSION.matcher(trimmed).matches()) {
+            return trimmed;
+        }
+        throw new IllegalArgumentException("Invalid DB2 default value: " + defaultValue);
     }
 
     /**

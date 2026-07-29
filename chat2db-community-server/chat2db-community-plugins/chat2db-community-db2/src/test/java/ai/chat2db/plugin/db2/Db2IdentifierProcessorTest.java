@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,13 +23,13 @@ class Db2IdentifierProcessorTest {
     void escapeSqlLiteralDoublesSingleQuotes() {
         assertEquals("O''Brien", Db2IdentifierProcessor.INSTANCE.escapeString("O'Brien"));
         assertEquals("plain", Db2IdentifierProcessor.INSTANCE.escapeString("plain"));
-        assertEquals("", Db2IdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(Db2IdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
-    void escapeIdentifierDoublesDoubleQuotesAndStripsSurroundingQuotes() {
+    void escapeIdentifierDoublesEveryDoubleQuote() {
         assertEquals("we\"\"ird", Db2IdentifierProcessor.escapeIdentifier("we\"ird"));
-        assertEquals("abc", Db2IdentifierProcessor.escapeIdentifier("\"abc\""));
+        assertEquals("\"\"abc\"\"", Db2IdentifierProcessor.escapeIdentifier("\"abc\""));
         assertEquals("", Db2IdentifierProcessor.escapeIdentifier(null));
         assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
     }
@@ -42,9 +43,10 @@ class Db2IdentifierProcessorTest {
 
     @Test
     void quoteIdentifierLeavesValidPlainIdentifierUnquoted() {
-        assertEquals("plain", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"plain\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
         assertEquals("T1_COL", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("T1_COL"));
-        assertEquals("plain", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("plain", 11, 5));
+        assertEquals("\"plain\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("plain", 11, 5));
+        assertEquals("\"SELECT\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
     }
 
     @Test
@@ -52,7 +54,8 @@ class Db2IdentifierProcessorTest {
         assertEquals("\"has space\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
         assertEquals("\"1abc\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("1abc"));
         assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
-        assertEquals("\"already\"\" quoted\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifier("\"already\" quoted\""));
+        assertEquals("\"\"\"already\"\" quoted\"\"\"",
+                Db2IdentifierProcessor.INSTANCE.quoteIdentifier("\"already\" quoted\""));
     }
 
     @Test
@@ -60,13 +63,16 @@ class Db2IdentifierProcessorTest {
         assertEquals(null, Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
         assertEquals("\"plain\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
         assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("a\"b"));
-        assertEquals("\"abc\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"abc\""));
+        assertEquals("\"\"\"abc\"\"\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"abc\""));
+        assertEquals("\"abc\"", Db2IdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                Db2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"abc\"")));
     }
 
     @Test
-    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+    void quoteIdentifierIgnoreCasePreservesSafeNamesWithoutCaseFolding() {
         assertEquals(null, Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
-        assertEquals("\"plain\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("plain", Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"SELECT\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("SELECT"));
         assertEquals("\"a\"\"b\"", Db2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a\"b"));
     }
 
@@ -270,6 +276,29 @@ class Db2IdentifierProcessorTest {
     }
 
     @Test
+    void createColumnKeepsLegalDb2Defaults() {
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("INT");
+
+        column.setDefaultValue("'O''Brien'");
+        assertTrue(DB2ColumnTypeEnum.INT.buildCreateColumnSql(column).contains("DEFAULT 'O''Brien'"));
+
+        column.setDefaultValue("CURRENT TIMESTAMP");
+        assertTrue(DB2ColumnTypeEnum.INT.buildCreateColumnSql(column).contains("DEFAULT CURRENT TIMESTAMP"));
+
+        column.setDefaultValue("DATE '2026-07-29'");
+        assertTrue(DB2ColumnTypeEnum.INT.buildCreateColumnSql(column).contains("DEFAULT DATE '2026-07-29'"));
+
+        column.setDefaultValue("GENERATE_UNIQUE()");
+        assertTrue(DB2ColumnTypeEnum.INT.buildCreateColumnSql(column).contains("DEFAULT GENERATE_UNIQUE()"));
+
+        column.setDefaultValue("NEXT VALUE FOR \"S\".\"SEQ\"");
+        assertTrue(DB2ColumnTypeEnum.INT.buildCreateColumnSql(column)
+                .contains("DEFAULT NEXT VALUE FOR \"S\".\"SEQ\""));
+    }
+
+    @Test
     void createColumnRejectsQuoteAndCommaBreakoutDefaultValues() {
         TableColumn column = new TableColumn();
         column.setName("c");
@@ -281,20 +310,17 @@ class Db2IdentifierProcessorTest {
         column.setDefaultValue("1, x INT");
         assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
 
-        column.setDefaultValue("'abc'");
-        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
-
         column.setDefaultValue("x' OR '1'='1");
         assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
     }
 
     @Test
-    void validatorsRejectTrailingNewline() {
+    void validatorsTrimSafeDefaultsAndRejectNewlinesInStructuralTokens() {
         TableColumn column = new TableColumn();
         column.setName("c");
         column.setColumnType("INT");
         column.setDefaultValue("0\n");
-        assertThrows(IllegalArgumentException.class, () -> DB2ColumnTypeEnum.INT.buildCreateColumnSql(column));
+        assertTrue(DB2ColumnTypeEnum.INT.buildCreateColumnSql(column).contains("DEFAULT 0"));
 
         TableColumn sized = new TableColumn();
         sized.setName("c");
@@ -321,11 +347,13 @@ class Db2IdentifierProcessorTest {
     }
 
     @Test
-    void getDdlTokenEscapesSingleQuotesInsideOptionString() {
-        String sql = String.format(ai.chat2db.plugin.db2.constant.DB2MetaDataConstants.GET_DDL_TOKEN,
-                Db2IdentifierProcessor.INSTANCE.escapeString("o'brien"), Db2IdentifierProcessor.INSTANCE.escapeString("t'; DROP TABLE t; --"));
+    void getDdlTokenBindsTheCompleteOptionString() {
+        assertEquals("call SYSPROC.DB2LK_GENERATE_DDL(?,?)",
+                ai.chat2db.plugin.db2.constant.DB2MetaDataConstants.GET_DDL_TOKEN);
+        String options = String.format(ai.chat2db.plugin.db2.constant.DB2MetaDataConstants.DB2LOOK_OPTIONS,
+                "o'brien", "t'; DROP TABLE t; --");
 
-        assertTrue(sql.contains("-td \"o''brien\""), sql);
-        assertTrue(sql.contains("-t \"t''; DROP TABLE t; --\""), sql);
+        assertTrue(options.contains("-td \"o'brien\""), options);
+        assertTrue(options.contains("-t \"t'; DROP TABLE t; --\""), options);
     }
 }
