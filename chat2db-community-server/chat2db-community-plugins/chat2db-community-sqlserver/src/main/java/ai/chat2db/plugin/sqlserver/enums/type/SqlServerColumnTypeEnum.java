@@ -6,12 +6,12 @@ import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
-import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -111,11 +111,15 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
     private ColumnType columnType;
 
     public static SqlServerColumnTypeEnum getByType(String dataType) {
-        SqlServerColumnTypeEnum typeEnum = COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
-        if (typeEnum == null) {
-            return OTHER;
+        if (StringUtils.isBlank(dataType)) {
+            return null;
         }
-        return typeEnum;
+        String normalized = dataType.trim().toUpperCase(Locale.ROOT);
+        SqlServerColumnTypeEnum exactType = COLUMN_TYPE_MAP.get(normalized);
+        if (exactType != null) {
+            return exactType;
+        }
+        return normalized.indexOf('(') >= 0 ? OTHER : COLUMN_TYPE_MAP.getOrDefault(normalized, OTHER);
     }
 
     private static Map<String, SqlServerColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
@@ -258,7 +262,8 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        return StringUtils.join("DEFAULT ",
+                SqlServerSqlGuards.requireDefaultExpression(column.getDefaultValue()));
     }
 
     private String buildDataType(TableColumn column, SqlServerColumnTypeEnum type) {
@@ -297,8 +302,8 @@ public enum SqlServerColumnTypeEnum implements IColumnBuilder {
             return script.toString();
         }
 
-        if (OTHER.equals(columnType)) {
-            return column.getColumnType();
+        if (OTHER.equals(type)) {
+            return SqlServerSqlGuards.requireColumnTypeExpression(column.getColumnType());
         }
 
         return columnType;

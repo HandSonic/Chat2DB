@@ -4,8 +4,8 @@ import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerIdentifierProcessorConstants.*;
 
@@ -209,7 +209,7 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
 
     @Override
     public boolean isReservedKeyword(String identifier, Integer majorVersion, Integer minorVersion) {
-        return SQL_SERVER_RESERVED_KEYWORDS.contains(identifier);
+        return identifier != null && SQL_SERVER_RESERVED_KEYWORDS.contains(identifier.toUpperCase(Locale.ROOT));
     }
 
     /**
@@ -226,7 +226,7 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier, null, null)) {
             return identifier;
         }
         return quoteIdentifierAlways(identifier);
@@ -237,21 +237,18 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         return quoteIdentifier(identifier);
     }
 
-    /**
-     * Always-quote variant that preserves the original identifier case, as
-     * required by the SPI for {@code quoteIdentifierIgnoreCase}.
-     */
+    /** Conditional quote variant that preserves the original identifier case. */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifierAlways(identifier);
+        return quoteIdentifier(identifier);
     }
 
     /**
-     * Unconditionally quotes with square brackets, stripping one surrounding
-     * bracket pair and doubling every embedded closing bracket. Reserved for
-     * DDL-generation call sites that must always emit quoted identifiers;
-     * {@code null} passes through.
+     * Unconditionally quotes with square brackets and doubles every closing
+     * bracket in the raw identifier. Boundary brackets are data, not existing
+     * quote syntax, so this satisfies the SPI round-trip contract.
      */
+    @Override
     public String quoteIdentifierAlways(String identifier) {
         if (identifier == null) {
             return null;
@@ -266,35 +263,22 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
      */
     @Override
     public String escapeString(String str) {
-        return str == null ? "" : StringUtils.replace(str, "'", "''");
+        return str == null ? null : StringUtils.replace(str, "'", "''");
     }
 
     private static String escapeIdentifierContent(String identifier) {
         if (identifier == null) {
             return "";
         }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("[") && stripped.endsWith("]")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "]", "]]");
+        return StringUtils.replace(identifier, "]", "]]");
     }
 
     /**
-     * Escapes identifier content for a position already surrounded by square
-     * brackets: strips one surrounding bracket pair, then doubles every embedded
-     * closing bracket.
+     * Escapes raw identifier content for a position already surrounded by
+     * square brackets.
      */
     public static String escapeIdentifier(String identifier) {
         return escapeIdentifierContent(identifier);
-    }
-
-    @Override
-    public String quoteIdentifierAlways(String identifier) {
-        if (identifier == null) {
-            return null;
-        }
-        return "[" + identifier.replace("]", "]]") + "]";
     }
 
     @Override
@@ -302,13 +286,59 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        if (identifier.startsWith("[") && identifier.endsWith("]") && identifier.length() >= 2) {
-            return identifier.substring(1, identifier.length() - 1).replace("]]", "]");
+        StringBuilder unquoted = new StringBuilder(identifier.length());
+        boolean removedQuote = false;
+        int offset = 0;
+        while (offset < identifier.length()) {
+            char first = identifier.charAt(offset);
+            if (first == '[' || first == '"') {
+                char closingDelimiter = first == '[' ? ']' : '"';
+                StringBuilder part = new StringBuilder();
+                boolean closed = false;
+                offset++;
+                while (offset < identifier.length()) {
+                    char current = identifier.charAt(offset);
+                    if (current == closingDelimiter) {
+                        if (offset + 1 < identifier.length()
+                                && identifier.charAt(offset + 1) == closingDelimiter) {
+                            part.append(closingDelimiter);
+                            offset += 2;
+                            continue;
+                        }
+                        offset++;
+                        closed = true;
+                        break;
+                    }
+                    part.append(current);
+                    offset++;
+                }
+                if (!closed || (offset < identifier.length() && identifier.charAt(offset) != '.')) {
+                    return identifier;
+                }
+                unquoted.append(part);
+                removedQuote = true;
+            } else {
+                int partEnd = identifier.indexOf('.', offset);
+                if (partEnd < 0) {
+                    partEnd = identifier.length();
+                }
+                String part = identifier.substring(offset, partEnd);
+                if (part.indexOf('[') >= 0 || part.indexOf(']') >= 0 || part.indexOf('"') >= 0) {
+                    return identifier;
+                }
+                unquoted.append(part);
+                offset = partEnd;
+            }
+
+            if (offset < identifier.length()) {
+                unquoted.append('.');
+                offset++;
+                if (offset == identifier.length()) {
+                    return identifier;
+                }
+            }
         }
-        if (identifier.startsWith("\"") && identifier.endsWith("\"") && identifier.length() >= 2) {
-            return identifier.substring(1, identifier.length() - 1).replace("\"\"", "\"");
-        }
-        return identifier;
+        return removedQuote ? unquoted.toString() : identifier;
     }
 
     @Override
@@ -316,6 +346,6 @@ public class SqlServerIdentifierProcessor extends DefaultSQLIdentifierProcessor 
         if (StringUtils.isBlank(identifier)) {
             return false;
         }
-        return identifier.startsWith("[") && identifier.endsWith("]");
+        return !identifier.equals(removeIdentifierQuote(identifier));
     }
 }

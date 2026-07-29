@@ -78,13 +78,13 @@ public enum SqlServerIndexTypeEnum {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
             script.append(SQL_ALTER_TABLE)
-                    .append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getTableName()))
-                    .append("] ADD CONSTRAINT ")
+                    .append(qualifiedTableName(tableIndex)).append(" ADD CONSTRAINT ")
                     .append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName() + "_pk"))
                     .append(" ").append(keyword).append(" ").append(buildIndexColumn(tableIndex));
         } else {
             script.append(SQL_CREATE).append(keyword).append(" ");
-            script.append(buildIndexName(tableIndex)).append("\n ON [").append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("] ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append("\n ON ")
+                    .append(qualifiedTableName(tableIndex)).append(" ").append(buildIndexColumn(tableIndex));
         }
         script.append("\ngo");
         return script.toString();
@@ -134,14 +134,25 @@ public enum SqlServerIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (SqlServerIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            return StringUtils.join(SQL_ALTER_TABLE, SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName()), "].[", SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getTableName()), "] DROP CONSTRAINT ", buildIndexName(tableIndex), "\ngo");
+            return StringUtils.join(SQL_ALTER_TABLE, qualifiedTableName(tableIndex),
+                    " DROP CONSTRAINT ", buildIndexName(tableIndex), "\ngo");
         }
         StringBuilder script = new StringBuilder();
         script.append(SQL_DROP_INDEX);
         script.append(buildIndexName(tableIndex));
-        script.append(SQL_ON).append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getSchemaName())).append("].[").append(SqlServerIdentifierProcessor.escapeIdentifier(tableIndex.getTableName())).append("] \ngo");
+        script.append(SQL_ON).append(qualifiedTableName(tableIndex)).append(" \ngo");
 
         return script.toString();
+    }
+
+    private static String qualifiedTableName(TableIndex tableIndex) {
+        StringBuilder name = new StringBuilder();
+        if (StringUtils.isNotBlank(tableIndex.getSchemaName())) {
+            name.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()))
+                    .append('.');
+        }
+        return name.append(SqlServerIdentifierProcessor.INSTANCE
+                .quoteIdentifierAlways(tableIndex.getTableName())).toString();
     }
 
     public static List<IndexType> getIndexTypes() {

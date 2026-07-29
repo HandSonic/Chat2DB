@@ -9,6 +9,8 @@ import ai.chat2db.plugin.sqlserver.SqlServerSqlGuards;
 import ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierProcessor;
 import ai.chat2db.spi.DefaultSqlBuilder;
 import ai.chat2db.spi.model.request.PageLimitRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
+import ai.chat2db.community.domain.api.enums.plugin.DmlTypeEnum;
 import ai.chat2db.community.domain.api.model.account.*;
 import ai.chat2db.community.domain.api.model.async.*;
 import ai.chat2db.community.domain.api.config.*;
@@ -22,13 +24,29 @@ import ai.chat2db.community.domain.api.model.view.*;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.sqlserver.constant.SqlServerSqlBuilderConstants.*;
 public class SqlServerSqlBuilder extends DefaultSqlBuilder {
+
+    @Override
+    public String quoteIdentifier(String identifier) {
+        return SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(identifier);
+    }
+
+    @Override
+    public String quoteQualifiedIdentifier(String... identifiers) {
+        return Arrays.stream(identifiers)
+                .filter(StringUtils::isNotBlank)
+                .map(SqlServerIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                .collect(Collectors.joining(SQLConstants.DOT));
+    }
 
 
 
@@ -74,10 +92,10 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
 
         script.append(SQL_CREATE_TABLE);
         Boolean needFullTableName = tableBuilderConfig.getNeedFullTableName();
-        if (Boolean.TRUE.equals(needFullTableName)) {
-            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getDatabaseName())).append(SQLConstants.DOT);
-        }
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(Boolean.TRUE.equals(needFullTableName)
+                        ? quoteQualifiedIdentifier(table.getDatabaseName(), table.getSchemaName(), table.getName())
+                        : quoteQualifiedIdentifier(table.getSchemaName(), table.getName()))
+                .append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
 
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
@@ -126,8 +144,8 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
     public String buildAITableSchema(Table table) {
         StringBuilder script = new StringBuilder();
         script.append(SQL_CREATE_TABLE);
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getDatabaseName())).append(SQLConstants.DOT);
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getSchemaName())).append(SQLConstants.DOT).append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(table.getName())).append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
+        script.append(quoteQualifiedIdentifier(table.getDatabaseName(), table.getSchemaName(), table.getName()))
+                .append(SQLConstants.SPACE_OPEN_PARENTHESIS).append(SQLConstants.LINE_SEPARATOR);
 
         for (TableColumn column : table.getColumnList()) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
@@ -234,7 +252,10 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
 
 
     private String buildRenameTable(Table oldTable, Table newTable) {
-        return String.format(RENAME_TABLE_SCRIPT, SqlServerIdentifierProcessor.INSTANCE.escapeString(oldTable.getName()), SqlServerIdentifierProcessor.INSTANCE.escapeString(newTable.getName()));
+        return String.format(RENAME_TABLE_SCRIPT,
+                SqlServerIdentifierProcessor.INSTANCE.escapeString(
+                        quoteQualifiedIdentifier(oldTable.getSchemaName(), oldTable.getName())),
+                SqlServerIdentifierProcessor.INSTANCE.escapeString(newTable.getName()));
     }
 
     @Override
@@ -249,7 +270,7 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
             if (versions.length > 0 && Integer.parseInt(versions[0]) >= 11) {
                 StringBuilder sqlBuilder = new StringBuilder(sql.length() + 14);
                 sqlBuilder.append(sql);
-                if (!sql.toLowerCase().contains(ORDER_BY_KEYWORD_LOWER)) {
+                if (!sql.toLowerCase(Locale.ROOT).contains(ORDER_BY_KEYWORD_LOWER)) {
                     sqlBuilder.append(SQL_ORDER_BY_OPEN_PAREN_SELECT_NULL_CLOSE_PAREN);
                 }
                 sqlBuilder.append(SQLConstants.LINE_SEPARATOR_OFFSET_SQL);
@@ -278,13 +299,14 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateDatabase(Database database) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_DATABASE + SqlServerIdentifierProcessor.escapeIdentifier(database.getName()) + SQLConstants.CLOSE_SQUARE_BRACKET);
+        sqlBuilder.append("CREATE DATABASE ").append(quoteIdentifier(database.getName()));
         if (StringUtils.isNotBlank(database.getCollation())) {
             sqlBuilder.append(SQL_COLLATE).append(SqlServerSqlGuards.validateCollation(database.getCollation()));
         }
         sqlBuilder.append(VALUE_GO);
         if (StringUtils.isNotBlank(database.getComment())) {
-            sqlBuilder.append(SQL_EXEC_OPEN_BRACKET + SqlServerIdentifierProcessor.escapeIdentifier(database.getName()) + VALUE_CLOSE_BRACKET_DOT_SYS_DOT_SP_ADDEXTENDEDPROPERTY_SINGLE_QUOTE_MS_DESCRIPTION)
+            sqlBuilder.append("exec ").append(quoteIdentifier(database.getName()))
+                    .append(".sys.sp_addextendedproperty 'MS_Description','")
                     .append(SqlServerIdentifierProcessor.INSTANCE.escapeString(database.getComment())).append(SQLConstants.SINGLE_QUOTE).append(VALUE_GO);
         }
         return sqlBuilder.toString();
@@ -292,17 +314,10 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
 
     @Override
     protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
-        if (StringUtils.isNotBlank(databaseName)) {
-            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(databaseName)).append('.');
-        }
-        if (StringUtils.isNotBlank(schemaName)) {
-            script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)).append('.');
-        }
-        String unquotedTableName = tableName;
-        if (unquotedTableName.length() >= 2 && unquotedTableName.startsWith(SQLConstants.OPEN_SQUARE_BRACKET) && unquotedTableName.endsWith(SQLConstants.CLOSE_SQUARE_BRACKET)) {
-            unquotedTableName = unquotedTableName.substring(1, unquotedTableName.length() - 1).replace("]]", "]");
-        }
-        script.append(SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(unquotedTableName));
+        String normalizedTableName = SqlServerIdentifierProcessor.INSTANCE.isQuoteIdentifier(tableName)
+                ? SqlServerIdentifierProcessor.INSTANCE.removeIdentifierQuote(tableName)
+                : tableName;
+        script.append(quoteQualifiedIdentifier(databaseName, schemaName, normalizedTableName));
     }
 
 
@@ -318,13 +333,62 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateSchema(Schema schema) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_SCHEMA + SqlServerIdentifierProcessor.escapeIdentifier(schema.getName()) + VALUE_CLOSE_BRACKET_GO);
+        sqlBuilder.append("CREATE SCHEMA ").append(quoteIdentifier(schema.getName())).append(VALUE_GO);
         if (StringUtils.isNotBlank(schema.getComment())) {
             sqlBuilder.append(SQL_EXEC_SP_ADDEXTENDEDPROPERTY_SINGLE_QUOTE_MS_DESCRIPTION_SINGLE_QUOTE_COMMA_SINGLE_QUOTE)
                     .append(SqlServerIdentifierProcessor.INSTANCE.escapeString(schema.getComment())).append(SQLConstants.SINGLE_QUOTE).append(SQL_COMMA_SINGLE_QUOTE_SCHEMA_SINGLE_QUOTE)
                     .append(VALUE_COMMA_SINGLE_QUOTE).append(SqlServerIdentifierProcessor.INSTANCE.escapeString(schema.getName())).append(SQLConstants.SINGLE_QUOTE).append(VALUE_GO);
         }
         return sqlBuilder.toString();
+    }
+
+    @Override
+    public String buildUpdate(UpdateSqlRequest request) {
+        StringBuilder script = new StringBuilder(SQLConstants.UPDATE_SQL_PREFIX);
+        buildTableName(request.getDatabaseName(), request.getSchemaName(), request.getTableName(), script);
+        script.append(SQLConstants.SET_SQL);
+        List<String> setClauses = request.getRow().entrySet().stream()
+                .map(entry -> quoteIdentifier(entry.getKey()) + SQLConstants.EQUAL_SQL + entry.getValue())
+                .collect(Collectors.toList());
+        script.append(String.join(SQLConstants.COMMA, setClauses));
+        if (MapUtils.isNotEmpty(request.getPrimaryKeyMap())) {
+            script.append(SQLConstants.WHERE_SQL);
+            List<String> whereClauses = request.getPrimaryKeyMap().entrySet().stream()
+                    .map(entry -> quoteIdentifier(entry.getKey()) + SQLConstants.EQUAL_SQL + entry.getValue())
+                    .collect(Collectors.toList());
+            script.append(String.join(SQLConstants.SQL_AND, whereClauses));
+        }
+        return script.toString();
+    }
+
+    @Override
+    public String buildTemplate(Table table, String type) {
+        if (table == null || CollectionUtils.isEmpty(table.getColumnList()) || StringUtils.isBlank(type)) {
+            return SQLConstants.EMPTY;
+        }
+        String tableName = quoteQualifiedIdentifier(
+                table.getDatabaseName(), table.getSchemaName(), table.getName());
+        List<String> columnNames = table.getColumnList().stream()
+                .map(column -> quoteIdentifier(column.getName()))
+                .collect(Collectors.toList());
+        if (DmlTypeEnum.INSERT.name().equalsIgnoreCase(type)) {
+            return SQLConstants.INSERT_INTO_SQL_PREFIX + tableName + SQLConstants.SPACE_OPEN_PARENTHESIS
+                    + String.join(SQLConstants.COMMA, columnNames)
+                    + SQLConstants.CLOSE_PARENTHESIS + SQLConstants.VALUES_SQL + SQLConstants.OPEN_PARENTHESIS
+                    + columnNames.stream().map(name -> SQLConstants.SPACE)
+                    .collect(Collectors.joining(SQLConstants.COMMA))
+                    + SQLConstants.CLOSE_PARENTHESIS;
+        }
+        if (DmlTypeEnum.UPDATE.name().equalsIgnoreCase(type)) {
+            String setClause = columnNames.stream()
+                    .map(name -> name + SQLConstants.EQUAL_SQL + SQLConstants.SPACE)
+                    .collect(Collectors.joining(SQLConstants.COMMA));
+            return SQLConstants.UPDATE_SQL_PREFIX + tableName + SQLConstants.SET_SQL + setClause;
+        }
+        if (DmlTypeEnum.DELETE.name().equalsIgnoreCase(type)) {
+            return SQLConstants.DELETE_FROM_SQL_PREFIX + tableName;
+        }
+        return SQLConstants.EMPTY;
     }
 
     @Override

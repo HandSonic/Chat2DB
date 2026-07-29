@@ -83,7 +83,8 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         String tableDDL = Chat2DBContext.getDbMetaData().tableDDL(connection,
                 new TableMetadataRequest(databaseName, schemaName, tableName));
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_DROP_TABLE_EXISTS).append(quoteIdentifier(tableName)).append(";").append("\ngo\n")
+        sqlBuilder.append(SQL_DROP_TABLE_EXISTS)
+                .append(buildFullTableName(null, schemaName, tableName)).append(";").append("\ngo\n")
                 .append(tableDDL);
         asyncContext.write(sqlBuilder.toString());
         if (asyncContext.isContainsData()) {
@@ -104,7 +105,7 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append(SQL_DROP_VIEW_EXISTS)
-                        .append(quoteIdentifier(resultSet.getString("TABLE_NAME")))
+                        .append(buildFullTableName(null, schemaName, resultSet.getString("TABLE_NAME")))
                         .append(";\n").append("go").append("\n")
                         .append(resultSet.getString("VIEW_DEFINITION")).append(";").append("\n")
                         .append("go").append("\n");
@@ -118,18 +119,24 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         DefaultSQLExecutor.getInstance().preExecute(connection, ROUTINES_SQL, new String[]{"FN", schemaName}, resultSet -> {
             while (resultSet.next()) {
                 String functionName = resultSet.getString("name");
-                exportFunction(connection, functionName, asyncContext);
+                exportFunction(connection, schemaName, functionName, asyncContext);
             }
         });
 
     }
 
-    private void exportFunction(Connection connection, String functionName, AsyncContext asyncContext) {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'", SqlServerIdentifierProcessor.INSTANCE.escapeString(functionName));
+    private void exportFunction(Connection connection, String schemaName, String functionName,
+                                AsyncContext asyncContext) {
+        String sql = String.format(ROUTINES_DDL_SQL,
+                "'SQL_SCALAR_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'",
+                SqlServerIdentifierProcessor.INSTANCE.escapeString(functionName),
+                SqlServerIdentifierProcessor.INSTANCE.escapeString(schemaName));
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(String.format(DROP_FUNCTION_SQL, SqlServerIdentifierProcessor.INSTANCE.escapeString(functionName), SqlServerIdentifierProcessor.escapeIdentifier(functionName)));
+                String qualifiedName = buildFullTableName(null, schemaName, functionName);
+                sqlBuilder.append(String.format(DROP_FUNCTION_SQL,
+                        SqlServerIdentifierProcessor.INSTANCE.escapeString(qualifiedName), qualifiedName));
                 sqlBuilder.append(resultSet.getString("definition"))
                         .append("\n").append("go").append("\n");
                 asyncContext.write(sqlBuilder.toString());
@@ -142,17 +149,22 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
         DefaultSQLExecutor.getInstance().preExecute(connection, ROUTINES_SQL, new String[]{"P", schemaName}, resultSet -> {
             while (resultSet.next()) {
                 String procedureName = resultSet.getString("name");
-                exportProcedure(connection, procedureName, asyncContext);
+                exportProcedure(connection, schemaName, procedureName, asyncContext);
             }
         });
     }
 
-    private void exportProcedure(Connection connection, String procedureName, AsyncContext asyncContext) throws SQLException {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", SqlServerIdentifierProcessor.INSTANCE.escapeString(procedureName));
+    private void exportProcedure(Connection connection, String schemaName, String procedureName,
+                                 AsyncContext asyncContext) throws SQLException {
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'",
+                SqlServerIdentifierProcessor.INSTANCE.escapeString(procedureName),
+                SqlServerIdentifierProcessor.INSTANCE.escapeString(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             if (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append(String.format(DROP_PROCEDURE_SQL, SqlServerIdentifierProcessor.INSTANCE.escapeString(procedureName), SqlServerIdentifierProcessor.escapeIdentifier(procedureName)));
+                String qualifiedName = buildFullTableName(null, schemaName, procedureName);
+                sqlBuilder.append(String.format(DROP_PROCEDURE_SQL,
+                        SqlServerIdentifierProcessor.INSTANCE.escapeString(qualifiedName), qualifiedName));
                 sqlBuilder.append(resultSet.getString("definition")).append("\n").append("go").append("\n");
                 asyncContext.write(sqlBuilder.toString());
 
@@ -173,7 +185,9 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     @Override
     public void connectDatabase(Connection connection, String database) {
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_USE_DATABASE, SqlServerIdentifierProcessor.escapeIdentifier(database)));
+            DefaultSQLExecutor.getInstance().execute(connection,
+                    String.format(SQL_USE_DATABASE,
+                            SqlServerIdentifierProcessor.INSTANCE.quoteIdentifierAlways(database)));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -587,6 +601,12 @@ public class SqlServerDBManager extends DefaultDBManager implements IDbManager {
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String fullTableName = buildFullTableName(databaseName, schemaName, tableName);
         return String.format(SQL_DROP_TABLE, fullTableName);
+    }
+
+    @Override
+    public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
+        return String.format(SQL_TRUNCATE_TABLE,
+                buildFullTableName(databaseName, schemaName, tableName));
     }
 
     @Override

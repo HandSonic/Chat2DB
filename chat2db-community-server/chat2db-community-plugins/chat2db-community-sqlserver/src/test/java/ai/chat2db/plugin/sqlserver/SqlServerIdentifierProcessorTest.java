@@ -2,6 +2,7 @@ package ai.chat2db.plugin.sqlserver;
 
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
 import ai.chat2db.community.domain.api.model.metadata.Database;
+import ai.chat2db.community.domain.api.model.metadata.Schema;
 import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
@@ -12,10 +13,16 @@ import ai.chat2db.plugin.sqlserver.constant.SQLConstant;
 import ai.chat2db.plugin.sqlserver.enums.type.SqlServerColumnTypeEnum;
 import ai.chat2db.plugin.sqlserver.enums.type.SqlServerIndexTypeEnum;
 import ai.chat2db.plugin.sqlserver.identifier.SqlServerIdentifierProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.TruncateTableRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -28,7 +35,7 @@ class SqlServerIdentifierProcessorTest {
     @Test
     void shouldDoubleSingleQuotesInStringLiterals() {
         assertEquals("O''Brien", SqlServerIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
-        assertEquals("", SqlServerIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(SqlServerIdentifierProcessor.INSTANCE.escapeString(null));
         assertEquals("plain", SqlServerIdentifierProcessor.INSTANCE.escapeString("plain"));
     }
 
@@ -57,7 +64,7 @@ class SqlServerIdentifierProcessorTest {
         assertEquals("[select]", processor.quoteIdentifier("select"));
         assertEquals("[USER]", processor.quoteIdentifier("USER"));
         assertEquals("[weird name]", processor.quoteIdentifier("weird name"));
-        assertEquals("[users]", processor.quoteIdentifier("[users]"));
+        assertEquals("[[users]]]", processor.quoteIdentifier("[users]"));
         assertEquals("[a]]b]", processor.quoteIdentifier("a]b"));
     }
 
@@ -75,16 +82,18 @@ class SqlServerIdentifierProcessorTest {
         assertNull(processor.quoteIdentifierAlways(null));
         assertEquals("[users]", processor.quoteIdentifierAlways("users"));
         assertEquals("[a]]b]", processor.quoteIdentifierAlways("a]b"));
-        assertEquals("[users]", processor.quoteIdentifierAlways("[users]"));
+        assertEquals("[[users]]]", processor.quoteIdentifierAlways("[users]"));
         assertEquals("[]", processor.quoteIdentifierAlways(""));
     }
 
     @Test
-    void shouldAlwaysQuoteWithQuoteIdentifierIgnoreCase() {
+    void shouldKeepConditionalSemanticsWithQuoteIdentifierIgnoreCase() {
         SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
         assertNull(processor.quoteIdentifierIgnoreCase(null));
-        assertEquals("[users]", processor.quoteIdentifierIgnoreCase("users"));
-        assertEquals("[MixedCase]", processor.quoteIdentifierIgnoreCase("MixedCase"));
+        assertEquals("users", processor.quoteIdentifierIgnoreCase("users"));
+        assertEquals("MixedCase", processor.quoteIdentifierIgnoreCase("MixedCase"));
+        assertEquals("[select]", processor.quoteIdentifierIgnoreCase("select"));
+        assertEquals("[a]]b]", processor.quoteIdentifierIgnoreCase("a]b"));
     }
 
     @Test
@@ -237,6 +246,154 @@ class SqlServerIdentifierProcessorTest {
         assertEquals("[db].[dbo].[users]", builder.tableName("db", "dbo", "[users]"));
         assertEquals("[us]]ers]", builder.tableName(null, null, "us]ers"));
         assertEquals("[us]]ers]", builder.tableName(null, null, "[us]]ers]"));
+    }
+
+    @Test
+    void shouldRoundTripRawBoundaryBracketsAndQualifiedQuotes() {
+        SqlServerIdentifierProcessor processor = SqlServerIdentifierProcessor.INSTANCE;
+        for (String raw : List.of("plain", "a]b", "]prefix", "suffix]", "[quoted]", "[a]b]", "db.table")) {
+            assertEquals(raw, processor.removeIdentifierQuote(processor.quoteIdentifierAlways(raw)));
+        }
+        assertEquals("db.ta]ble", processor.removeIdentifierQuote("[db].[ta]]ble]"));
+        assertEquals("db.table", processor.removeIdentifierQuote("\"db\".\"table\""));
+        assertEquals("prefix[a]suffix", processor.removeIdentifierQuote("prefix[a]suffix"));
+        assertEquals("[unclosed", processor.removeIdentifierQuote("[unclosed"));
+        assertTrue(processor.isQuoteIdentifier("[db].[table]"));
+        assertFalse(processor.isQuoteIdentifier("prefix[a]suffix"));
+    }
+
+    @Test
+    void shouldMatchReservedWordsIndependentlyOfDefaultLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertTrue(SqlServerIdentifierProcessor.INSTANCE.isReservedKeyword("insert", null, null));
+            assertEquals("[insert]", SqlServerIdentifierProcessor.INSTANCE.quoteIdentifier("insert"));
+        } finally {
+            Locale.setDefault(original);
+        }
+    }
+
+    @Test
+    void shouldAcceptLegalTypeAndDefaultExpressionsWithoutRewritingThem() {
+        assertEquals("decimal(18, 2)", SqlServerSqlGuards.requireColumnTypeExpression("decimal(18, 2)"));
+        assertEquals("[types].[Phone Number]",
+                SqlServerSqlGuards.requireColumnTypeExpression("[types].[Phone Number]"));
+        assertEquals("xml(CONTENT [dbo].[SchemaCollection])",
+                SqlServerSqlGuards.requireColumnTypeExpression("xml(CONTENT [dbo].[SchemaCollection])"));
+        assertEquals("N'O''Brien'", SqlServerSqlGuards.requireDefaultExpression("N'O''Brien'"));
+        assertEquals("NEXT VALUE FOR [dbo].[seq]",
+                SqlServerSqlGuards.requireDefaultExpression("NEXT VALUE FOR [dbo].[seq]"));
+        assertEquals("CONVERT(datetime2, sysdatetime())",
+                SqlServerSqlGuards.requireDefaultExpression("CONVERT(datetime2, sysdatetime())"));
+        assertEquals("N'value' COLLATE Latin1_General_100_CI_AS",
+                SqlServerSqlGuards.requireDefaultExpression(
+                        "N'value' COLLATE Latin1_General_100_CI_AS"));
+        assertEquals("'semi;colon'", SqlServerSqlGuards.requireDefaultExpression("'semi;colon'"));
+    }
+
+    @Test
+    void shouldRejectStatementBoundariesAndUnbalancedExpressions() {
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireColumnTypeExpression("int); DROP TABLE t;--"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireColumnTypeExpression("varchar(20"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireColumnTypeExpression("int DROP TABLE"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("0; DROP TABLE t"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("0 -- comment"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("getdate("));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("0, 1"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("0 CONSTRAINT injected UNIQUE"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("0 NOT NULL"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlServerSqlGuards.requireDefaultExpression("0 WITH VALUES"));
+    }
+
+    @Test
+    void shouldPreserveValidatedParameterizedAndUserDefinedTypes() {
+        TableColumn decimal = new TableColumn();
+        decimal.setName("amount");
+        decimal.setColumnType("decimal(18, 2)");
+        decimal.setNullable(1);
+        decimal.setDefaultValue("CONVERT(decimal(18, 2), (1.25))");
+        String decimalSql = SqlServerColumnTypeEnum.getByType(decimal.getColumnType())
+                .buildCreateColumnSql(decimal);
+        assertTrue(decimalSql.contains("[amount] decimal(18, 2)"), decimalSql);
+        assertTrue(decimalSql.contains("DEFAULT CONVERT(decimal(18, 2), (1.25))"), decimalSql);
+
+        TableColumn custom = new TableColumn();
+        custom.setName("phone");
+        custom.setColumnType("[types].[Phone Number]");
+        custom.setNullable(1);
+        String customSql = SqlServerColumnTypeEnum.getByType(custom.getColumnType())
+                .buildCreateColumnSql(custom);
+        assertTrue(customSql.contains("[phone] [types].[Phone Number]"), customSql);
+    }
+
+    @Test
+    void shouldQuoteInheritedBuilderAndManagerPaths() {
+        SqlServerSqlBuilder builder = new SqlServerSqlBuilder();
+        String database = "catalog]x";
+        String schema = "sales]x";
+        String table = "orders]x";
+        String qualified = "[catalog]]x].[sales]]x].[orders]]x]";
+
+        assertEquals("SELECT COUNT(1) FROM " + qualified,
+                builder.buildSelectCount(database, schema, table));
+        assertEquals("SELECT * FROM " + qualified,
+                builder.buildSelectTable(database, schema, table));
+        assertEquals("DROP TABLE " + qualified,
+                builder.buildDropTable(new DropTableRequest(database, schema, table)));
+        assertEquals("TRUNCATE TABLE " + qualified,
+                builder.buildTruncateTable(new TruncateTableRequest(database, schema, table)));
+
+        Schema schemaModel = new Schema();
+        schemaModel.setName(schema);
+        assertEquals("CREATE SCHEMA [sales]]x]\ngo\n", builder.buildCreateSchema(schemaModel));
+        assertEquals("DROP SCHEMA [sales]]x]", builder.buildDropSchema(schema));
+        assertEquals("TRUNCATE TABLE " + qualified,
+                new SqlServerDBManager().truncateTable(null, database, schema, table));
+    }
+
+    @Test
+    void shouldQuoteInheritedUpdateAndTemplateColumns() {
+        SqlServerSqlBuilder builder = new SqlServerSqlBuilder();
+        Map<String, String> row = new LinkedHashMap<>();
+        row.put("display]name", "'value'");
+        Map<String, String> keys = new LinkedHashMap<>();
+        keys.put("id]key", "1");
+        UpdateSqlRequest request = UpdateSqlRequest.builder()
+                .schemaName("dbo")
+                .tableName("users]archive")
+                .row(row)
+                .primaryKeyMap(keys)
+                .build();
+        String update = builder.buildUpdate(request);
+        assertTrue(update.contains("UPDATE [dbo].[users]]archive] SET [display]]name] = 'value'"), update);
+        assertTrue(update.contains("WHERE [id]]key] = 1"), update);
+
+        Table table = new Table();
+        table.setSchemaName("dbo");
+        table.setName("users]archive");
+        TableColumn column = new TableColumn();
+        column.setName("display]name");
+        table.setColumnList(List.of(column));
+        assertTrue(builder.buildTemplate(table, "UPDATE")
+                .contains("UPDATE [dbo].[users]]archive] SET [display]]name] = "));
+    }
+
+    @Test
+    void shouldUseOneSqlServerLiteralEscaperForComments() {
+        String script = SQLConstant.buildTableComment("C:\\tmp\\O'Brien", "dbo", "orders");
+        assertTrue(script.contains("N'C:\\tmp\\O''Brien'"), script);
+        assertFalse(script.contains("C:\\\\tmp"), script);
     }
 
     private static final class ExposedBuilder extends SqlServerSqlBuilder {

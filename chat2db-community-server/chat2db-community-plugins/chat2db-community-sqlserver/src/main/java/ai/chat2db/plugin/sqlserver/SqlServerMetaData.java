@@ -15,7 +15,6 @@ import ai.chat2db.plugin.sqlserver.enums.type.SqlServerColumnTypeEnum;
 import ai.chat2db.plugin.sqlserver.enums.type.SqlServerDefaultValueEnum;
 import ai.chat2db.plugin.sqlserver.enums.type.SqlServerIndexTypeEnum;
 import ai.chat2db.plugin.sqlserver.value.SqlServerValueProcessor;
-import ai.chat2db.community.tools.util.EasyStringUtils;
 import ai.chat2db.community.tools.util.I18nUtils;
 import ai.chat2db.spi.*;
 import ai.chat2db.spi.DefaultMetaService;
@@ -83,7 +82,8 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         List<String> tempList = new ArrayList<>();
         String formatSchemaName = format(schemaName);
         String formatTableName = format(tableName);
-        ddlBuilder.append(SQL_CREATE_TABLE).append(" ").append(formatTableName).append("\n");
+        ddlBuilder.append(SQL_CREATE_TABLE).append(" ")
+                .append(getMetaDataName(schemaName, tableName)).append("\n");
         ddlBuilder.append("(\n");
         List<TableColumn> tableColumnList = DefaultSQLExecutor.getInstance().preExecute(connection, SELECT_TABLE_COLUMNS, new String[]{schemaName, tableName}, resultSet -> {
             List<TableColumn> columns = new ArrayList<>();
@@ -94,7 +94,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                 tableColumn.setName(resultSet.getString("COLUMN_NAME"));
                 String computedDefinition = resultSet.getString("COMPUTED_DEFINITION");
                 boolean isPersisted = resultSet.getBoolean("IS_PERSISTED");
-                String dataType = resultSet.getString("DATA_TYPE").toUpperCase();
+                String dataType = resultSet.getString("DATA_TYPE").toUpperCase(Locale.ROOT);
                 boolean isIdentity = resultSet.getBoolean("IS_IDENTITY");
                 BigDecimal seedValue = resultSet.getBigDecimal("SEED_VALUE");
                 BigDecimal incrementValue = resultSet.getBigDecimal("INCREMENT_VALUE");
@@ -126,7 +126,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
             tempList.clear();
             return columns;
         });
-        Set<String> PKUQConstraintNameSet = DefaultSQLExecutor.getInstance().execute(connection, String.format(PK_UQ_CONSTRAINT_SQL, EasyStringUtils.escapeString(formatSchemaName), EasyStringUtils.escapeString(formatTableName)), resultSet -> {
+        Set<String> PKUQConstraintNameSet = DefaultSQLExecutor.getInstance().execute(connection, String.format(PK_UQ_CONSTRAINT_SQL, SqlServerIdentifierProcessor.INSTANCE.escapeString(formatSchemaName), SqlServerIdentifierProcessor.INSTANCE.escapeString(formatTableName)), resultSet -> {
             Map<String, List<String>> PKConstraintsMap = new HashMap<>(1);
             Map<String, List<String>> UQConstraintsMap = new HashMap<>(3);
             HashMap<String, String> clusteredMap = new HashMap<>(4);
@@ -155,7 +155,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                                 .append("\n")
                                 .append("primary key ");
                         if (clusteredMap.containsKey(key)) {
-                            tempBuilder.append(" ").append(clusteredMap.get(key).toLowerCase()).append(" ");
+                            tempBuilder.append(" ").append(clusteredMap.get(key).toLowerCase(Locale.ROOT)).append(" ");
                         }
                         tempBuilder.append("(")
                                 .append(String.join(" , ", value))
@@ -171,7 +171,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                                 .append("\n")
                                 .append("unique ");
                         if (clusteredMap.containsKey(key)) {
-                            tempBuilder.append(" ").append(clusteredMap.get(key).toLowerCase()).append(" ");
+                            tempBuilder.append(" ").append(clusteredMap.get(key).toLowerCase(Locale.ROOT)).append(" ");
                         }
                         tempBuilder.append("(")
                                 .append(String.join(" , ", value))
@@ -193,8 +193,8 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         });
         DefaultSQLExecutor.getInstance().execute(connection,
                 String.format(CHECK_CONSTRAINT_SQL,
-                        EasyStringUtils.escapeString(formatSchemaName),
-                        EasyStringUtils.escapeString(formatTableName)), resultSet -> {
+                        SqlServerIdentifierProcessor.INSTANCE.escapeString(formatSchemaName),
+                        SqlServerIdentifierProcessor.INSTANCE.escapeString(formatTableName)), resultSet -> {
                     boolean isFirst = true;
                     while (resultSet.next()) {
 
@@ -496,7 +496,7 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
                 column.setSchemaName(schemaName);
                 column.setOldName(resultSet.getString("COLUMN_NAME"));
                 column.setName(resultSet.getString("COLUMN_NAME"));
-                String dataType = resultSet.getString("DATA_TYPE").toUpperCase();
+                String dataType = resultSet.getString("DATA_TYPE").toUpperCase(Locale.ROOT);
                 column.setColumnType(SqlUtils.removeDigits(dataType));
                 column.setDefaultValue(resultSet.getString("COLUMN_DEFAULT"));
                 column.setComment(resultSet.getString("COLUMN_COMMENT"));
@@ -536,7 +536,8 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
         String sql = String.format(
                 ROUTINES_DDL_SQL,
                 "'SQL_SCALAR_FUNCTION', 'SQL_INLINE_TABLE_VALUED_FUNCTION', 'SQL_TABLE_VALUED_FUNCTION'",
-                getSQLIdentifierProcessor().escapeString(functionName)
+                getSQLIdentifierProcessor().escapeString(functionName),
+                getSQLIdentifierProcessor().escapeString(schemaName)
         );
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Function function = new Function();
@@ -635,7 +636,9 @@ public class SqlServerMetaData extends DefaultMetaService implements IDbMetaData
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'", getSQLIdentifierProcessor().escapeString(procedureName));
+        String sql = String.format(ROUTINES_DDL_SQL, "'SQL_STORED_PROCEDURE'",
+                getSQLIdentifierProcessor().escapeString(procedureName),
+                getSQLIdentifierProcessor().escapeString(schemaName));
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
                     Procedure procedure = new Procedure();
                     procedure.setDatabaseName(databaseName);
