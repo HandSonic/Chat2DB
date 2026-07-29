@@ -3,26 +3,41 @@ package ai.chat2db.plugin.mongodb;
 import java.util.regex.Pattern;
 
 /**
- * Validation and JSON-escaping guards for values interpolated into Mongo shell command
- * text (#1914). Shell commands are not plain SQL: database/collection names are validated
- * against a strict allowlist, and string values inside JSON documents are JSON-escaped.
+ * Context-specific validation and JSON escaping for Mongo shell command text.
  */
 public final class MongodbSqlGuards {
 
-    private static final Pattern MONGO_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_$-]+$");
+    private static final Pattern DATABASE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_$-]+$");
 
     private MongodbSqlGuards() {
     }
 
     /**
-     * Validate a database/collection/field name interpolated into shell command text such as
-     * {@code use <name>} or {@code db.<name>.find()}. Rejects anything outside the allowlist.
+     * Validates the unquoted token used by the Mongo {@code use <database>} command.
      */
-    public static String requireMongoName(String name, String what) {
-        if (name == null || !MONGO_NAME_PATTERN.matcher(name).matches()) {
-            throw new IllegalArgumentException("Invalid MongoDB " + what + ": " + name);
+    public static String requireDatabaseName(String name) {
+        if (name == null || !DATABASE_NAME_PATTERN.matcher(name).matches()) {
+            throw new IllegalArgumentException("Invalid MongoDB database name: " + name);
         }
         return name;
+    }
+
+    /**
+     * Returns a property-safe collection accessor. MongoDB collection names are
+     * not JavaScript identifiers, so dot-property interpolation is not valid for
+     * names containing dots, hyphens, or a leading digit.
+     */
+    public static String collectionAccessor(String name) {
+        requireNonEmptyName(name, "collection name");
+        return "getCollection(" + quoteJsonString(name) + ")";
+    }
+
+    /**
+     * Returns a quoted object key for a MongoDB field name.
+     */
+    public static String quoteFieldName(String name) {
+        requireNonEmptyName(name, "field name");
+        return quoteJsonString(name);
     }
 
     /**
@@ -59,13 +74,35 @@ public final class MongodbSqlGuards {
                     sb.append("\\f");
                     break;
                 default:
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
+                    if (c < 0x20 || c == '\u2028' || c == '\u2029' || Character.isSurrogate(c)) {
+                        appendUnicodeEscape(sb, c);
                     } else {
                         sb.append(c);
                     }
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Escapes and surrounds one JSON/JavaScript string literal.
+     */
+    public static String quoteJsonString(String value) {
+        return value == null ? "\"null\"" : "\"" + escapeJsonString(value) + "\"";
+    }
+
+    private static void requireNonEmptyName(String name, String what) {
+        if (name == null || name.isEmpty() || name.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("Invalid MongoDB " + what + ": " + name);
+        }
+    }
+
+    private static void appendUnicodeEscape(StringBuilder builder, char value) {
+        final char[] hex = "0123456789abcdef".toCharArray();
+        builder.append("\\u")
+                .append(hex[(value >>> 12) & 0xf])
+                .append(hex[(value >>> 8) & 0xf])
+                .append(hex[(value >>> 4) & 0xf])
+                .append(hex[value & 0xf]);
     }
 }

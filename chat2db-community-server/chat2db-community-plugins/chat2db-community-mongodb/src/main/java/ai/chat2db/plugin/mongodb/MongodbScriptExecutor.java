@@ -46,7 +46,7 @@ public class MongodbScriptExecutor extends DefaultSQLExecutor {
     private static final MongodbScriptExecutor INSTANCE = new MongodbScriptExecutor();
 
     private static final Pattern pattern = Pattern.compile("db\\.(\\w+)", Pattern.CASE_INSENSITIVE);
-    private static final String regex = "db\\.\\w+\\.find\\(.*\\)";
+    private static final String regex = "db\\.(?:[A-Za-z_$][\\w$]*|getCollection\\(\"(?:\\\\.|[^\"\\\\])*\"\\))\\.find\\(.*\\)";
     private static final Pattern queryPattern = Pattern.compile(regex);
 
     public static MongodbScriptExecutor getInstance() {
@@ -62,7 +62,7 @@ public class MongodbScriptExecutor extends DefaultSQLExecutor {
         if (StringUtils.isEmpty(command.getTableName())) {
             return Collections.emptyList();
         }
-        String sql = String.format(EXECUTE_SQL, MongodbSqlGuards.requireMongoName(command.getTableName(), "collection name"));
+        String sql = String.format(EXECUTE_SQL, MongodbSqlGuards.collectionAccessor(command.getTableName()));
         command.setScript(sql);
         return execute(command);
     }
