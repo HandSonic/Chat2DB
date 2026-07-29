@@ -4,7 +4,6 @@ import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
-import ai.chat2db.plugin.kingbase.KingBaseSqlGuards;
 import ai.chat2db.plugin.kingbase.identifier.KingBaseSQLIdentifierProcessor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.BooleanUtils;
@@ -76,7 +75,7 @@ public enum KingBaseIndexTypeEnum {
             script.append(buildIndexUnique(tableIndex)).append(" ");
             script.append(buildIndexConcurrently(tableIndex)).append(" ");
             script.append(buildIndexName(tableIndex)).append(" ");
-            script.append(SQL_ON).append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName())).append(" ");
+            script.append(SQL_ON).append(qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName())).append(" ");
             script.append(buildIndexMethod(tableIndex)).append(" ");
             script.append(buildIndexColumn(tableIndex));
         } else {
@@ -116,7 +115,7 @@ public enum KingBaseIndexTypeEnum {
 
     private String buildIndexMethod(TableIndex tableIndex) {
         if (StringUtils.isNotBlank(tableIndex.getMethod())) {
-            return "USING " + KingBaseSqlGuards.requireIndexMethod(tableIndex.getMethod());
+            return "USING " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getMethod());
         } else {
             return "";
         }
@@ -143,10 +142,12 @@ public enum KingBaseIndexTypeEnum {
             return "";
         } else if (NORMAL.equals(this)) {
             return StringUtils.join(SQL_COMMENT_INDEX, " ",
-                    KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+                    qualifiedName(tableIndex.getSchemaName(), tableIndex.getName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         } else {
-            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " ON ", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()),
-                    ".", KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName()), " IS '", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ",
+                    KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " ON ",
+                    qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName()), " IS '",
+                    KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         }
     }
 
@@ -183,8 +184,17 @@ public enum KingBaseIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (NORMAL.equals(this)) {
-            return StringUtils.join(SQL_DROP_INDEX, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
+            return StringUtils.join(SQL_DROP_INDEX,
+                    qualifiedName(tableIndex.getSchemaName(), tableIndex.getOldName()));
         }
         return StringUtils.join(SQL_DROP_CONSTRAINT, KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
+    }
+
+    private static String qualifiedName(String schemaName, String objectName) {
+        String quotedName = KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedName;
+        }
+        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedName;
     }
 }

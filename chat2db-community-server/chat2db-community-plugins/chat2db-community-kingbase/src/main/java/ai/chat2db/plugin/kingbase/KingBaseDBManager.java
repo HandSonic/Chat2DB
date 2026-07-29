@@ -30,7 +30,8 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
         connectInfo.setSchemaName(null);
         Connection connection = super.getConnection(connectInfo);
         if (StringUtils.isNotBlank(schemaName)) {
-            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC, KingBaseSQLIdentifierProcessor.escapeIdentifier(schemaName));
+            String sql = String.format(SQL_SET_SEARCH_PATH_USER_PUBLIC,
+                    KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName));
             try {
                 DefaultSQLExecutor.getInstance().execute(connection, sql);
             } catch (SQLException e) {
@@ -57,19 +58,29 @@ public class KingBaseDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "drop table if exists " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
-        return sql;
+        return "DROP TABLE IF EXISTS " + qualifiedTableName(schemaName, tableName);
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
-        String sql = "";
-        if(copyData){
-            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + " WITH DATA";
-        }else {
-            sql = "CREATE TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " AS TABLE " + KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + " WITH NO DATA";
-        }
+        String sql = buildCopyTableSql(schemaName, tableName, newTableName, copyData);
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+    }
+
+    static String buildCopyTableSql(String schemaName, String tableName, String newTableName,
+                                    boolean copyData) {
+        return "CREATE TABLE " + qualifiedTableName(schemaName, newTableName)
+                + " AS TABLE " + qualifiedTableName(schemaName, tableName)
+                + (copyData ? " WITH DATA" : " WITH NO DATA");
+    }
+
+    private static String qualifiedTableName(String schemaName, String tableName) {
+        String quotedTable = KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedTable;
+        }
+        return KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)
+                + "." + quotedTable;
     }
 
     @Override

@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.kingbase;
 
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
+import ai.chat2db.community.domain.api.config.TableBuilderConfig;
 import ai.chat2db.community.domain.api.model.metadata.Database;
 import ai.chat2db.community.domain.api.model.metadata.Schema;
 import ai.chat2db.community.domain.api.model.metadata.Table;
@@ -11,9 +12,12 @@ import ai.chat2db.plugin.kingbase.builder.KingBaseSqlBuilder;
 import ai.chat2db.plugin.kingbase.enums.type.KingBaseColumnTypeEnum;
 import ai.chat2db.plugin.kingbase.enums.type.KingBaseIndexTypeEnum;
 import ai.chat2db.plugin.kingbase.identifier.KingBaseSQLIdentifierProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,18 +29,18 @@ class KingBaseSQLIdentifierProcessorTest {
 
     @Test
     void escapeStringDoublesSingleQuotes() {
-        assertEquals("", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(KingBaseSQLIdentifierProcessor.INSTANCE.escapeString(null));
         assertEquals("plain", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString("plain"));
         assertEquals("O''Brien", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
         assertEquals("a''; DROP TABLE t; --", KingBaseSQLIdentifierProcessor.INSTANCE.escapeString("a'; DROP TABLE t; --"));
     }
 
     @Test
-    void escapeIdentifierStripsOnePairAndDoublesEmbeddedQuotes() {
-        assertEquals("", KingBaseSQLIdentifierProcessor.escapeIdentifier(null));
+    void escapeIdentifierTreatsBoundaryQuotesAsRawContent() {
+        assertNull(KingBaseSQLIdentifierProcessor.escapeIdentifier(null));
         assertEquals("plain", KingBaseSQLIdentifierProcessor.escapeIdentifier("plain"));
         assertEquals("we\"\"name", KingBaseSQLIdentifierProcessor.escapeIdentifier("we\"name"));
-        assertEquals("quoted", KingBaseSQLIdentifierProcessor.escapeIdentifier("\"quoted\""));
+        assertEquals("\"\"quoted\"\"", KingBaseSQLIdentifierProcessor.escapeIdentifier("\"quoted\""));
     }
 
     @Test
@@ -45,7 +49,8 @@ class KingBaseSQLIdentifierProcessorTest {
         assertNull(processor.quoteIdentifier(null));
         assertEquals("", processor.quoteIdentifier(""));
         assertEquals("plain", processor.quoteIdentifier("plain"));
-        assertEquals("UPPER", processor.quoteIdentifier("UPPER"));
+        assertEquals("\"UPPER\"", processor.quoteIdentifier("UPPER"));
+        assertEquals("\"select\"", processor.quoteIdentifier("select"));
         assertEquals("plain", processor.quoteIdentifier("plain", null, null));
         assertEquals("\"we\"\"name\"", processor.quoteIdentifier("we\"name"));
         assertEquals("\"evil\"\"; DROP TABLE t; --\"",
@@ -53,10 +58,11 @@ class KingBaseSQLIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
+    void quoteIdentifierIgnoreCaseRemainsConditionalAndPreservesCase() {
         KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
         assertNull(processor.quoteIdentifierIgnoreCase(null));
-        assertEquals("\"plain\"", processor.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("plain", processor.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("\"MixedCase\"", processor.quoteIdentifierIgnoreCase("MixedCase"));
         assertEquals("\"we\"\"name\"", processor.quoteIdentifierIgnoreCase("we\"name"));
     }
 
@@ -64,44 +70,21 @@ class KingBaseSQLIdentifierProcessorTest {
     void quoteIdentifierAlwaysWrapsAndDoublesEmbeddedQuotes() {
         KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
         assertNull(processor.quoteIdentifierAlways(null));
+        assertEquals("\"\"", processor.quoteIdentifierAlways(""));
         assertEquals("\"plain\"", processor.quoteIdentifierAlways("plain"));
         assertEquals("\"UPPER\"", processor.quoteIdentifierAlways("UPPER"));
         assertEquals("\"we\"\"name\"", processor.quoteIdentifierAlways("we\"name"));
-        assertEquals("\"quoted\"", processor.quoteIdentifierAlways("\"quoted\""));
+        assertEquals("\"\"\"quoted\"\"\"", processor.quoteIdentifierAlways("\"quoted\""));
         assertEquals("\"evil\"\"; DROP TABLE t; --\"",
                 processor.quoteIdentifierAlways("evil\"; DROP TABLE t; --"));
     }
 
     @Test
-    void expressionWhitelistAcceptsLegitimateValues() {
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("0"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("-1"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("3.14"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("now()"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("CURRENT_TIMESTAMP"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("nextval('seq'::regclass)"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'quoted string'"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'it''s'"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'2024-01-01 00:00:00'"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("true"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("UTF8"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("'UTF8'"));
-        assertTrue(KingBaseSqlGuards.isSafeSqlExpression("GB18030"));
-        assertEquals("now()", KingBaseSqlGuards.requireSafeExpression("now()", "test"));
-    }
-
-    @Test
-    void expressionWhitelistRejectsInjection() {
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression(null));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression(""));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("0; DROP TABLE users--"));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("1--"));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("x/*"));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("*/"));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("$$body$$"));
-        assertFalse(KingBaseSqlGuards.isSafeSqlExpression("'unterminated"));
-        assertThrows(IllegalArgumentException.class,
-                () -> KingBaseSqlGuards.requireSafeExpression("0; DROP TABLE users--", "test"));
+    void alwaysQuoteAndRemoveQuoteRoundTripExactRawIdentifiers() {
+        KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
+        for (String raw : List.of("plain", "a\"b", "\"leading", "trailing\"", "\"both\"", "")) {
+            assertEquals(raw, processor.removeIdentifierQuote(processor.quoteIdentifierAlways(raw)), raw);
+        }
     }
 
     @Test
@@ -158,15 +141,15 @@ class KingBaseSQLIdentifierProcessorTest {
         assertTrue(script.contains("CREATE DATABASE \"db\"\"; DROP TABLE t; --\""), script);
         assertTrue(script.contains("IS 'c''; DROP TABLE t; --'"), script);
 
-        Database badCharset = new Database();
-        badCharset.setName("db2");
-        badCharset.setCharset("UTF8; DROP TABLE t; --");
-        assertThrows(IllegalArgumentException.class,
-                () -> new KingBaseSqlBuilder().buildCreateDatabase(badCharset));
+        Database hostileCharset = new Database();
+        hostileCharset.setName("db2");
+        hostileCharset.setCharset("UTF8'; DROP TABLE t; --");
+        String hostileCharsetSql = new KingBaseSqlBuilder().buildCreateDatabase(hostileCharset);
+        assertTrue(hostileCharsetSql.contains("ENCODING  'UTF8''; DROP TABLE t; --'"), hostileCharsetSql);
 
         Database quotedCharset = new Database();
         quotedCharset.setName("db3");
-        quotedCharset.setCharset("'UTF8'");
+        quotedCharset.setCharset("UTF8");
         String ok = new KingBaseSqlBuilder().buildCreateDatabase(quotedCharset);
         assertTrue(ok.contains("ENCODING  'UTF8'"), ok);
     }
@@ -243,12 +226,22 @@ class KingBaseSQLIdentifierProcessorTest {
         drop.setEditStatus(EditStatusEnum.DELETE.name());
         String dropScript = KingBaseIndexTypeEnum.NORMAL.buildModifyIndex(drop);
         assertEquals("DROP INDEX \"o\"\"; x--\"", dropScript);
+
+        TableIndex method = new TableIndex();
+        method.setName("idx");
+        method.setTableName("orders");
+        method.setMethod("btree); DROP TABLE t;--");
+        method.setColumnList(List.of(fkColumn));
+        String methodScript = KingBaseIndexTypeEnum.NORMAL.buildIndexScript(method);
+        assertTrue(methodScript.contains("USING \"btree); DROP TABLE t;--\""), methodScript);
     }
 
     @Test
     void dbManagerQuotesObjectNames() {
-        String sql = new KingBaseDBManager().dropTable(null, null, null, "t\"; x--");
-        assertEquals("drop table if exists \"t\"\"; x--\"", sql);
+        String sql = new KingBaseDBManager().dropTable(null, null, "s\"x", "t\"; x--");
+        assertEquals("DROP TABLE IF EXISTS \"s\"\"x\".\"t\"\"; x--\"", sql);
+        assertEquals("CREATE TABLE \"sales\".\"orders_copy\" AS TABLE \"sales\".\"orders\" WITH DATA",
+                KingBaseDBManager.buildCopyTableSql("sales", "orders", "orders_copy", true));
     }
 
     @Test
@@ -261,7 +254,8 @@ class KingBaseSQLIdentifierProcessorTest {
     void spiProcessorIsConditionalForCompletionConsumers() {
         KingBaseSQLIdentifierProcessor processor = KingBaseSQLIdentifierProcessor.INSTANCE;
         assertEquals("plain", processor.quoteIdentifier("plain"));
-        assertEquals("UPPER", processor.quoteIdentifier("UPPER"));
+        assertEquals("\"UPPER\"", processor.quoteIdentifier("UPPER"));
+        assertEquals("\"select\"", processor.quoteIdentifier("select"));
         assertEquals("\"we\"\"name\"", processor.quoteIdentifier("we\"name"));
         assertEquals("plain", processor.removeIdentifierQuote("\"plain\""));
         assertFalse(processor.isQuoteIdentifier("plain"));
@@ -269,12 +263,78 @@ class KingBaseSQLIdentifierProcessorTest {
     }
 
     @Test
-    void indexMethodAcceptsKnownAndRejectsInjection() {
-        assertEquals("btree", KingBaseSqlGuards.requireIndexMethod("btree"));
-        assertEquals("gin", KingBaseSqlGuards.requireIndexMethod("gin"));
+    void defaultAndTypeGuardsPreserveLegalSyntaxAndRejectDdlReshape() {
+        for (String value : List.of("now()", "nextval('audit.event_id_seq'::regclass)",
+                "timezone('UTC'::text, now())", "ARRAY[]::integer[]",
+                "$tag$comma, -- and ; stay literal$tag$")) {
+            assertEquals(value, KingBaseSqlGuards.requireDefaultExpression(value));
+        }
+        assertEquals("numeric(10,2)", KingBaseSqlGuards.requireColumnTypeExpression("numeric(10,2)"));
+        assertEquals("\"Tenant\".\"InvoiceType\"[]",
+                KingBaseSqlGuards.requireColumnTypeExpression("\"Tenant\".\"InvoiceType\"[]"));
+        for (String value : List.of("1, injected integer", "0 NOT NULL", "0 CHECK (false)",
+                "now()); DROP TABLE x", "'a'; DROP TABLE x--")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> KingBaseSqlGuards.requireDefaultExpression(value), value);
+        }
+        for (String value : List.of("text, injected integer", "text DEFAULT 0", "text); DROP TABLE t;--")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> KingBaseSqlGuards.requireColumnTypeExpression(value), value);
+        }
+    }
+
+    @Test
+    void fallbackColumnTypesAreValidatedInsteadOfDropped() {
+        TableColumn column = new TableColumn();
+        column.setName("state\"value");
+        column.setColumnType("public.invoice_state");
+        column.setNullable(0);
+        column.setDefaultValue("'OPEN'::public.invoice_state");
+        assertEquals("\"state\"\"value\" public.invoice_state NOT NULL DEFAULT 'OPEN'::public.invoice_state",
+                KingBaseColumnTypeEnum.buildCreateColumnSqlSafely(column));
+
+        column.setColumnType("text DEFAULT 0");
         assertThrows(IllegalArgumentException.class,
-                () -> KingBaseSqlGuards.requireIndexMethod("btree); DROP TABLE t;--"));
-        assertThrows(IllegalArgumentException.class,
-                () -> KingBaseSqlGuards.requireIndexMethod("btree USING x"));
+                () -> KingBaseColumnTypeEnum.buildCreateColumnSqlSafely(column));
+    }
+
+    @Test
+    void inheritedBuilderPathsQuoteKingBaseIdentifiersAndIgnoreDatabaseQualifier() {
+        KingBaseSqlBuilder builder = new KingBaseSqlBuilder();
+        assertEquals("SELECT COUNT(1) FROM \"sales\"\"x\".\"orders\"\"x\"",
+                builder.buildSelectCount("ignored_database", "sales\"x", "orders\"x"));
+        assertEquals("DROP TABLE \"sales\"\"x\".\"orders\"\"x\"",
+                builder.buildDropTable(new DropTableRequest("ignored_database", "sales\"x", "orders\"x")));
+
+        UpdateSqlRequest update = UpdateSqlRequest.builder()
+                .databaseName("ignored_database")
+                .schemaName("sales\"schema")
+                .tableName("orders\"table")
+                .row(Map.of("total\"value", "42"))
+                .primaryKeyMap(Map.of("order\"id", "7"))
+                .build();
+        assertEquals("UPDATE \"sales\"\"schema\".\"orders\"\"table\" SET \"total\"\"value\" = 42"
+                        + " WHERE \"order\"\"id\" = 7",
+                builder.buildUpdate(update));
+    }
+
+    @Test
+    void createTableAndCaseOnlyRenameUseQualifiedNames() {
+        Table table = new Table();
+        table.setSchemaName("sales\"schema");
+        table.setName("orders\"table");
+        table.setColumnList(List.of(TableColumn.builder().name("id\"value").columnType("INTEGER").build()));
+        table.setIndexList(List.of());
+        TableBuilderConfig config = TableBuilderConfig.defaultConfig();
+        config.setNeedFullTableName(true);
+        String createSql = new KingBaseSqlBuilder().buildCreateTable(table, config);
+        assertTrue(createSql.startsWith("CREATE TABLE \"sales\"\"schema\".\"orders\"\"table\""), createSql);
+
+        Table renamed = Table.builder().schemaName("sales").name("Orders")
+                .columnList(List.of()).indexList(List.of()).build();
+        Table original = Table.builder().schemaName("sales").name("orders")
+                .columnList(List.of()).indexList(List.of()).build();
+        assertEquals("ALTER TABLE \"sales\".\"orders\"\tRENAME TO \"Orders\";\n",
+                new KingBaseSqlBuilder().buildAlterTable(original, renamed));
     }
 }

@@ -108,7 +108,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
 
 
         StringBuilder ddlBuilder = new StringBuilder(200);
-        String formatTableName = format(tableName);
+        String formatTableName = getMetaDataName(schemaName, tableName);
         ddlBuilder.append(SQL_CREATE_TABLE).append(formatTableName);
         String options = DefaultSQLExecutor.getInstance().preExecute(connection, TABLE_OPTION_SQL, new String[]{schemaName, tableName}, resultSet -> {
             if (resultSet.next()) {
@@ -137,7 +137,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     constraintsBuilder.append("\t").append(" constraint ")
                             .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(constraintName))
                             .append(" ")
-                            .append(constraintDefinition.toLowerCase());
+                            .append(constraintDefinition);
                 }
             }
             if (!constraintsBuilder.isEmpty()) {
@@ -154,7 +154,9 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     boolean isParentTable = resultSet.getBoolean("is_parent_table");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(" partition of ").append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(parentTableName)).append("\n");
+                        ddlBuilder.append("\n").append(" partition of ")
+                                .append(getMetaDataName(resultSet.getString("parent_schema"), parentTableName))
+                                .append("\n");
                         if (!constraintsBuilder.isEmpty()) {
                             ddlBuilder.append("(\n")
                                     .append(constraintsBuilder)
@@ -176,7 +178,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                 String table_name = resultSet.getString("TABLE_NAME");
                 if (StringUtils.isNotBlank(owner) && StringUtils.isNotBlank(table_name)) {
                     tableOwnerBuilder.append(SQL_ALTER_TABLE)
-                            .append(format(table_name))
+                            .append(getMetaDataName(schemaName, table_name))
                             .append(" owner to ")
                             .append(KingBaseSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(owner))
                             .append(";").append("\n");
@@ -193,7 +195,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String privilegeType = resultSet.getString("PRIVILEGE_TYPE");
                     if (StringUtils.isNotBlank(privilegeType)) {
                         tablePrivilegeBuilder.append(SQL_GRANT)
-                                .append(privilegeType.toLowerCase())
+                                .append(KingBaseSqlGuards.requirePrivilege(privilegeType))
                                 .append(SQL_ON)
                                 .append(formatTableName)
                                 .append(" to ")
@@ -409,7 +411,7 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                 boolean isPartitioned = false;
                 if (resultSet.next()) {
                     ddlBuilder.append(" partition by ")
-                            .append(resultSet.getString("partition_key").toLowerCase())
+                            .append(resultSet.getString("partition_key"))
                             .append(";");
                     isPartitioned = true;
                     ddlBuilder.append("\n");
@@ -424,18 +426,22 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String parentTableName = resultSet.getString("PARENT_TABLE");
                     String partitionDefinition = resultSet.getString("PARTITION_DEFINITION");
                     if (StringUtils.isNotBlank(parentTableName) && StringUtils.isNotBlank(partitionDefinition)) {
-                        ddlBuilder.append("\n").append(SQL_CREATE_TABLE).append(subName).append("\n")
-                                .append("partition of ").append(parentTableName).append("\n")
-                                .append(partitionDefinition.toLowerCase()).append(";\n");
+                        // These three names are quote_ident() output from LIST_PARTITIONED_SUB_TABLE_SQL.
+                        ddlBuilder.append("\n").append(SQL_CREATE_TABLE)
+                                .append(resultSet.getString("schema_name")).append(".").append(subName).append("\n")
+                                .append("partition of ").append(format(schemaName)).append(".")
+                                .append(parentTableName).append("\n")
+                                .append(partitionDefinition).append(";\n");
                     }
                 }
 
             });
         } else if (childTableInfo.size() >= 2) {
+            String parentSchemaName = childTableInfo.get(0);
             String parentTableName = childTableInfo.get(1);
             ddlBuilder.append(" ").append(" inherits ")
                     .append("(")
-                    .append(format(parentTableName))
+                    .append(getMetaDataName(parentSchemaName, parentTableName))
                     .append(")").append("\n");
             if (StringUtils.isNotBlank(options)) {
                 ddlBuilder.append(" ").append(options).append("\n");
@@ -494,7 +500,8 @@ public class KingBaseMetaData extends DefaultMetaService implements IDbMetaData 
                     String index_name = resultSet.getString("index_name");
                     String index_comment = resultSet.getString("index_comment");
 
-                    ddlBuilder.append(SQL_COMMENT_INDEX).append(index_name)
+                    ddlBuilder.append(SQL_COMMENT_INDEX).append(resultSet.getString("schema_name"))
+                            .append(".").append(index_name)
                             .append(" is ").append(index_comment).append(";\n");
                 }
 
