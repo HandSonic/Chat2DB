@@ -10,9 +10,13 @@ import ai.chat2db.plugin.sqlite.constant.SqliteMetaDataConstants;
 import ai.chat2db.plugin.sqlite.enums.type.SqliteColumnTypeEnum;
 import ai.chat2db.plugin.sqlite.enums.type.SqliteIndexTypeEnum;
 import ai.chat2db.plugin.sqlite.identifier.SqliteIdentifierProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,17 +31,33 @@ class SqliteIdentifierProcessorTest {
         assertEquals("O''Brien", SqliteIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
         assertEquals("''", SqliteIdentifierProcessor.INSTANCE.escapeString("'"));
         assertEquals("plain", SqliteIdentifierProcessor.INSTANCE.escapeString("plain"));
-        assertEquals("", SqliteIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(SqliteIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
     void escapeIdentifierDoublesDoubleQuotesAndStripsWrappingQuotes() {
         assertEquals("WE\"\"IRD", SqliteIdentifierProcessor.escapeIdentifier("WE\"IRD"));
-        assertEquals("ALREADY", SqliteIdentifierProcessor.escapeIdentifier("\"ALREADY\""));
-        assertEquals("", SqliteIdentifierProcessor.escapeIdentifier(null));
-        assertEquals("", SqliteIdentifierProcessor.escapeIdentifier("\"\""));
+        assertEquals("\"\"ALREADY\"\"", SqliteIdentifierProcessor.escapeIdentifier("\"ALREADY\""));
+        assertNull(SqliteIdentifierProcessor.escapeIdentifier(null));
+        assertEquals("\"\"\"\"", SqliteIdentifierProcessor.escapeIdentifier("\"\""));
         assertEquals("\"A\"\"B\"", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("A\"B"));
         assertEquals("\"\"\"\"", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("\""));
+    }
+
+    @Test
+    void alwaysQuoteRoundTripsEveryRawIdentifierShape() {
+        for (String raw : List.of("plain", "a\"b", "\"already\"", "\"", "a.b", "", " ")) {
+            assertEquals(raw, SqliteIdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                    SqliteIdentifierProcessor.INSTANCE.quoteIdentifierAlways(raw)), raw);
+        }
+        assertNull(SqliteIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+    }
+
+    @Test
+    void conditionalQuoteHandlesReservedAndAlreadyQuotedIdentifiers() {
+        assertEquals("plain_name", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("plain_name"));
+        assertEquals("\"SELECT\"", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
+        assertEquals("\"a\"\"b\"", SqliteIdentifierProcessor.INSTANCE.quoteIdentifier("\"a\"\"b\""));
     }
 
     @Test
@@ -110,6 +130,17 @@ class SqliteIdentifierProcessorTest {
     }
 
     @Test
+    void alterTableOmitsBlankDatabaseInsteadOfRenderingNullIdentifier() {
+        Table oldTable = Table.builder().name("users").columnList(List.of()).indexList(List.of()).build();
+        Table newTable = Table.builder().name("people").columnList(List.of()).indexList(List.of()).build();
+
+        String sql = new SqliteBuilder().buildAlterTable(oldTable, newTable);
+
+        assertTrue(sql.startsWith("ALTER TABLE \"users\""), sql);
+        assertFalse(sql.contains("\"null\""), sql);
+    }
+
+    @Test
     void indexScriptQuotesIndexTableAndColumnNames() {
         TableIndex tableIndex = TableIndex.builder()
                 .name("i\"x")
@@ -149,6 +180,25 @@ class SqliteIdentifierProcessorTest {
     }
 
     @Test
+    void createColumnSqlPreservesLegalDefaultAndRejectsConstraintBreakout() {
+        TableColumn legal = TableColumn.builder()
+                .name("created_at")
+                .columnType("TEXT")
+                .defaultValue("strftime('%Y-%m-%d','now')")
+                .build();
+        assertTrue(SqliteColumnTypeEnum.TEXT.buildCreateColumnSql(legal)
+                .contains("DEFAULT strftime('%Y-%m-%d','now')"));
+
+        TableColumn hostile = TableColumn.builder()
+                .name("created_at")
+                .columnType("TEXT")
+                .defaultValue("CURRENT_TIMESTAMP UNIQUE")
+                .build();
+        assertThrows(IllegalArgumentException.class,
+                () -> SqliteColumnTypeEnum.TEXT.buildCreateColumnSql(hostile));
+    }
+
+    @Test
     void requireSafeTypeNameAcceptsRealTypesAndRejectsInjection() {
         assertEquals("VARCHAR(255)", SqliteSqlGuards.requireSafeTypeName("VARCHAR(255)"));
         assertEquals("NUMERIC(10,2)", SqliteSqlGuards.requireSafeTypeName("NUMERIC(10,2)"));
@@ -157,6 +207,10 @@ class SqliteIdentifierProcessorTest {
                 () -> SqliteSqlGuards.requireSafeTypeName("TEXT); DROP TABLE u; --"));
         assertThrows(IllegalArgumentException.class,
                 () -> SqliteSqlGuards.requireSafeTypeName("TEXT\")"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqliteSqlGuards.requireSafeTypeName("TEXT NOT NULL"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SqliteSqlGuards.requireSafeTypeName("NUMERIC(10,2"));
         assertNull(SqliteSqlGuards.requireSafeTypeName(null));
     }
 
@@ -168,15 +222,26 @@ class SqliteIdentifierProcessorTest {
         assertEquals("-1.5", SqliteSqlGuards.escapeColumnDefault("-1.5"));
         assertEquals("CURRENT_TIMESTAMP", SqliteSqlGuards.escapeColumnDefault("CURRENT_TIMESTAMP"));
         assertEquals("(1+2)", SqliteSqlGuards.escapeColumnDefault("(1+2)"));
+        assertEquals("strftime('%Y-%m-%d','now')",
+                SqliteSqlGuards.escapeColumnDefault("strftime('%Y-%m-%d','now')"));
+        assertEquals("(json_extract('{\"a\":1}', '$.a'))",
+                SqliteSqlGuards.escapeColumnDefault("(json_extract('{\"a\":1}', '$.a'))"));
         assertEquals("", SqliteSqlGuards.escapeColumnDefault(null));
     }
 
     @Test
-    void escapeColumnDefaultNeutralizesAttackStrings() {
-        assertEquals("'x''); DROP TABLE u; --'",
-                SqliteSqlGuards.escapeColumnDefault("'x'); DROP TABLE u; --'"));
-        assertEquals("'0; DROP TABLE u; --'",
-                SqliteSqlGuards.escapeColumnDefault("0; DROP TABLE u; --"));
+    void escapeColumnDefaultRejectsStatementAndConstraintBreakout() {
+        for (String payload : List.of(
+                "'x'); DROP TABLE u; --'",
+                "0; DROP TABLE u; --",
+                "0 NOT NULL",
+                "NULL REFERENCES victims",
+                "CURRENT_TIMESTAMP UNIQUE",
+                "f(1",
+                "1, other")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> SqliteSqlGuards.escapeColumnDefault(payload), payload);
+        }
     }
 
     @Test
@@ -184,5 +249,54 @@ class SqliteIdentifierProcessorTest {
         assertEquals("x ); DROP TABLE u; --", SqliteSqlGuards.sanitizeLineComment("x\n); DROP TABLE u; --"));
         assertEquals("a  b", SqliteSqlGuards.sanitizeLineComment("a\r\nb"));
         assertEquals("", SqliteSqlGuards.sanitizeLineComment(null));
+    }
+
+    @Test
+    void inheritedBuilderPathsAlwaysQuoteIdentifiers() {
+        SqliteBuilder builder = new SqliteBuilder();
+        String database = "ma\"in";
+        String table = "ta\"ble";
+        String column = "co\"l";
+
+        assertTrue(builder.buildSelectTable(database, null, table)
+                .contains("\"ma\"\"in\".\"ta\"\"ble\""));
+        assertTrue(builder.buildSelectCount(database, null, table)
+                .contains("\"ma\"\"in\".\"ta\"\"ble\""));
+        assertTrue(builder.buildDropTable(new DropTableRequest(database, null, table))
+                .endsWith("\"ma\"\"in\".\"ta\"\"ble\""));
+
+        String insert = builder.buildInsert(SingleInsertSqlRequest.builder()
+                .databaseName(database)
+                .tableName(table)
+                .columnList(List.of(column))
+                .valueList(List.of("1"))
+                .build());
+        assertTrue(insert.contains("\"ma\"\"in\".\"ta\"\"ble\" (\"co\"\"l\")"), insert);
+
+        String update = builder.buildUpdate(UpdateSqlRequest.builder()
+                .databaseName(database)
+                .tableName(table)
+                .row(Map.of(column, "1"))
+                .primaryKeyMap(Map.of("id\"x", "2"))
+                .build());
+        assertTrue(update.contains("UPDATE \"ma\"\"in\".\"ta\"\"ble\" SET \"co\"\"l\" = 1"), update);
+        assertTrue(update.contains("WHERE \"id\"\"x\" = 2"), update);
+    }
+
+    @Test
+    void templatesAndDropIndexAlwaysQuoteIdentifiers() {
+        Table table = Table.builder()
+                .name("ta\"ble")
+                .columnList(List.of(TableColumn.builder().name("co\"l").build()))
+                .build();
+        String template = new SqliteBuilder().buildTemplate(table, "SELECT");
+        assertEquals("SELECT \"co\"\"l\" FROM \"ta\"\"ble\"", template);
+
+        TableIndex index = TableIndex.builder()
+                .type("Normal")
+                .oldName("old\"index")
+                .editStatus("DELETE")
+                .build();
+        assertEquals("DROP INDEX \"old\"\"index\"", SqliteIndexTypeEnum.NORMAL.buildModifyIndex(index));
     }
 }

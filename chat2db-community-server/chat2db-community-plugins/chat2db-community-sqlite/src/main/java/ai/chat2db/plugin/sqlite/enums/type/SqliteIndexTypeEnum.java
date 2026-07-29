@@ -102,8 +102,11 @@ public enum SqliteIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append("\"").append(SqliteIdentifierProcessor.escapeIdentifier(column.getColumnName())).append("\"").append(",");
+                script.append(quoteName(column.getColumnName())).append(",");
             }
+        }
+        if (script.length() == 1) {
+            throw new IllegalArgumentException("SQLite index must contain at least one named column");
         }
         script.deleteCharAt(script.length() - 1);
         script.append(")");
@@ -119,7 +122,7 @@ public enum SqliteIndexTypeEnum {
     }
 
     private static String quoteName(String name) {
-        return "\"" + SqliteIdentifierProcessor.escapeIdentifier(name) + "\"";
+        return SqliteIdentifierProcessor.INSTANCE.quoteIdentifierAlways(name);
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -139,7 +142,7 @@ public enum SqliteIndexTypeEnum {
         if (SqliteIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join(SQL_DROP_INDEX, SqliteIdentifierProcessor.escapeIdentifier(tableIndex.getOldName()), "\"");
+        return StringUtils.join(SQL_DROP_INDEX, quoteName(tableIndex.getOldName()));
     }
 
     public static List<IndexType> getIndexTypes() {

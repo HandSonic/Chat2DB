@@ -1,5 +1,11 @@
 package ai.chat2db.plugin.sqlite;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import ai.chat2db.plugin.sqlite.identifier.SqliteIdentifierProcessor;
@@ -25,14 +31,12 @@ public final class SqliteSqlGuards {
      * (e.g. {@code VARCHAR(255)}, {@code NUMERIC(10,2)}, {@code DOUBLE PRECISION}).
      * Anything else is rejected so a hostile type cannot smuggle SQL into generated DDL.
      */
-    private static final Pattern SAFE_TYPE_NAME = Pattern.compile("[A-Za-z0-9_(), ]+");
-
-    /**
-     * Conservative allow-list for unquoted column default expressions
-     * (e.g. {@code 42}, {@code -1.5}, {@code CURRENT_TIMESTAMP}, {@code (1+2)}).
-     * Excludes quotes and semicolons so an expression cannot break out of the DDL statement.
-     */
-    private static final Pattern SAFE_DEFAULT_EXPRESSION = Pattern.compile("[A-Za-z0-9_()., +\\-*/%]+");
+    private static final Set<String> COLUMN_CLAUSE_KEYWORDS = Set.of(
+            "AUTOINCREMENT", "CHECK", "COLLATE", "CONSTRAINT", "DEFAULT", "GENERATED",
+            "NOT", "NULL", "PRIMARY", "REFERENCES", "UNIQUE");
+    private static final Set<String> STATEMENT_KEYWORDS = Set.of(
+            "ALTER", "ATTACH", "CREATE", "DELETE", "DETACH", "DROP", "INSERT", "PRAGMA",
+            "REINDEX", "REPLACE", "SELECT", "UPDATE", "VACUUM");
 
     private SqliteSqlGuards() {
     }
@@ -59,22 +63,18 @@ public final class SqliteSqlGuards {
      * @throws IllegalArgumentException if the type name contains unexpected characters
      */
     public static String requireSafeTypeName(String typeName) {
-        if (typeName != null && !SAFE_TYPE_NAME.matcher(typeName).matches()) {
-            throw new IllegalArgumentException("Unsafe column type name: " + typeName);
+        String expression = StringUtils.trimToNull(typeName);
+        if (expression == null) {
+            return null;
         }
-        return typeName;
+        scanExpression(expression, true, "column type");
+        return expression;
     }
 
     /**
-     * Renders a column default expression safe for inclusion in generated DDL:
-     * <ul>
-     *   <li>values wrapped in single quotes are treated as string literals: if the inner
-     *   content is well-formed (quotes correctly doubled) it is passed through unchanged,
-     *   otherwise the inner content is re-escaped;</li>
-     *   <li>unquoted values matching a conservative expression allow-list (numbers,
-     *   keywords, parenthesised expressions) are passed through unchanged;</li>
-     *   <li>anything else is neutralised by rendering it as an escaped string literal.</li>
-     * </ul>
+     * Validates one SQLite DEFAULT expression while preserving its SQL semantics. Nested
+     * functions and quoted literals are accepted when delimiters are balanced; comments,
+     * statement boundaries, top-level commas, and appended column constraints are rejected.
      * Returns an empty string for {@code null}.
      */
     public static String escapeColumnDefault(String columnDefault) {
@@ -82,17 +82,14 @@ public final class SqliteSqlGuards {
             return "";
         }
         String trimmed = columnDefault.trim();
-        if (trimmed.length() >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-            String inner = trimmed.substring(1, trimmed.length() - 1);
-            if (isWellFormedEscapedLiteral(inner)) {
-                return trimmed;
-            }
-            return "'" + SqliteIdentifierProcessor.INSTANCE.escapeString(inner) + "'";
+        if (trimmed.isEmpty()) {
+            throw invalid("DEFAULT expression", columnDefault);
         }
-        if (SAFE_DEFAULT_EXPRESSION.matcher(trimmed).matches()) {
+        if ("NULL".equalsIgnoreCase(trimmed)) {
             return trimmed;
         }
-        return "'" + SqliteIdentifierProcessor.INSTANCE.escapeString(trimmed) + "'";
+        scanExpression(trimmed, false, "DEFAULT expression");
+        return trimmed;
     }
 
     /**
@@ -104,22 +101,104 @@ public final class SqliteSqlGuards {
         if (comment == null) {
             return "";
         }
-        return StringUtils.replaceEach(comment, new String[]{"\r", "\n"}, new String[]{" ", " "});
+        return StringUtils.replaceEach(comment,
+                new String[]{"\r", "\n", "\u0085", "\u2028", "\u2029"},
+                new String[]{" ", " ", " ", " ", " "});
     }
 
-    /**
-     * Checks that every single quote in the inner content of a quoted literal is
-     * correctly doubled (the only escape mechanism SQLite uses inside string literals).
-     */
-    private static boolean isWellFormedEscapedLiteral(String inner) {
-        for (int i = 0; i < inner.length(); i++) {
-            if (inner.charAt(i) == '\'') {
-                if (i + 1 >= inner.length() || inner.charAt(i + 1) != '\'') {
-                    return false;
+    private static void scanExpression(String expression, boolean typeExpression, String description) {
+        Deque<Character> parentheses = new ArrayDeque<>();
+        List<String> topLevelWords = new ArrayList<>();
+        boolean sawToken = false;
+
+        for (int i = 0; i < expression.length(); i++) {
+            char c = expression.charAt(i);
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            sawToken = true;
+            if (c == '\'' || c == '"') {
+                if (typeExpression && c == '\'') {
+                    throw invalid(description, expression);
                 }
-                i++;
+                i = scanQuoted(expression, i, c, description);
+                continue;
+            }
+            if (c == ';' || Character.isISOControl(c)
+                    || startsWith(expression, i, "--")
+                    || startsWith(expression, i, "/*")
+                    || startsWith(expression, i, "*/")) {
+                throw invalid(description, expression);
+            }
+            if (c == '(') {
+                parentheses.push(c);
+                continue;
+            }
+            if (c == ')') {
+                if (parentheses.isEmpty()) {
+                    throw invalid(description, expression);
+                }
+                parentheses.pop();
+                continue;
+            }
+            if (c == ',' && parentheses.isEmpty()) {
+                throw invalid(description, expression);
+            }
+            if (typeExpression && !isTypeCharacter(c, !parentheses.isEmpty())) {
+                throw invalid(description, expression);
+            }
+            if (Character.isLetter(c) || c == '_') {
+                int wordEnd = i + 1;
+                while (wordEnd < expression.length() && isWordCharacter(expression.charAt(wordEnd))) {
+                    wordEnd++;
+                }
+                String word = expression.substring(i, wordEnd).toUpperCase(Locale.ROOT);
+                if (parentheses.isEmpty()) {
+                    topLevelWords.add(word);
+                }
+                i = wordEnd - 1;
             }
         }
-        return true;
+        if (!sawToken || !parentheses.isEmpty()) {
+            throw invalid(description, expression);
+        }
+        for (String word : topLevelWords) {
+            if (STATEMENT_KEYWORDS.contains(word)
+                    || COLUMN_CLAUSE_KEYWORDS.contains(word)
+                    || typeExpression && "NULL".equals(word)) {
+                throw invalid(description, expression);
+            }
+        }
+    }
+
+    private static int scanQuoted(String expression, int start, char quote, String description) {
+        for (int i = start + 1; i < expression.length(); i++) {
+            if (expression.charAt(i) == quote) {
+                if (i + 1 < expression.length() && expression.charAt(i + 1) == quote) {
+                    i++;
+                    continue;
+                }
+                return i;
+            }
+        }
+        throw invalid(description, expression);
+    }
+
+    private static boolean isTypeCharacter(char c, boolean insideParentheses) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '.'
+                || c == ',' && insideParentheses
+                || (c == '+' || c == '-') && insideParentheses;
+    }
+
+    private static boolean isWordCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+    }
+
+    private static boolean startsWith(String value, int offset, String candidate) {
+        return offset + candidate.length() <= value.length() && value.startsWith(candidate, offset);
+    }
+
+    private static IllegalArgumentException invalid(String description, String value) {
+        return new IllegalArgumentException("Invalid SQLite " + description + ": " + value);
     }
 }

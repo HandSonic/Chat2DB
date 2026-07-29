@@ -58,7 +58,7 @@ public class SqliteDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private String format(String tableName) {
-        return "\"" + SqliteIdentifierProcessor.escapeIdentifier(tableName) + "\"";
+        return SqliteIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
     }
 
     private void exportViews(Connection connection, String databaseName, AsyncContext asyncContext) throws SQLException {

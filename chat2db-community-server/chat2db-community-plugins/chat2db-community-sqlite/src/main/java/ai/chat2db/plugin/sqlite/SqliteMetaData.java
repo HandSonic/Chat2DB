@@ -131,7 +131,9 @@ public class SqliteMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "\"" + SqliteIdentifierProcessor.escapeIdentifier(name) + "\"").collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(StringUtils::isNotBlank)
+                .map(SqliteIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                .collect(Collectors.joining("."));
     }
 
     @Override

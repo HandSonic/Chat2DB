@@ -12,25 +12,26 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public enum SqliteColumnTypeEnum implements IColumnBuilder {
 
 
-    INTEGER("INTEGER", true, false, true, false, false, true, false, false, false, false),
+    INTEGER("INTEGER", true, false, true, false, false, true, false, true, false, false),
 
-    REAL("REAL", true, false, true, false, false, true, false, false, false, false),
+    REAL("REAL", true, false, true, false, false, true, false, true, false, false),
 
-    BLOB("BLOB", true, false, true, false, false, true, false, false, false, false),
+    BLOB("BLOB", true, false, true, false, false, true, false, true, false, false),
 
 
-    TEXT("TEXT", true, false, true, false, false, true, false, false, false, false),
+    TEXT("TEXT", true, false, true, false, false, true, false, true, false, false),
 
     ;
     private ColumnType columnType;
 
     public static SqliteColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
+        return dataType == null ? null : COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase(Locale.ROOT)));
     }
 
     public ColumnType getColumnType() {
@@ -53,13 +54,14 @@ public enum SqliteColumnTypeEnum implements IColumnBuilder {
 
     @Override
     public String buildCreateColumnSql(TableColumn column) {
-        SqliteColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
+        SqliteColumnTypeEnum type = column.getColumnType() == null ? null
+                : COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase(Locale.ROOT));
         if (type == null) {
             return buildDefaultColumn(column, false);
         }
         StringBuilder script = new StringBuilder();
 
-        script.append("\"").append(SqliteIdentifierProcessor.escapeIdentifier(column.getName())).append("\"").append(" ");
+        script.append(SqliteIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())).append(" ");
 
         script.append(buildDataType(column, type)).append(" ");
 
