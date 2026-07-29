@@ -6,7 +6,6 @@ import ai.chat2db.community.tools.util.EasyStringUtils;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.DefaultSQLExecutor;
 import ai.chat2db.spi.ISQLIdentifierProcessor;
-import ai.chat2db.spi.util.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -47,7 +46,9 @@ public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaDa
             if (resultSet.next()) {
                 String tableComment = resultSet.getString("comments");
                 if (StringUtils.isNotBlank(tableComment)) {
-                    ddlBuilder.append("\nCOMMENT ON TABLE ").append(SqlUtils.quoteObjectName(tableName)).append(" IS ")
+                    ddlBuilder.append("\nCOMMENT ON TABLE ")
+                            .append(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName))
+                            .append(" IS ")
                             .append(EasyStringUtils.escapeAndQuoteString(tableComment)).append(";");
                 }
             }
@@ -58,8 +59,8 @@ public class OceanbaseOracleMetaData extends OracleMetaData implements IDbMetaDa
                 String columnComment = resultSet.getString("comments");
                 if (StringUtils.isNotBlank(columnComment)) {
                     ddlBuilder.append("\nCOMMENT ON COLUMN ")
-                            .append(SqlUtils.quoteObjectName(tableName)).append(".")
-                            .append(SqlUtils.quoteObjectName(columnName)).append(" IS ")
+                            .append(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName)).append(".")
+                            .append(OceanbaseOracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(columnName)).append(" IS ")
                             .append(EasyStringUtils.escapeAndQuoteString(columnComment)).append(";");
                 }
             }
