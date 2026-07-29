@@ -1,6 +1,5 @@
 package ai.chat2db.plugin.postgresql.enums.type;
 
-import ai.chat2db.plugin.postgresql.PostgreSqlGuards;
 import ai.chat2db.plugin.postgresql.identifier.PostgreSQLIdentifierProcessor;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.IndexType;
@@ -76,7 +75,7 @@ public enum PostgreSQLIndexTypeEnum {
             script.append(buildIndexUnique(tableIndex)).append(" ");
             script.append(buildIndexConcurrently(tableIndex)).append(" ");
             script.append(buildIndexName(tableIndex)).append(" ");
-            script.append(SQL_ON).append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName())).append(" ");
+            script.append(SQL_ON).append(qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName())).append(" ");
             script.append(buildIndexMethod(tableIndex)).append(" ");
             script.append(buildIndexColumn(tableIndex));
         } else {
@@ -116,7 +115,7 @@ public enum PostgreSQLIndexTypeEnum {
 
     private String buildIndexMethod(TableIndex tableIndex) {
         if (StringUtils.isNotBlank(tableIndex.getMethod())) {
-            return "USING " + PostgreSqlGuards.requirePgName(tableIndex.getMethod(), "index method");
+            return "USING " + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getMethod());
         } else {
             return "";
         }
@@ -143,10 +142,12 @@ public enum PostgreSQLIndexTypeEnum {
             return "";
         } else if (NORMAL.equals(this)) {
             return StringUtils.join(SQL_COMMENT_INDEX, " ",
-                    PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+                    qualifiedName(tableIndex.getSchemaName(), tableIndex.getName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         } else {
-            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " ON ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getSchemaName()),
-                    ".", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
+            return StringUtils.join(SQL_COMMENT_CONSTRAINT, " ",
+                    PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getName()), " ON ",
+                    qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName()), " IS '",
+                    PostgreSQLIdentifierProcessor.INSTANCE.escapeString(tableIndex.getComment()), "';");
         }
     }
 
@@ -183,8 +184,17 @@ public enum PostgreSQLIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (NORMAL.equals(this)) {
-            return StringUtils.join(SQL_DROP_INDEX, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
+            return StringUtils.join(SQL_DROP_INDEX,
+                    qualifiedName(tableIndex.getSchemaName(), tableIndex.getOldName()));
         }
         return StringUtils.join(SQL_DROP_CONSTRAINT, PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
+    }
+
+    private static String qualifiedName(String schemaName, String objectName) {
+        String quotedName = PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedName;
+        }
+        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedName;
     }
 }

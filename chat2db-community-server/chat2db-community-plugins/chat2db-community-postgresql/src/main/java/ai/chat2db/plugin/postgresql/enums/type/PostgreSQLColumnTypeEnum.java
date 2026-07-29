@@ -6,7 +6,6 @@ import ai.chat2db.spi.IColumnBuilder;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
-import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -75,11 +74,11 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
 
 
 
-    private static Map<String, PostgreSQLColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
+    private static final Map<String, PostgreSQLColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
 
     static {
         for (PostgreSQLColumnTypeEnum value : PostgreSQLColumnTypeEnum.values()) {
-            COLUMN_TYPE_MAP.put(value.getColumnType().getTypeName(), value);
+            COLUMN_TYPE_MAP.put(value.getColumnType().getTypeName().toUpperCase(Locale.ROOT), value);
         }
     }
 
@@ -91,7 +90,20 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
     }
 
     public static PostgreSQLColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
+        if (StringUtils.isBlank(dataType)) {
+            return null;
+        }
+        String typeExpression = PostgreSqlGuards.requireColumnTypeExpression(dataType);
+        String baseType = typeExpression;
+        int argumentsStart = baseType.indexOf('(');
+        if (argumentsStart >= 0) {
+            baseType = baseType.substring(0, argumentsStart);
+        }
+        while (baseType.stripTrailing().endsWith("[]")) {
+            baseType = baseType.stripTrailing();
+            baseType = baseType.substring(0, baseType.length() - 2);
+        }
+        return COLUMN_TYPE_MAP.get(baseType.trim().toUpperCase(Locale.ROOT));
     }
 
     public static List<ColumnType> getTypes() {
@@ -104,11 +116,41 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
         return columnType;
     }
 
+    public static String buildCreateColumnSqlSafely(TableColumn column) {
+        PostgreSQLColumnTypeEnum type = getByType(column.getColumnType());
+        return type == null ? buildSafeFallbackColumn(column, false) : type.buildCreateColumnSql(column);
+    }
+
+    public static String buildAICreateColumnSqlSafely(TableColumn column) {
+        PostgreSQLColumnTypeEnum type = getByType(column.getColumnType());
+        return type == null ? buildSafeFallbackColumn(column, true) : type.buildAICreateColumnSql(column);
+    }
+
+    public static String buildModifyColumnSafely(TableColumn column) {
+        PostgreSQLColumnTypeEnum type = getByType(column.getColumnType());
+        if (type != null) {
+            return type.buildModifyColumn(column);
+        }
+        if (EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
+            return SQL_DROP_COLUMN + PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName());
+        }
+        if (EditStatusEnum.ADD.name().equals(column.getEditStatus())) {
+            return "ADD COLUMN " + buildSafeFallbackColumn(column, false);
+        }
+        if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus())) {
+            String columnName = PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName());
+            String dataType = PostgreSqlGuards.requireColumnTypeExpression(column.getColumnType());
+            return SQL_ALTER_COLUMN + columnName + " TYPE " + dataType
+                    + " USING " + columnName + "::" + dataType;
+        }
+        return "";
+    }
+
     @Override
     public String buildCreateColumnSql(TableColumn column) {
-        PostgreSQLColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
+        PostgreSQLColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase(Locale.ROOT));
         if (type == null) {
-            return buildDefaultColumn(column, false);
+            return buildSafeFallbackColumn(column, false);
         }
         StringBuilder script = new StringBuilder();
 
@@ -128,9 +170,9 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
 
     @Override
     public String buildAICreateColumnSql(TableColumn column) {
-        PostgreSQLColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
+        PostgreSQLColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase(Locale.ROOT));
         if (type == null) {
-            return buildDefaultColumn(column, false);
+            return buildSafeFallbackColumn(column, true);
         }
         StringBuilder script = new StringBuilder();
 
@@ -177,7 +219,7 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
                 boolean sizeChanged = oldColumnSize != null && newColumnSize != null && !oldColumnSize.equals(newColumnSize);
                 boolean scaleChanged = oldDecimalDigits != null && newDecimalDigits != null && !oldDecimalDigits.equals(newDecimalDigits);
                 if (!sameType || sizeChanged || scaleChanged) {
-                    String newDataTypeClause = buildDataType(column, this);
+                    String newDataTypeClause = buildModifiedDataType(column);
                     script.append(SQL_ALTER_COLUMN)
                             .append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
                             .append(" TYPE ")
@@ -189,7 +231,7 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
                             .append(",\n");
                 }
             } else {
-                String newDataTypeClause = buildDataType(column, this);
+                String newDataTypeClause = buildModifiedDataType(column);
                 script.append(SQL_ALTER_COLUMN)
                         .append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
                         .append(" TYPE ")
@@ -255,10 +297,20 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
             return "";
         }
         if (column.getOldColumn() == null || !StringUtils.equals(column.getOldColumn().getComment(), column.getComment())) {
-            return StringUtils.join(SQL_COMMENT_COLUMN, " ", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getTableName()),
-                    ".", PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()), " IS '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "';");
+            String tableName = qualifiedName(column.getSchemaName(), column.getTableName());
+            return StringUtils.join(SQL_COMMENT_COLUMN, " ", tableName, ".",
+                    PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()), " IS '",
+                    PostgreSQLIdentifierProcessor.INSTANCE.escapeString(column.getComment()), "';");
         }
         return "";
+    }
+
+    private static String qualifiedName(String schemaName, String objectName) {
+        String quotedName = PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedName;
+        }
+        return PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedName;
     }
 
     private String buildDefaultValue(TableColumn column, PostgreSQLColumnTypeEnum type) {
@@ -275,17 +327,44 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
         }
 
         if (Arrays.asList(CHAR, VARCHAR).contains(type)) {
+            if (PostgreSqlGuards.isFunctionOrCastExpression(column.getDefaultValue())) {
+                return StringUtils.join("DEFAULT ",
+                        PostgreSqlGuards.requireDefaultExpression(column.getDefaultValue()));
+            }
             return StringUtils.join("DEFAULT '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
         if (Arrays.asList(TIMESTAMP, TIME, TIMETZ, TIMESTAMPTZ, DATE).contains(type)) {
-            if ("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())) {
-                return StringUtils.join("DEFAULT ", column.getDefaultValue());
+            if (PostgreSqlGuards.isTemporalExpression(column.getDefaultValue())) {
+                return StringUtils.join("DEFAULT ",
+                        PostgreSqlGuards.requireDefaultExpression(column.getDefaultValue()));
             }
             return StringUtils.join("DEFAULT '", PostgreSQLIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
         }
 
         return StringUtils.join("DEFAULT ", PostgreSqlGuards.requireDefaultExpression(column.getDefaultValue()));
+    }
+
+    private static String buildSafeFallbackColumn(TableColumn column, boolean includeAiComment) {
+        StringBuilder script = new StringBuilder();
+        script.append(PostgreSQLIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
+                .append(" ")
+                .append(PostgreSqlGuards.requireColumnTypeExpression(column.getColumnType()));
+        if (column.getNullable() != null) {
+            script.append(column.getNullable() == 1 ? " NULL" : " NOT NULL");
+        }
+        if (StringUtils.isNotEmpty(column.getDefaultValue())) {
+            if ("EMPTY_STRING".equalsIgnoreCase(column.getDefaultValue().trim())) {
+                script.append(" DEFAULT ''");
+            } else {
+                script.append(" DEFAULT ")
+                        .append(PostgreSqlGuards.requireDefaultExpression(column.getDefaultValue()));
+            }
+        }
+        if (includeAiComment) {
+            script.append(" ").append(PostgreSQLColumnTypeEnum.TEXT.buildAICreateColumnCommentSql(column));
+        }
+        return script.toString();
     }
 
     private String buildNullable(TableColumn column, PostgreSQLColumnTypeEnum type) {
@@ -334,6 +413,13 @@ public enum PostgreSQLColumnTypeEnum implements IColumnBuilder {
             }
         }
         return columnType;
+    }
+
+    private String buildModifiedDataType(TableColumn column) {
+        if (COLUMN_TYPE_MAP.containsKey(column.getColumnType().toUpperCase(Locale.ROOT))) {
+            return buildDataType(column, this);
+        }
+        return PostgreSqlGuards.requireColumnTypeExpression(column.getColumnType());
     }
 
 }
