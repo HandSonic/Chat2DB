@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.snowflake.builder;
 
 import ai.chat2db.spi.constant.SQLConstants;
+import ai.chat2db.community.domain.api.enums.plugin.DmlTypeEnum;
 import ai.chat2db.plugin.snowflake.SnowflakeSqlGuards;
 import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeColumnTypeEnum;
@@ -10,19 +11,95 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.config.TableBuilderConfig;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static ai.chat2db.plugin.snowflake.constant.SnowflakeSqlBuilderConstants.*;
 public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
 
+    @Override
+    public String quoteIdentifier(String identifier) {
+        return SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(identifier);
+    }
 
+    @Override
+    public String quoteQualifiedIdentifier(String... identifiers) {
+        return Arrays.stream(identifiers)
+                .filter(StringUtils::isNotBlank)
+                .map(SnowflakeIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                .collect(Collectors.joining(SQLConstants.DOT));
+    }
 
+    @Override
+    public String quoteAlias(String alias) {
+        return quoteIdentifier(alias);
+    }
 
+    @Override
+    protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
+        script.append(quoteQualifiedIdentifier(databaseName, schemaName, tableName));
+    }
 
+    @Override
+    protected void buildColumns(List<String> columnList, StringBuilder script) {
+        if (CollectionUtils.isNotEmpty(columnList)) {
+            script.append(SQLConstants.SPACE_OPEN_PARENTHESIS)
+                    .append(columnList.stream()
+                            .map(SnowflakeIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                            .collect(Collectors.joining(SQLConstants.COMMA)))
+                    .append(SQLConstants.CLOSE_PARENTHESIS_SPACE);
+        }
+    }
 
+    @Override
+    public String buildUpdate(UpdateSqlRequest request) {
+        StringBuilder script = new StringBuilder(SQLConstants.UPDATE_KEYWORD + SQLConstants.SPACE);
+        buildTableName(request.getDatabaseName(), request.getSchemaName(), request.getTableName(), script);
+        script.append(" SET ").append(request.getRow().entrySet().stream()
+                .map(entry -> quoteIdentifier(entry.getKey()) + SQLConstants.EQUAL_SQL + entry.getValue())
+                .collect(Collectors.joining(SQLConstants.COMMA)));
+        if (MapUtils.isNotEmpty(request.getPrimaryKeyMap())) {
+            script.append(" WHERE ").append(request.getPrimaryKeyMap().entrySet().stream()
+                    .map(entry -> quoteIdentifier(entry.getKey()) + SQLConstants.EQUAL_SQL + entry.getValue())
+                    .collect(Collectors.joining(SQLConstants.SQL_AND)));
+        }
+        return script.toString();
+    }
 
+    @Override
+    public String buildTemplate(Table table, String type) {
+        if (table == null || CollectionUtils.isEmpty(table.getColumnList()) || StringUtils.isBlank(type)) {
+            return SQLConstants.EMPTY;
+        }
+        String tableName = quoteQualifiedIdentifier(table.getSchemaName(), table.getName());
+        List<String> columnNames = table.getColumnList().stream()
+                .map(column -> quoteIdentifier(column.getName()))
+                .toList();
+        if (DmlTypeEnum.INSERT.name().equalsIgnoreCase(type)) {
+            return "INSERT INTO " + tableName + " (" + String.join(SQLConstants.COMMA, columnNames)
+                    + ") VALUES (" + columnNames.stream().map(name -> SQLConstants.SPACE)
+                    .collect(Collectors.joining(SQLConstants.COMMA)) + ")";
+        }
+        if (DmlTypeEnum.UPDATE.name().equalsIgnoreCase(type)) {
+            return "UPDATE " + tableName + " SET " + columnNames.stream()
+                    .map(name -> name + SQLConstants.EQUAL_SQL + SQLConstants.SPACE)
+                    .collect(Collectors.joining(SQLConstants.COMMA)) + " WHERE ";
+        }
+        if (DmlTypeEnum.DELETE.name().equalsIgnoreCase(type)) {
+            return "DELETE FROM " + tableName + " WHERE ";
+        }
+        if (DmlTypeEnum.SELECT.name().equalsIgnoreCase(type)) {
+            return "SELECT " + String.join(SQLConstants.COMMA, columnNames) + " FROM " + tableName;
+        }
+        return SQLConstants.EMPTY;
+    }
 
     @Override
     public String buildCreateTable(Table table, TableBuilderConfig tableBuilderConfig){
@@ -72,7 +149,7 @@ public class SnowflakeSqlBuilder extends DefaultSqlBuilder {
         }
 
         if (StringUtils.isNotBlank(table.getPartition())) {
-            script.append(VALUE_LOCAL_SQL_PART).append(table.getPartition());
+            script.append(VALUE_LOCAL_SQL_PART).append(SnowflakeSqlGuards.requireClusterByClause(table.getPartition()));
         }
         script.append(SQLConstants.SEMICOLON);
 

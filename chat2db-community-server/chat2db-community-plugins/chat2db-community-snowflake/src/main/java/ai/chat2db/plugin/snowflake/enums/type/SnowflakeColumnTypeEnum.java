@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -62,7 +63,7 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
     private ColumnType columnType;
 
     public static SnowflakeColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        return dataType == null ? null : COLUMN_TYPE_MAP.get(dataType.toUpperCase(Locale.ROOT));
     }
 
     public ColumnType getColumnType() {
@@ -83,9 +84,18 @@ public enum SnowflakeColumnTypeEnum implements IColumnBuilder {
     @Override
     public String buildCreateColumnSql(TableColumn column) {
 
-        SnowflakeColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
+        SnowflakeColumnTypeEnum type = getByType(column.getColumnType());
         if (type == null) {
-            return buildDefaultColumn(column, true);
+            StringBuilder fallback = new StringBuilder()
+                    .append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
+                    .append(" ")
+                    .append(SnowflakeSqlGuards.requireColumnTypeExpression(column.getColumnType()));
+            if (StringUtils.isNotBlank(column.getComment())) {
+                fallback.append(" ").append(SQL_COMMENT)
+                        .append(SnowflakeIdentifierProcessor.INSTANCE.escapeString(column.getComment()))
+                        .append("'");
+            }
+            return fallback.toString();
         }
         StringBuilder script = new StringBuilder();
 

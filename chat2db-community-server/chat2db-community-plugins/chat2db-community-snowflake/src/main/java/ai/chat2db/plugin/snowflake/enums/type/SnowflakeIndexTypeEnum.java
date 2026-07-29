@@ -93,6 +93,7 @@ public enum SnowflakeIndexTypeEnum {
     private String buildIndexColumn(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         script.append("(");
+        boolean appended = false;
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if(StringUtils.isNotBlank(column.getColumnName())) {
                 script.append(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
@@ -100,7 +101,11 @@ public enum SnowflakeIndexTypeEnum {
                     script.append(" ").append(SnowflakeSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
                 script.append(",");
+                appended = true;
             }
+        }
+        if (!appended) {
+            throw new IllegalArgumentException("Snowflake index requires at least one named column");
         }
         script.deleteCharAt(script.length() - 1);
         script.append(")");
@@ -132,7 +137,8 @@ public enum SnowflakeIndexTypeEnum {
         if (SnowflakeIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
             return StringUtils.join(SQL_DROP_PRIMARY_KEY);
         }
-        return StringUtils.join(SQL_DROP_INDEX, SnowflakeIdentifierProcessor.escapeIdentifier(tableIndex.getOldName()),"\"");
+        return StringUtils.join("DROP INDEX ",
+                SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getOldName()));
     }
     public static List<IndexType> getIndexTypes() {
         return Arrays.asList(SnowflakeIndexTypeEnum.values()).stream().map(SnowflakeIndexTypeEnum::getIndexType).collect(java.util.stream.Collectors.toList());

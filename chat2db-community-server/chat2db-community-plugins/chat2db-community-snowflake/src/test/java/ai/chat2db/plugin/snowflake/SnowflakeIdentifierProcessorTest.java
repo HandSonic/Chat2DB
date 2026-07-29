@@ -9,9 +9,12 @@ import ai.chat2db.plugin.snowflake.builder.SnowflakeSqlBuilder;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeColumnTypeEnum;
 import ai.chat2db.plugin.snowflake.enums.type.SnowflakeIndexTypeEnum;
 import ai.chat2db.plugin.snowflake.identifier.SnowflakeIdentifierProcessor;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,9 +37,9 @@ class SnowflakeIdentifierProcessorTest {
 
     @Test
     void quoteIdentifierReturnsValidPlainIdentifiersUnquoted() {
-        assertEquals("users", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users"));
+        assertEquals("USERS", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("USERS"));
         assertEquals("T_1", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("T_1"));
-        assertEquals("users", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users", null, null));
+        assertEquals("USERS", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("USERS", null, null));
     }
 
     @Test
@@ -50,29 +53,42 @@ class SnowflakeIdentifierProcessorTest {
     @Test
     void quoteIdentifierQuotesIdentifiersNeedingQuotes() {
         assertEquals("\"we\"\"ird\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
-        assertEquals("\"ta\"\"ble\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("\"ta\"ble\""));
+        assertEquals("\"\"\"ta\"\"ble\"\"\"",
+                SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("\"ta\"ble\""));
         assertEquals("\"has space\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
         assertEquals("\"1st\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("1st"));
+        assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("users"));
+        assertEquals("\"SELECT\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
     }
 
     @Test
-    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
-        assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("users"));
+    void quoteIdentifierIgnoreCaseMayUsePlainIdentifiersWithoutChangingRequestedCasePolicy() {
+        assertEquals("users", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("users"));
+        assertEquals("\"SELECT\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("SELECT"));
         assertNull(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
     }
 
     @Test
-    void quoteIdentifierAlwaysStripsOnePairThenDoublesEmbeddedQuotes() {
+    void quoteIdentifierAlwaysTreatsBoundaryQuotesAsRawContent() {
         assertEquals("\"users\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("users"));
         assertEquals("\"we\"\"ird\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
-        assertEquals("\"ta\"\"ble\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"ta\"ble\""));
+        assertEquals("\"\"\"ta\"\"ble\"\"\"",
+                SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"ta\"ble\""));
     }
 
     @Test
-    void quoteIdentifierAlwaysPassesThroughNullAndBlank() {
+    void quoteIdentifierAlwaysQuotesBlankValuesAndPassesThroughNull() {
         assertNull(SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
-        assertEquals("", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
-        assertEquals(" ", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(" "));
+        assertEquals("\"\"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("\" \"", SnowflakeIdentifierProcessor.INSTANCE.quoteIdentifierAlways(" "));
+    }
+
+    @Test
+    void alwaysQuoteAndRemoveQuoteRoundTripExactRawIdentifiers() {
+        SnowflakeIdentifierProcessor processor = SnowflakeIdentifierProcessor.INSTANCE;
+        for (String raw : List.of("plain", "a\"b", "\"leading", "trailing\"", "\"both\"", "")) {
+            assertEquals(raw, processor.removeIdentifierQuote(processor.quoteIdentifierAlways(raw)), raw);
+        }
     }
 
     @Test
@@ -133,8 +149,11 @@ class SnowflakeIdentifierProcessorTest {
         assertEquals("true", SnowflakeSqlGuards.requireDefaultExpression("true"));
         assertEquals("CURRENT_TIMESTAMP", SnowflakeSqlGuards.requireDefaultExpression("CURRENT_TIMESTAMP"));
         assertEquals("CURRENT_TIMESTAMP()", SnowflakeSqlGuards.requireDefaultExpression("CURRENT_TIMESTAMP()"));
+        assertEquals("SEQ.NEXTVAL", SnowflakeSqlGuards.requireDefaultExpression("SEQ.NEXTVAL"));
+        assertEquals("IFF(flag, 1, 0)", SnowflakeSqlGuards.requireDefaultExpression("IFF(flag, 1, 0)"));
         assertEquals("'abc'", SnowflakeSqlGuards.requireDefaultExpression("'abc'"));
         assertEquals("'O''Brien'", SnowflakeSqlGuards.requireDefaultExpression("'O'Brien'"));
+        assertEquals("'O''Brien'", SnowflakeSqlGuards.requireDefaultExpression("'O''Brien'"));
     }
 
     @Test
@@ -143,6 +162,10 @@ class SnowflakeIdentifierProcessorTest {
                 () -> SnowflakeSqlGuards.requireDefaultExpression("1; DROP TABLE t; --"));
         assertThrows(IllegalArgumentException.class,
                 () -> SnowflakeSqlGuards.requireDefaultExpression("(SELECT 1)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SnowflakeSqlGuards.requireDefaultExpression("0 NOT NULL"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SnowflakeSqlGuards.requireDefaultExpression("0, injected NUMBER"));
     }
 
     @Test
@@ -174,6 +197,59 @@ class SnowflakeIdentifierProcessorTest {
         String sql = SnowflakeColumnTypeEnum.VARCHAR.buildCreateColumnSql(column);
 
         assertTrue(sql.contains("SET DEFAULT 'x''; DROP TABLE t; --'"), sql);
+    }
+
+    @Test
+    void unknownColumnTypeFallbackQuotesNameAndValidatesTypeAndComment() {
+        TableColumn column = new TableColumn();
+        column.setName("c\"ol");
+        column.setColumnType("CUSTOM_TYPE(10)");
+        column.setComment("O'Brien");
+
+        String sql = SnowflakeColumnTypeEnum.VARCHAR.buildCreateColumnSql(column);
+
+        assertEquals("\"c\"\"ol\" CUSTOM_TYPE(10) COMMENT 'O''Brien'", sql);
+        column.setColumnType("TEXT DEFAULT 0");
+        assertThrows(IllegalArgumentException.class,
+                () -> SnowflakeColumnTypeEnum.VARCHAR.buildCreateColumnSql(column));
+        column.setColumnType("NUMBER, injected NUMBER");
+        assertThrows(IllegalArgumentException.class,
+                () -> SnowflakeColumnTypeEnum.VARCHAR.buildCreateColumnSql(column));
+    }
+
+    @Test
+    void inheritedDmlBuilderPathsQuoteQualifiedNamesAndColumns() {
+        SnowflakeSqlBuilder builder = new SnowflakeSqlBuilder();
+        assertEquals("SELECT * FROM \"db\"\"x\".\"sc\"\"x\".\"ta\"\"ble\"",
+                builder.buildSelectTable("db\"x", "sc\"x", "ta\"ble"));
+
+        UpdateSqlRequest request = UpdateSqlRequest.builder()
+                .databaseName("db\"x")
+                .schemaName("sc\"x")
+                .tableName("ta\"ble")
+                .row(Map.of("co\"l", "1"))
+                .primaryKeyMap(Map.of("i\"d", "2"))
+                .build();
+        String update = builder.buildUpdate(request);
+        assertEquals("UPDATE \"db\"\"x\".\"sc\"\"x\".\"ta\"\"ble\" SET \"co\"\"l\" = 1 WHERE \"i\"\"d\" = 2",
+                update);
+
+        Table table = tableWithColumn("co\"l", "VARCHAR");
+        table.setSchemaName("sc\"x");
+        table.setName("ta\"ble");
+        assertEquals("SELECT \"co\"\"l\" FROM \"sc\"\"x\".\"ta\"\"ble\"",
+                builder.buildTemplate(table, "SELECT"));
+    }
+
+    @Test
+    void clusterByGuardAcceptsBalancedClauseAndRejectsStatementAppend() {
+        assertEquals("CLUSTER BY (DATE_TRUNC('DAY', created_at), tenant_id)",
+                SnowflakeSqlGuards.requireClusterByClause(
+                        "cluster by (DATE_TRUNC('DAY', created_at), tenant_id)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SnowflakeSqlGuards.requireClusterByClause("CLUSTER BY (tenant_id); DROP TABLE t"));
+        assertThrows(IllegalArgumentException.class,
+                () -> SnowflakeSqlGuards.requireClusterByClause("DROP TABLE t"));
     }
 
     private Table tableWithColumn(String columnName, String columnType) {
