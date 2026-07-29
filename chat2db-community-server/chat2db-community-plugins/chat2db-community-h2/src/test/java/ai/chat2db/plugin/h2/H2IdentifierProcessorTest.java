@@ -1,5 +1,7 @@
 package ai.chat2db.plugin.h2;
 
+import java.sql.Types;
+
 import ai.chat2db.community.domain.api.model.metadata.Schema;
 import ai.chat2db.plugin.h2.builder.H2SqlBuilder;
 import ai.chat2db.plugin.h2.identifier.H2IdentifierProcessor;
@@ -15,15 +17,19 @@ class H2IdentifierProcessorTest {
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
         assertEquals("O''Brien", H2IdentifierProcessor.INSTANCE.escapeString("O'Brien"));
-        assertEquals("", H2IdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(H2IdentifierProcessor.INSTANCE.escapeString(null));
         assertEquals("plain", H2IdentifierProcessor.INSTANCE.escapeString("plain"));
     }
 
     @Test
-    void escapeIdentifierDoublesDoubleQuotesAndStripsWrappingQuotes() {
-        assertEquals("WE\"\"IRD", H2IdentifierProcessor.escapeIdentifier("WE\"IRD"));
-        assertEquals("ALREADY", H2IdentifierProcessor.escapeIdentifier("\"ALREADY\""));
+    void identifierQuotingPreservesRawValuesAndRoundTrips() {
         assertEquals("\"A\"\"B\"", H2IdentifierProcessor.INSTANCE.quoteIdentifier("A\"B"));
+        assertEquals("\"\"\"ALREADY\"\"\"",
+            H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"ALREADY\""));
+        assertEquals("A\"B", H2IdentifierProcessor.INSTANCE.removeIdentifierQuote(
+            H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("A\"B")));
+        assertEquals("\"ALREADY\"", H2IdentifierProcessor.INSTANCE.removeIdentifierQuote(
+            H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"ALREADY\"")));
     }
 
     @Test
@@ -51,15 +57,17 @@ class H2IdentifierProcessorTest {
     }
 
     @Test
-    void escapeIdentifierHandlesNullAndQuoteOnlyInput() {
-        assertEquals("", H2IdentifierProcessor.escapeIdentifier(null));
-        org.junit.jupiter.api.Assertions.assertNull(H2IdentifierProcessor.INSTANCE.quoteIdentifier(null));
-        org.junit.jupiter.api.Assertions.assertNull(H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+    void identifierProcessorKeepsConditionalAndAlwaysQuoteTracksSeparate() {
+        assertNull(H2IdentifierProcessor.INSTANCE.quoteIdentifier(null));
+        assertNull(H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
         assertEquals("", H2IdentifierProcessor.INSTANCE.quoteIdentifier(""));
         assertEquals("\"\"\"\"", H2IdentifierProcessor.INSTANCE.quoteIdentifier("\""));
-        assertEquals("plain", H2IdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("PLAIN", H2IdentifierProcessor.INSTANCE.quoteIdentifier("PLAIN"));
+        assertEquals("\"plain\"", H2IdentifierProcessor.INSTANCE.quoteIdentifier("plain"));
+        assertEquals("\"SELECT\"", H2IdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
         assertEquals("\"plain\"", H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
-        assertEquals("", H2IdentifierProcessor.escapeIdentifier("\"\""));
+        assertEquals("\"\"", H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("PLAIN", H2IdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("PLAIN"));
     }
 
     @Test
@@ -71,7 +79,20 @@ class H2IdentifierProcessorTest {
             () -> H2SqlGuards.requireSafeTypeName("INT; DROP TABLE USERS; --"));
         assertThrows(IllegalArgumentException.class,
             () -> H2SqlGuards.requireSafeTypeName("INT')"));
+        assertThrows(IllegalArgumentException.class,
+            () -> H2SqlGuards.requireSafeTypeName("INTEGER) NOT NULL"));
         assertNull(H2SqlGuards.requireSafeTypeName(null));
+    }
+
+    @Test
+    void renderMetadataTypeUsesJdbcPrecisionSemantics() {
+        assertEquals("BIGINT", H2SqlGuards.renderMetadataType("BIGINT", Types.BIGINT, 64, 0));
+        assertEquals("CHARACTER VARYING(64)",
+            H2SqlGuards.renderMetadataType("CHARACTER VARYING", Types.VARCHAR, 64, 0));
+        assertEquals("NUMERIC(12,3)",
+            H2SqlGuards.renderMetadataType("NUMERIC", Types.NUMERIC, 12, 3));
+        assertEquals("TIMESTAMP(6)",
+            H2SqlGuards.renderMetadataType("TIMESTAMP", Types.TIMESTAMP, 26, 6));
     }
 
     @Test
@@ -81,15 +102,21 @@ class H2IdentifierProcessorTest {
         assertEquals("42", H2SqlGuards.escapeColumnDefault("42"));
         assertEquals("-1", H2SqlGuards.escapeColumnDefault("-1"));
         assertEquals("NEXT VALUE FOR SEQ1", H2SqlGuards.escapeColumnDefault("NEXT VALUE FOR SEQ1"));
+        assertEquals("NEXT VALUE FOR \"PUBLIC\".\"SEQ1\"",
+            H2SqlGuards.escapeColumnDefault("NEXT VALUE FOR \"PUBLIC\".\"SEQ1\""));
+        assertEquals("DATE '2026-07-29'", H2SqlGuards.escapeColumnDefault("DATE '2026-07-29'"));
+        assertEquals("RANDOM_UUID()", H2SqlGuards.escapeColumnDefault("RANDOM_UUID()"));
         assertEquals("", H2SqlGuards.escapeColumnDefault(null));
     }
 
     @Test
-    void escapeColumnDefaultNeutralizesAttackStrings() {
-        assertEquals("'x''); DROP TABLE USERS; --'",
-            H2SqlGuards.escapeColumnDefault("'x'); DROP TABLE USERS; --'"));
-        assertEquals("'0; DROP TABLE USERS; --'",
-            H2SqlGuards.escapeColumnDefault("0; DROP TABLE USERS; --"));
+    void escapeColumnDefaultRejectsStructuralBreakout() {
+        assertThrows(IllegalArgumentException.class,
+            () -> H2SqlGuards.escapeColumnDefault("'x'); DROP TABLE USERS; --'"));
+        assertThrows(IllegalArgumentException.class,
+            () -> H2SqlGuards.escapeColumnDefault("0; DROP TABLE USERS; --"));
+        assertThrows(IllegalArgumentException.class,
+            () -> H2SqlGuards.escapeColumnDefault("0, INJECTED INTEGER"));
         assertEquals("'||'", H2SqlGuards.escapeColumnDefault("'||'"));
     }
 }

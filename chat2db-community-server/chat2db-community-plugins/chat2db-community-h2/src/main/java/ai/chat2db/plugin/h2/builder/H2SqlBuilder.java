@@ -267,10 +267,13 @@ public class H2SqlBuilder extends DefaultSqlBuilder  {
     @Override
     public String buildCreateSchema(Schema schema) {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append(SQL_CREATE_SCHEMA + H2IdentifierProcessor.escapeIdentifier(schema.getName()) + SQLConstants.DOUBLE_QUOTE_SEMICOLON);
+        String quotedSchemaName = quoteIdentifier(schema.getName());
+        sqlBuilder.append(SQL_CREATE_SCHEMA).append(quotedSchemaName).append(SQLConstants.SEMICOLON);
 
         if (StringUtils.isNotBlank(schema.getComment())) {
-            sqlBuilder.append(SQL_COMMENT_ON_SCHEMA_DOUBLE_QUOTE).append(H2IdentifierProcessor.escapeIdentifier(schema.getName())).append(VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE).append(H2IdentifierProcessor.INSTANCE.escapeString(schema.getComment())).append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
+            sqlBuilder.append(SQL_COMMENT_ON_SCHEMA).append(quotedSchemaName).append(VALUE_IS_SINGLE_QUOTE)
+                .append(H2IdentifierProcessor.INSTANCE.escapeString(schema.getComment()))
+                .append(SQLConstants.SINGLE_QUOTE_SEMICOLON);
         }
 
         return sqlBuilder.toString();

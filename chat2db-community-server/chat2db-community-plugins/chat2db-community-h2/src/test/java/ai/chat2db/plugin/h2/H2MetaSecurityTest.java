@@ -4,8 +4,11 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.sql.Types;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,14 +17,44 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class H2MetaSecurityTest {
+
+    @Test
+    void tableDdlFromRealH2MetadataExecutesAndPreservesDefaults() throws Exception {
+        String suffix = Long.toUnsignedString(System.nanoTime());
+        try (Connection source = DriverManager.getConnection("jdbc:h2:mem:h2_meta_source_" + suffix);
+             Connection target = DriverManager.getConnection("jdbc:h2:mem:h2_meta_target_" + suffix);
+             Statement sourceStatement = source.createStatement();
+             Statement targetStatement = target.createStatement()) {
+            sourceStatement.execute("CREATE SEQUENCE \"S\"\"EQ\"");
+            sourceStatement.execute("CREATE TABLE \"T\"\"SOURCE\" ("
+                + "\"ID\" BIGINT DEFAULT NEXT VALUE FOR \"S\"\"EQ\", "
+                + "\"CREATED_AT\" TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                + "\"LABEL\" CHARACTER VARYING(64) DEFAULT 'O''Brien')");
+
+            targetStatement.execute("CREATE SEQUENCE \"S\"\"EQ\"");
+            String ddl = new H2Meta().tableDDL(source, source.getCatalog(), "PUBLIC", "T\"SOURCE");
+            targetStatement.execute(ddl);
+            targetStatement.executeUpdate("INSERT INTO \"T\"\"SOURCE\" DEFAULT VALUES");
+
+            try (ResultSet row = targetStatement.executeQuery(
+                "SELECT \"ID\", \"CREATED_AT\", \"LABEL\" FROM \"T\"\"SOURCE\"")) {
+                row.next();
+                assertEquals(1L, row.getLong(1));
+                assertNotNull(row.getTimestamp(2));
+                assertEquals("O'Brien", row.getString(3));
+            }
+        }
+    }
 
     @Test
     void tableDDLEscapesColumnNameAndRemarksAttacks() {
         Map<String, Object> column = new HashMap<>();
         column.put("COLUMN_NAME", "C\"; DROP TABLE U; --");
         column.put("TYPE_NAME", "INTEGER");
+        column.put("DATA_TYPE", Types.INTEGER);
         column.put("COLUMN_SIZE", 32);
         column.put("NULLABLE", ResultSetMetaData.columnNoNulls);
         column.put("REMARKS", "x'); DROP TABLE U; --");
@@ -29,25 +62,21 @@ class H2MetaSecurityTest {
         String ddl = new H2Meta().tableDDL(connection(List.of(column), List.of()), "TEST", "PUBLIC", "USERS");
 
         assertEquals("CREATE TABLE \"USERS\" (\n"
-            + "\"C\"\"; DROP TABLE U; --\" INTEGER(32) NOT NULL COMMENT 'x''); DROP TABLE U; --'\n"
+            + "\"C\"\"; DROP TABLE U; --\" INTEGER NOT NULL COMMENT 'x''); DROP TABLE U; --'\n"
             + ");\n", ddl);
     }
 
     @Test
-    void tableDDLNeutralizesHostileColumnDefaults() {
+    void tableDDLRejectsHostileColumnDefaults() {
         Map<String, Object> wrappedAttack = baseColumn();
         wrappedAttack.put("COLUMN_DEF", "'x'); DROP TABLE U; --'");
         String ddl = new H2Meta().tableDDL(connection(List.of(wrappedAttack), List.of()), "TEST", "PUBLIC", "USERS");
-        assertEquals("CREATE TABLE \"USERS\" (\n"
-            + "\"ID\" INTEGER(32) NOT NULL DEFAULT 'x''); DROP TABLE U; --'\n"
-            + ");\n", ddl);
+        assertEquals("", ddl);
 
         Map<String, Object> bareAttack = baseColumn();
-        bareAttack.put("COLUMN_DEF", "0; DROP TABLE U; --");
+        bareAttack.put("COLUMN_DEF", "0, INJECTED INTEGER");
         ddl = new H2Meta().tableDDL(connection(List.of(bareAttack), List.of()), "TEST", "PUBLIC", "USERS");
-        assertEquals("CREATE TABLE \"USERS\" (\n"
-            + "\"ID\" INTEGER(32) NOT NULL DEFAULT '0; DROP TABLE U; --'\n"
-            + ");\n", ddl);
+        assertEquals("", ddl);
     }
 
     @Test
@@ -56,14 +85,14 @@ class H2MetaSecurityTest {
         literal.put("COLUMN_DEF", "'O''Brien'");
         String ddl = new H2Meta().tableDDL(connection(List.of(literal), List.of()), "TEST", "PUBLIC", "USERS");
         assertEquals("CREATE TABLE \"USERS\" (\n"
-            + "\"ID\" INTEGER(32) NOT NULL DEFAULT 'O''Brien'\n"
+            + "\"ID\" INTEGER NOT NULL DEFAULT 'O''Brien'\n"
             + ");\n", ddl);
 
         Map<String, Object> expression = baseColumn();
         expression.put("COLUMN_DEF", "CURRENT_TIMESTAMP");
         ddl = new H2Meta().tableDDL(connection(List.of(expression), List.of()), "TEST", "PUBLIC", "USERS");
         assertEquals("CREATE TABLE \"USERS\" (\n"
-            + "\"ID\" INTEGER(32) NOT NULL DEFAULT CURRENT_TIMESTAMP\n"
+            + "\"ID\" INTEGER NOT NULL DEFAULT CURRENT_TIMESTAMP\n"
             + ");\n", ddl);
     }
 
@@ -87,7 +116,7 @@ class H2MetaSecurityTest {
             "USERS");
 
         assertEquals("CREATE TABLE \"USERS\" (\n"
-            + "\"ID\" INTEGER(32) NOT NULL\n"
+            + "\"ID\" INTEGER NOT NULL\n"
             + ");\n"
             + "CREATE INDEX \"I\"\"; DROP TABLE U; --\" ON \"USERS\" (\"C\"\"; X\");", ddl);
     }
@@ -96,6 +125,7 @@ class H2MetaSecurityTest {
         Map<String, Object> column = new HashMap<>();
         column.put("COLUMN_NAME", "ID");
         column.put("TYPE_NAME", "INTEGER");
+        column.put("DATA_TYPE", Types.INTEGER);
         column.put("COLUMN_SIZE", 32);
         column.put("NULLABLE", ResultSetMetaData.columnNoNulls);
         return column;

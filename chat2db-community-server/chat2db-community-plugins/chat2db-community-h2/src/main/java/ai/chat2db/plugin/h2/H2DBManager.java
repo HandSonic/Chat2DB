@@ -26,11 +26,11 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
     }
 
     private void exportSchema(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
-        String template = "SCRIPT NODATA NOPASSWORDS NOSETTINGS DROP SCHEMA \"%s\";";
+        String template = "SCRIPT NODATA NOPASSWORDS NOSETTINGS DROP SCHEMA %s;";
         if (asyncContext.isContainsData()) {
             template = template.replace("NODATA", "");
         }
-        String sql = String.format(template, H2IdentifierProcessor.escapeIdentifier(schemaName));
+        String sql = String.format(template, H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName));
         try (PreparedStatement preparedStatement = connection.prepareStatement(sql); ResultSet resultSet = preparedStatement.executeQuery()) {
             while (resultSet.next()) {
                 String script = resultSet.getString("SCRIPT");
@@ -54,7 +54,7 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
         String schemaName = connectInfo.getSchemaName();
         try {
             DefaultSQLExecutor.getInstance().execute(connection,
-                String.format(SQL_SET_SCHEMA, H2IdentifierProcessor.escapeIdentifier(schemaName)));
+                String.format(SQL_SET_SCHEMA, H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)));
         } catch (SQLException e) {
 
         }
@@ -63,6 +63,6 @@ public class H2DBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE, H2IdentifierProcessor.escapeIdentifier(tableName));
+        return String.format(SQL_DROP_TABLE, H2IdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
     }
 }

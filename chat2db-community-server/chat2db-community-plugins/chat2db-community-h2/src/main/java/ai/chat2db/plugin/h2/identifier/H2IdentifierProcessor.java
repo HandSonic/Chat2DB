@@ -2,6 +2,7 @@ package ai.chat2db.plugin.h2.identifier;
 
 import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
+import org.h2.util.ParserUtil;
 
 /**
  * H2 dialect identifier processor: double-quoted identifiers with embedded-quote
@@ -13,16 +14,15 @@ public class H2IdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public static final H2IdentifierProcessor INSTANCE = new H2IdentifierProcessor();
 
     /**
-     * SPI-facing conditional quoting: null/blank pass through unchanged; valid plain
-     * identifiers stay unquoted (completion and matching paths rely on this); anything
-     * else is double-quoted with one surrounding pair stripped and embedded quotes doubled.
+     * SPI-facing conditional quoting: null/blank pass through unchanged; identifiers that
+     * H2 can use unquoted without case folding stay plain; anything else is safely quoted.
      */
     @Override
     public String quoteIdentifier(String identifier) {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier, null, null)) {
+        if (ParserUtil.isSimpleIdentifier(identifier, true, false)) {
             return identifier;
         }
         return quoteIdentifierAlways(identifier);
@@ -33,20 +33,15 @@ public class H2IdentifierProcessor extends DefaultSQLIdentifierProcessor {
         return quoteIdentifier(identifier);
     }
 
-    @Override
-    public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifierAlways(identifier);
-    }
-
     /**
-     * Unconditional quoting for DDL-generation call sites: null/blank pass through,
-     * anything else is wrapped in double quotes with doubling.
+     * Unconditional quoting for DDL-generation call sites.
      */
+    @Override
     public String quoteIdentifierAlways(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
+        if (identifier == null) {
+            return null;
         }
-        return "\"" + escapeIdentifierContent(identifier) + "\"";
+        return "\"" + StringUtils.replace(identifier, "\"", "\"\"") + "\"";
     }
 
     /**
@@ -55,26 +50,6 @@ public class H2IdentifierProcessor extends DefaultSQLIdentifierProcessor {
      */
     @Override
     public String escapeString(String str) {
-        return str == null ? "" : StringUtils.replace(str, "'", "''");
-    }
-
-    private static String escapeIdentifierContent(String identifier) {
-        if (identifier == null) {
-            return "";
-        }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "\"", "\"\"");
-    }
-
-    /**
-     * Escapes identifier content for a position already surrounded by double
-     * quotes: strips one surrounding quote pair, then doubles every embedded
-     * double quote.
-     */
-    public static String escapeIdentifier(String identifier) {
-        return escapeIdentifierContent(identifier);
+        return str == null ? null : StringUtils.replace(str, "'", "''");
     }
 }

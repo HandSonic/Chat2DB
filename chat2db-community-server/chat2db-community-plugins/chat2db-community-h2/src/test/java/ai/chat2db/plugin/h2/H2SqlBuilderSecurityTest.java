@@ -1,5 +1,9 @@
 package ai.chat2db.plugin.h2;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -19,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class H2SqlBuilderSecurityTest {
 
@@ -217,5 +222,39 @@ class H2SqlBuilderSecurityTest {
         assertEquals("INSERT INTO \"D\"\"; X\".\"S\"\"; X\"." + EVIL_QUOTED
                 + " (\"C\"\"; X\")  VALUES ('v')",
             builder.buildInsert(request));
+    }
+
+    @Test
+    void generatedDdlAndLegalDefaultExpressionsExecuteOnH2() throws Exception {
+        Table table = new Table();
+        table.setName("SAFE_TABLE");
+        TableColumn column = new TableColumn();
+        column.setName("VALUE");
+        column.setColumnType("INTEGER");
+        column.setNullable(0);
+        table.setColumnList(List.of(column));
+
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:escaping_" + System.nanoTime());
+             Statement statement = connection.createStatement()) {
+            statement.execute(builder.buildCreateTable(table, TableBuilderConfig.defaultConfig()));
+
+            String timestampDefault = H2SqlGuards.escapeColumnDefault("CURRENT_TIMESTAMP");
+            String stringDefault = H2SqlGuards.escapeColumnDefault("'O''Brien'");
+            statement.execute("CREATE TABLE \"DEFAULTS\" (\"CREATED_AT\" TIMESTAMP DEFAULT "
+                + timestampDefault + ", \"LABEL\" VARCHAR(64) DEFAULT " + stringDefault + ")");
+            statement.executeUpdate("INSERT INTO \"DEFAULTS\" DEFAULT VALUES");
+
+            try (ResultSet resultSet = statement.executeQuery("SELECT \"CREATED_AT\", \"LABEL\" FROM \"DEFAULTS\"")) {
+                assertTrue(resultSet.next());
+                assertTrue(resultSet.getTimestamp(1) != null);
+                assertEquals("O'Brien", resultSet.getString(2));
+            }
+
+            assertThrows(IllegalArgumentException.class,
+                () -> H2SqlGuards.escapeColumnDefault("0, INJECTED INTEGER"));
+            try (ResultSet injected = connection.getMetaData().getColumns(null, null, "SAFE_TABLE", "INJECTED")) {
+                assertFalse(injected.next());
+            }
+        }
     }
 }
