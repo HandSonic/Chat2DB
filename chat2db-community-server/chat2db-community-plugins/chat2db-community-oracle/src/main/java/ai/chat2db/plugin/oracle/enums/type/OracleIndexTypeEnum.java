@@ -73,14 +73,19 @@ public enum OracleIndexTypeEnum {
     public String buildIndexScript(TableIndex tableIndex) {
         StringBuilder script = new StringBuilder();
         if (PRIMARY_KEY.equals(this)) {
-            script.append(SQL_ALTER_TABLE).append(OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getSchemaName())).append(".").append(OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getTableName())).append(" ADD CONSTRAINT ").append(OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getTableName() + "_pk")).append(" PRIMARY KEY ").append(buildIndexColumn(tableIndex));
+            script.append(SQL_ALTER_TABLE).append(qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName()))
+                    .append(" ADD CONSTRAINT ")
+                    .append(OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableIndex.getTableName() + "_pk"))
+                    .append(" PRIMARY KEY ").append(buildIndexColumn(tableIndex));
         } else {
             if (UNIQUE.equals(this)) {
                 script.append(SQL_CREATE_UNIQUE_INDEX);
             } else {
                 script.append(SQL_CREATE_INDEX);
             }
-            script.append(buildIndexName(tableIndex)).append(" ON ").append(OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getSchemaName())).append(".").append(OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getTableName())).append(" ").append(buildIndexColumn(tableIndex));
+            script.append(buildIndexName(tableIndex)).append(" ON ")
+                    .append(qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName()))
+                    .append(" ").append(buildIndexColumn(tableIndex));
         }
         return script.toString();
     }
@@ -91,7 +96,7 @@ public enum OracleIndexTypeEnum {
         script.append("(");
         for (TableIndexColumn column : tableIndex.getColumnList()) {
             if (StringUtils.isNotBlank(column.getColumnName())) {
-                script.append(OracleIdentifierProcessor.quoteIdentifierAlways(column.getColumnName()));
+                script.append(OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getColumnName()));
                 if (!StringUtils.isBlank(column.getAscOrDesc()) && !PRIMARY_KEY.equals(this)) {
                     script.append(" ").append(OracleSqlGuards.requireAscOrDesc(column.getAscOrDesc()));
                 }
@@ -104,7 +109,7 @@ public enum OracleIndexTypeEnum {
     }
 
     private String buildIndexName(TableIndex tableIndex) {
-        return OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getSchemaName()) + "." + OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getName());
+        return qualifiedName(tableIndex.getSchemaName(), tableIndex.getName());
     }
 
     public String buildModifyIndex(TableIndex tableIndex) {
@@ -122,7 +127,7 @@ public enum OracleIndexTypeEnum {
 
     private String buildDropIndex(TableIndex tableIndex) {
         if (OracleIndexTypeEnum.PRIMARY_KEY.getName().equals(tableIndex.getType())) {
-            String tableName = OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getSchemaName()) + "." + OracleIdentifierProcessor.quoteIdentifierAlways(tableIndex.getTableName());
+            String tableName = qualifiedName(tableIndex.getSchemaName(), tableIndex.getTableName());
             return StringUtils.join(SQL_ALTER_TABLE, tableName, SQL_DROP_PRIMARY_KEY);
         }
         StringBuilder script = new StringBuilder();
@@ -130,6 +135,14 @@ public enum OracleIndexTypeEnum {
         script.append(buildIndexName(tableIndex));
 
         return script.toString();
+    }
+
+    private static String qualifiedName(String schemaName, String objectName) {
+        String quotedObject = OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedObject;
+        }
+        return OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedObject;
     }
 
     public static List<IndexType> getIndexTypes() {

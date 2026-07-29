@@ -4,6 +4,7 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
+import ai.chat2db.community.domain.api.model.metadata.DataType;
 import ai.chat2db.community.domain.api.model.value.SQLDataValue;
 import ai.chat2db.community.domain.api.model.view.ModifyView;
 import ai.chat2db.plugin.oracle.builder.OracleSqlBuilder;
@@ -12,10 +13,16 @@ import ai.chat2db.plugin.oracle.enums.type.OracleIndexTypeEnum;
 import ai.chat2db.plugin.oracle.identifier.OracleIdentifierProcessor;
 import ai.chat2db.plugin.oracle.value.sub.OracleRawValueProcessor;
 import ai.chat2db.plugin.oracle.value.template.OracleDmlValueTemplate;
+import ai.chat2db.plugin.oracle.value.OracleValueProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.TruncateTableRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import com.google.common.io.BaseEncoding;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -65,26 +72,62 @@ class OracleIdentifierProcessorTest {
 
     @Test
     void quoteIdentifierAlwaysWrapsUnconditionallyForDdlPaths() {
-        assertNull(OracleIdentifierProcessor.quoteIdentifierAlways(null));
-        assertEquals("\"EMPLOYEES\"", OracleIdentifierProcessor.quoteIdentifierAlways("EMPLOYEES"));
-        assertEquals("\"employees\"", OracleIdentifierProcessor.quoteIdentifierAlways("employees"));
-        assertEquals("\"A\"\"B\"", OracleIdentifierProcessor.quoteIdentifierAlways("A\"B"));
-        assertEquals("\"ALREADY\"", OracleIdentifierProcessor.quoteIdentifierAlways("\"ALREADY\""));
+        OracleIdentifierProcessor processor = OracleIdentifierProcessor.INSTANCE;
+        assertNull(processor.quoteIdentifierAlways(null));
+        assertEquals("\"EMPLOYEES\"", processor.quoteIdentifierAlways("EMPLOYEES"));
+        assertEquals("\"employees\"", processor.quoteIdentifierAlways("employees"));
+        assertEquals("\"A\"\"B\"", processor.quoteIdentifierAlways("A\"B"));
+        assertEquals("\"\"\"ALREADY\"\"\"", processor.quoteIdentifierAlways("\"ALREADY\""));
+
+        String[] rawIdentifiers = {"", "A\"B", "\"ALREADY\"", "\"A", "A\"", "\"\"", "A\"\"B"};
+        for (String raw : rawIdentifiers) {
+            assertEquals(raw, processor.removeIdentifierQuote(processor.quoteIdentifierAlways(raw)),
+                    "always-quote round trip must preserve the raw identifier");
+        }
     }
 
     @Test
     void escapeSqlLiteralDoublesSingleQuotes() {
         assertEquals("O''Brien", OracleIdentifierProcessor.INSTANCE.escapeString("O'Brien"));
-        assertEquals("", OracleIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(OracleIdentifierProcessor.INSTANCE.escapeString(null));
         assertEquals("plain", OracleIdentifierProcessor.INSTANCE.escapeString("plain"));
+        assertEquals("'C:\\tmp\\O''Brien'",
+                OracleIdentifierProcessor.INSTANCE.quoteStringLiteral("C:\\tmp\\O'Brien"));
     }
 
     @Test
-    void escapeIdentifierDoublesDoubleQuotesAndStripsWrappingQuotes() {
+    void valueProcessorsDoNotRewriteOracleBackslashes() {
+        SQLDataValue value = new SQLDataValue();
+        value.setValue("C:\\tmp\\O'Brien");
+        DataType type = new DataType();
+        type.setDataTypeName("VARCHAR2");
+        value.setDataType(type);
+
+        assertEquals("'C:\\tmp\\O''Brien'", new OracleValueProcessor().convertSQLValueByType(value));
+
+        type.setDataTypeName("CLOB");
+        assertEquals("'C:\\tmp\\O''Brien'", new OracleValueProcessor().convertSQLValueByType(value));
+    }
+
+    @Test
+    void escapeIdentifierDoublesEveryDoubleQuote() {
         assertEquals("WE\"\"IRD", OracleIdentifierProcessor.escapeIdentifier("WE\"IRD"));
-        assertEquals("ALREADY", OracleIdentifierProcessor.escapeIdentifier("\"ALREADY\""));
-        assertEquals("\"A\"\"B\"", OracleIdentifierProcessor.quoteIdentifierAlways("A\"B"));
-        assertEquals("", OracleIdentifierProcessor.escapeIdentifier(null));
+        assertEquals("\"\"ALREADY\"\"", OracleIdentifierProcessor.escapeIdentifier("\"ALREADY\""));
+        assertEquals("\"A\"\"B\"", OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways("A\"B"));
+        assertNull(OracleIdentifierProcessor.escapeIdentifier(null));
+    }
+
+    @Test
+    void reservedWordsAndCaseConversionAreLocaleIndependent() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertTrue(OracleIdentifierProcessor.INSTANCE.isReservedKeyword("insert", null, null));
+            assertEquals("ID", OracleIdentifierProcessor.INSTANCE.convertIdentifierCase("id"));
+            assertEquals("\"insert\"", OracleIdentifierProcessor.INSTANCE.quoteIdentifier("insert"));
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
@@ -102,6 +145,42 @@ class OracleIdentifierProcessorTest {
     }
 
     @Test
+    void dbManagerQualifiesRawAndServicePrequotedNames() throws Exception {
+        OracleDBManager manager = new OracleDBManager();
+        assertEquals("DROP TABLE \"SA\"\"LES\".\"ORDERS\"",
+                manager.dropTable(null, "ignored_database", "SA\"LES", "ORDERS"));
+        assertEquals("TRUNCATE TABLE \"SA\"\"LES\".\"OR\"\"DERS\"",
+                manager.truncateTable(null, "ignored_database", "SA\"LES", "\"OR\"\"DERS\""));
+    }
+
+    @Test
+    void inheritedBuilderPathsUseOracleSchemaQualification() {
+        OracleSqlBuilder builder = new OracleSqlBuilder();
+        assertEquals("SELECT * FROM \"SA\"\"LES\".\"ORDERS\"",
+                builder.buildSelectTable("ignored_database", "SA\"LES", "ORDERS"));
+        assertEquals("SELECT COUNT(1) FROM \"SA\"\"LES\".\"ORDERS\"",
+                builder.buildSelectCount("ignored_database", "SA\"LES", "ORDERS"));
+        assertEquals("DROP TABLE \"SA\"\"LES\".\"ORDERS\"",
+                builder.buildDropTable(new DropTableRequest("ignored_database", "SA\"LES", "ORDERS")));
+        assertEquals("TRUNCATE TABLE \"SA\"\"LES\".\"ORDERS\"",
+                builder.buildTruncateTable(new TruncateTableRequest("ignored_database", "SA\"LES", "ORDERS")));
+        assertEquals("UPDATE \"SA\"\"LES\".\"ORDERS\" SET \"C\"\"OL\" = 1 WHERE \"I\"\"D\" = 2",
+                builder.buildUpdate(UpdateSqlRequest.builder()
+                        .databaseName("ignored_database")
+                        .schemaName("SA\"LES")
+                        .tableName("ORDERS")
+                        .row(Map.of("C\"OL", "1"))
+                        .primaryKeyMap(Map.of("I\"D", "2"))
+                        .build()));
+    }
+
+    @Test
+    void metadataQualifiedNamesAreLimitedToSchemaAndObject() {
+        assertEquals("\"SALES\".\"ORDERS\"",
+                new OracleMetaData().getMetaDataName("ignored_database", "SALES", "ORDERS"));
+    }
+
+    @Test
     void buildCreateViewEscapesNamesAndComment() {
         ModifyView view = new ModifyView();
         view.setSchemaName("SA\"LES");
@@ -113,6 +192,23 @@ class OracleIdentifierProcessorTest {
 
         assertTrue(sql.startsWith("CREATE VIEW \"SA\"\"LES\".\"V\"\"; DROP TABLE U; --\""));
         assertTrue(sql.endsWith("COMMENT ON TABLE \"SA\"\"LES\".\"V\"\"; DROP TABLE U; --\" is 'x''); DROP TABLE USERS; --';"));
+    }
+
+    @Test
+    void buildCreateViewRejectsUnrecognizedRawClauses() {
+        ModifyView view = new ModifyView();
+        view.setSchemaName("SALES");
+        view.setViewName("V");
+        view.setViewBody("SELECT 1 FROM DUAL");
+        view.setEditClause("EDITIONING; DROP TABLE U; --");
+
+        assertThrows(IllegalArgumentException.class, () -> new OracleSqlBuilder().buildCreateView(view));
+
+        view.setEditClause(null);
+        view.setSubqueryRestrictionClause("CHECK OPTION");
+        view.setSubqueryConstraintName("C\"; DROP TABLE U; --");
+        String sql = new OracleSqlBuilder().buildCreateView(view);
+        assertTrue(sql.contains("CHECK OPTION CONSTRAINT \"C\"\"; DROP TABLE U; --\""), sql);
     }
 
     @Test
@@ -152,6 +248,27 @@ class OracleIdentifierProcessorTest {
     }
 
     @Test
+    void buildModifyColumnPreservesUnknownTypesAndCaseOnlyRenames() {
+        TableColumn oldColumn = new TableColumn();
+        oldColumn.setNullable(1);
+
+        TableColumn column = new TableColumn();
+        column.setEditStatus("MODIFY");
+        column.setSchemaName("S");
+        column.setTableName("T");
+        column.setOldName("MixedCase");
+        column.setName("mixedcase");
+        column.setColumnType("\"APP\".\"Order Type\"");
+        column.setNullable(1);
+        column.setOldColumn(oldColumn);
+
+        String sql = OracleColumnTypeEnum.VARCHAR2.buildModifyColumn(column);
+
+        assertTrue(sql.contains("MODIFY (\"mixedcase\" \"APP\".\"Order Type\" NULL)"), sql);
+        assertTrue(sql.contains("RENAME COLUMN \"MixedCase\" TO \"mixedcase\""), sql);
+    }
+
+    @Test
     void buildIndexScriptEscapesNamesAndValidatesDirection() {
         TableIndex index = new TableIndex();
         index.setType(OracleIndexTypeEnum.NORMAL.getName());
@@ -186,7 +303,10 @@ class OracleIdentifierProcessorTest {
     @Test
     void buildCreateColumnSqlAcceptsLegitimateDefaults() {
         String[] valid = {"SYSDATE", "CURRENT_TIMESTAMP", "USER", "SEQ.NEXTVAL", "-1", "1.5",
-                "'Y'", "'0'", "'O''Brien'", "'1970-01-01'", "''"};
+                "'Y'", "'0'", "'O''Brien'", "'1970-01-01'", "''", "SYS_GUID()",
+                "TO_DATE('1970-01-01', 'YYYY-MM-DD')", "CAST('1' AS NUMBER(10,2))",
+                "\"My Seq\".NEXTVAL", "TIMESTAMP '2020-01-01 00:00:00'",
+                "INTERVAL '1' DAY", "q'[O'Brien]'", "'a'||'b'", "now()"};
         for (String defaultValue : valid) {
             TableColumn column = new TableColumn();
             column.setName("c1");
@@ -203,13 +323,13 @@ class OracleIdentifierProcessorTest {
                 "0) --",
                 "0 --",
                 "1, x INT",
-                "now()",
                 "0); DROP TABLE x--",
                 "'abc",
-                "'a' 'b'",
-                "'a'||'b'",
                 "'a'--",
-                "'a'; DROP TABLE x--"
+                "'a'; DROP TABLE x--",
+                "0 NOT NULL",
+                "0 CHECK (1=1)",
+                "0 CONSTRAINT injected UNIQUE"
         };
         for (String payload : payloads) {
             TableColumn column = new TableColumn();
@@ -225,19 +345,21 @@ class OracleIdentifierProcessorTest {
     @Test
     void buildCreateColumnSqlAcceptsUnknownButSafeTypeNames() {
         String[] valid = {"MYCUSTOMTYPE", "VARCHAR2(20)", "NUMBER(10,2)", "TIMESTAMP(6) WITH TIME ZONE",
-                "INTERVAL DAY(2) TO SECOND(6)", "VARCHAR2(20 CHAR)"};
+                "INTERVAL DAY(2) TO SECOND(6)", "VARCHAR2(20 CHAR)", "\"APP\".\"Order Type\"",
+                "REF \"APP\".\"Object Type\""};
         for (String typeName : valid) {
             TableColumn column = new TableColumn();
             column.setName("c1");
             column.setColumnType(typeName);
-            assertEquals("c1 " + typeName, OracleColumnTypeEnum.VARCHAR2.buildCreateColumnSql(column),
+            assertEquals("\"c1\" " + typeName, OracleColumnTypeEnum.VARCHAR2.buildCreateColumnSql(column),
                     "type should be accepted: " + typeName);
         }
     }
 
     @Test
     void buildCreateColumnSqlRejectsHostileTypeNames() {
-        String[] payloads = {"INTEGER); DROP TABLE U; --", "INT, x INT", "INT'--", "INT\"--", "0) --"};
+        String[] payloads = {"INTEGER); DROP TABLE U; --", "INT, x INT", "INT'--", "INT\"--", "0) --",
+                "INTEGER NOT NULL", "VARCHAR2(20) DEFAULT 0", "INTEGER CHECK(1=1)"};
         for (String payload : payloads) {
             TableColumn column = new TableColumn();
             column.setName("c1");

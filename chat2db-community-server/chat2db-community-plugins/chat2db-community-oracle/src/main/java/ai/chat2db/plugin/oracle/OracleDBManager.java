@@ -70,7 +70,7 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
     public void exportTable(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
         String tableDDL = Chat2DBContext.getDbMetaData().tableDDL(connection,
                 new TableMetadataRequest(databaseName, schemaName, tableName));
-        String sqlBuilder = "DROP TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName) + ";\n" + tableDDL + "\n";
+        String sqlBuilder = "DROP TABLE " + qualifiedName(schemaName, tableName, false) + ";\n" + tableDDL + "\n";
         asyncContext.write(sqlBuilder);
         if (asyncContext.isContainsData()) {
             exportTableData(connection, databaseName, schemaName, tableName, asyncContext);
@@ -152,7 +152,9 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
         }
         String schemaName = connectInfo.getSchemaName();
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, SQL_ALTER_SESSION_SET_CURRENT_SCHEMA + OracleIdentifierProcessor.escapeIdentifier(schemaName) + "\"");
+            DefaultSQLExecutor.getInstance().execute(connection,
+                    SQL_ALTER_SESSION_SET_CURRENT_SCHEMA
+                            + OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName));
         } catch (SQLException e) {
             log.error("connectDatabase error", e);
         }
@@ -160,19 +162,25 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
-        String sql = "";
+        String source = qualifiedName(schemaName, tableName, true);
+        String target = qualifiedName(schemaName, newTableName, true);
+        String sql;
         if (copyData) {
-            sql = "CREATE TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(newTableName) + " AS SELECT * FROM " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName);
+            sql = "CREATE TABLE " + target + " AS SELECT * FROM " + source;
         } else {
-            sql = "CREATE TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(newTableName) + " AS SELECT * FROM " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName) + " WHERE 1=0";
+            sql = "CREATE TABLE " + target + " AS SELECT * FROM " + source + " WHERE 1=0";
         }
         DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "DROP TABLE " + OracleIdentifierProcessor.quoteIdentifierAlways(tableName);
-        return sql;
+        return "DROP TABLE " + qualifiedName(schemaName, tableName, false);
+    }
+
+    @Override
+    public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
+        return "TRUNCATE TABLE " + qualifiedName(schemaName, tableName, true);
     }
 
     @Override
@@ -182,7 +190,23 @@ public class OracleDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
     public void dropView(Connection connection, String databaseName, String schemaName, String viewName) {
-        String sql = "DROP VIEW " + OracleIdentifierProcessor.quoteIdentifierAlways(schemaName) + "." + OracleIdentifierProcessor.quoteIdentifierAlways(viewName);
+        String sql = "DROP VIEW " + qualifiedName(schemaName, viewName, false);
         DefaultSQLExecutor.getInstance().execute(connection, sql, (resultSet) -> null);
+    }
+
+    private static String qualifiedName(String schemaName, String objectName, boolean normalizeQuotedObject) {
+        String normalizedObject = normalizeQuotedObject ? normalizeQuotedIdentifier(objectName) : objectName;
+        String quotedObject = OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(normalizedObject);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedObject;
+        }
+        return OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedObject;
+    }
+
+    private static String normalizeQuotedIdentifier(String identifier) {
+        if (OracleIdentifierProcessor.INSTANCE.isQuoteIdentifier(identifier)) {
+            return OracleIdentifierProcessor.INSTANCE.removeIdentifierQuote(identifier);
+        }
+        return identifier;
     }
 }

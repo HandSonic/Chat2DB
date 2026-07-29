@@ -7,7 +7,6 @@ import ai.chat2db.plugin.oracle.enums.type.OracleColumnTypeEnum;
 import ai.chat2db.plugin.oracle.enums.type.OracleDefaultValueEnum;
 import ai.chat2db.plugin.oracle.enums.type.OracleIndexTypeEnum;
 import ai.chat2db.plugin.oracle.value.OracleValueProcessor;
-import ai.chat2db.community.tools.util.EasyStringUtils;
 import ai.chat2db.community.tools.util.I18nUtils;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.ISQLIdentifierProcessor;
@@ -88,8 +87,8 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
             if (resultSet.next()) {
                 String tableComment = resultSet.getString("comments");
                 if (StringUtils.isNotBlank(tableComment)) {
-                    ddlBuilder.append("\nCOMMENT ON TABLE ").append(OracleIdentifierProcessor.quoteIdentifierAlways(tableName)).append(" IS ")
-                            .append(EasyStringUtils.escapeAndQuoteString(tableComment)).append(";");
+                    ddlBuilder.append("\nCOMMENT ON TABLE ").append(qualifiedName(schemaName, tableName)).append(" IS ")
+                            .append(quoteStringLiteral(tableComment)).append(";");
                 }
             }
         });
@@ -99,9 +98,9 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
                 String columnComment = resultSet.getString("comments");
                 if (StringUtils.isNotBlank(columnComment)) {
                     ddlBuilder.append("\nCOMMENT ON COLUMN ")
-                            .append(OracleIdentifierProcessor.quoteIdentifierAlways(tableName)).append(".")
-                            .append(OracleIdentifierProcessor.quoteIdentifierAlways(columnName)).append(" IS ")
-                            .append(EasyStringUtils.escapeAndQuoteString(columnComment)).append(";");
+                            .append(qualifiedName(schemaName, tableName)).append(".")
+                            .append(OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(columnName)).append(" IS ")
+                            .append(quoteStringLiteral(columnComment)).append(";");
                 }
             }
         });
@@ -160,6 +159,18 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
 
     private static String escapeSqlLiteral(String value) {
         return OracleIdentifierProcessor.INSTANCE.escapeString(value);
+    }
+
+    private static String quoteStringLiteral(String value) {
+        return OracleIdentifierProcessor.INSTANCE.quoteStringLiteral(value);
+    }
+
+    private static String qualifiedName(String schemaName, String objectName) {
+        String quotedObject = OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(objectName);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedObject;
+        }
+        return OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedObject;
     }
 
 
@@ -459,7 +470,13 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(OracleIdentifierProcessor::quoteIdentifierAlways).collect(Collectors.joining("."));
+        List<String> identifiers = Arrays.stream(names)
+                .filter(StringUtils::isNotBlank)
+                .toList();
+        int first = Math.max(0, identifiers.size() - 2);
+        return identifiers.subList(first, identifiers.size()).stream()
+                .map(OracleIdentifierProcessor.INSTANCE::quoteIdentifierAlways)
+                .collect(Collectors.joining("."));
     }
 
 
@@ -525,9 +542,9 @@ public class OracleMetaData extends DefaultMetaService implements IDbMetaData {
         StringBuilder sqlBuilder = new StringBuilder(100);
         sqlBuilder.append(SQL_CREATE).append("view ");
         if (StringUtils.isNotBlank(schemaName)) {
-            sqlBuilder.append("\"").append(OracleIdentifierProcessor.escapeIdentifier(schemaName)).append("\"").append(".");
+            sqlBuilder.append(OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)).append(".");
         }
-        sqlBuilder.append("\"").append("undefined").append("\"");
+        sqlBuilder.append(OracleIdentifierProcessor.INSTANCE.quoteIdentifierAlways("undefined"));
         sqlBuilder.append(" AS \n").append(sql).append(";");
         configuration.setPreviewSql(sqlBuilder.toString());
         configuration.setSql(sql);
