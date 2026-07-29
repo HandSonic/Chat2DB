@@ -50,12 +50,13 @@ public class GenericIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     }
 
     /**
-     * Unconditional double-quote wrapping: strips one surrounding quote pair, then
-     * doubles every embedded double quote. Null/blank input is returned unchanged.
+     * Unconditional double-quote wrapping. Every quote in the raw identifier,
+     * including boundary quotes, is treated as identifier content so the SPI
+     * always-quote/remove-quote round-trip contract is preserved.
      */
     @Override
     public String quoteIdentifierAlways(String identifier) {
-        return quoteIdentifier(identifier, '"');
+        return super.quoteIdentifierAlways(identifier);
     }
 
     /**
