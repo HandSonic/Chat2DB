@@ -81,11 +81,12 @@ public enum OscarIndexTypeEnum {
 
     private String buildIndexColumn(TableIndex tableIndex, boolean includeSort) {
         if (CollectionUtils.isEmpty(tableIndex.getColumnList())) {
-            return SQLConstants.EMPTY_PARAMETER_LIST;
+            throw new IllegalArgumentException("Oscar index requires at least one named column");
         }
         StringBuilder script = new StringBuilder(SQLConstants.OPEN_PARENTHESIS);
+        int columnCount = 0;
         for (TableIndexColumn column : tableIndex.getColumnList()) {
-            if (StringUtils.isBlank(column.getColumnName())) {
+            if (column == null || StringUtils.isBlank(column.getColumnName())) {
                 continue;
             }
             script.append(OscarUtils.quoteIdentifierIgnoreCase(column.getColumnName()));
@@ -93,10 +94,12 @@ public enum OscarIndexTypeEnum {
                 script.append(SQLConstants.SPACE).append(OscarSqlGuards.requireSortOrder(column.getAscOrDesc()));
             }
             script.append(SQLConstants.COMMA);
+            columnCount++;
         }
-        if (script.charAt(script.length() - 1) == SQLConstants.COMMA_CHAR) {
-            script.deleteCharAt(script.length() - 1);
+        if (columnCount == 0) {
+            throw new IllegalArgumentException("Oscar index requires at least one named column");
         }
+        script.deleteCharAt(script.length() - 1);
         script.append(SQLConstants.CLOSE_PARENTHESIS);
         return script.toString();
     }

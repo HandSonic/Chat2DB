@@ -44,7 +44,10 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        if (!isQuoteIdentifier(identifier) && isValidIdentifier(identifier)
+        if (isValidQuotedIdentifier(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier)
                 && !isReservedKeyword(identifier.toUpperCase(), null, null)) {
             return identifier;
         }
@@ -53,8 +56,8 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     /**
      * Always-quote variant for DDL-generation paths: {@code null} passes through,
-     * everything else is wrapped in double quotes after stripping one surrounding
-     * quote pair and doubling every embedded double quote.
+     * everything else is treated as raw identifier content and wrapped in double
+     * quotes after doubling every embedded double quote.
      */
     public String quoteIdentifierAlways(String identifier) {
         if (identifier == null) {
@@ -92,18 +95,29 @@ public class OscarIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     }
 
     /**
-     * Escapes identifier content for a position already surrounded by double
-     * quotes: strips one surrounding quote pair, then doubles every embedded
-     * double quote.
+     * Escapes raw identifier content for a position already surrounded by double
+     * quotes by doubling every embedded double quote.
      */
     public static String escapeIdentifier(String identifier) {
         if (identifier == null) {
             return "";
         }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("\"") && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
+        return StringUtils.replace(identifier, "\"", "\"\"");
+    }
+
+    private static boolean isValidQuotedIdentifier(String identifier) {
+        if (identifier.length() < 2 || identifier.charAt(0) != '"'
+                || identifier.charAt(identifier.length() - 1) != '"') {
+            return false;
         }
-        return StringUtils.replace(stripped, "\"", "\"\"");
+        for (int i = 1; i < identifier.length() - 1; i++) {
+            if (identifier.charAt(i) == '"') {
+                if (i + 1 >= identifier.length() - 1 || identifier.charAt(i + 1) != '"') {
+                    return false;
+                }
+                i++;
+            }
+        }
+        return true;
     }
 }

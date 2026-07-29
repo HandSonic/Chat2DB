@@ -1,5 +1,11 @@
 package ai.chat2db.plugin.oscar;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import ai.chat2db.plugin.oscar.identifier.OscarIdentifierProcessor;
@@ -15,6 +21,12 @@ public final class OscarSqlGuards {
     private static final Pattern NUMERIC_DEFAULT_PATTERN = Pattern.compile(
             "^[+-]?(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?$");
     private static final Pattern KEYWORD_DEFAULT_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_$]*$");
+    private static final Set<String> COLUMN_CLAUSE_KEYWORDS = Set.of(
+            "COLLATE", "CONSTRAINT", "CHECK", "DEFAULT", "GENERATED", "IDENTITY",
+            "NOT", "NULL", "PRIMARY", "REFERENCES", "UNIQUE");
+    private static final Set<String> STATEMENT_KEYWORDS = Set.of(
+            "ALTER", "CREATE", "DELETE", "DROP", "GRANT", "INSERT", "MERGE",
+            "REVOKE", "SELECT", "TRUNCATE", "UPDATE");
 
     private OscarSqlGuards() {
     }
@@ -138,5 +150,107 @@ public final class OscarSqlGuards {
             return value;
         }
         throw new IllegalArgumentException("Invalid Oscar sort order: " + ascOrDesc);
+    }
+
+    /**
+     * Validates one complete Oscar column type expression, including parameterized
+     * built-in types and schema-qualified or quoted user-defined types.
+     */
+    public static String requireColumnTypeExpression(String columnType) {
+        String value = StringUtils.trimToNull(columnType);
+        if (value == null) {
+            throw invalidColumnType(columnType);
+        }
+        Deque<Character> parentheses = new ArrayDeque<>();
+        List<String> topLevelWords = new ArrayList<>();
+        boolean sawName = false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            if (c == '"') {
+                i = quotedIdentifierEnd(value, i, columnType);
+                sawName = true;
+                continue;
+            }
+            if (c == ';' || c == '\'' || Character.isISOControl(c)
+                    || startsWith(value, i, "--") || startsWith(value, i, "/*")
+                    || startsWith(value, i, "*/")) {
+                throw invalidColumnType(columnType);
+            }
+            if (c == '(') {
+                parentheses.push(c);
+                continue;
+            }
+            if (c == ')') {
+                if (parentheses.isEmpty()) {
+                    throw invalidColumnType(columnType);
+                }
+                parentheses.pop();
+                continue;
+            }
+            if (c == ',') {
+                if (parentheses.isEmpty()) {
+                    throw invalidColumnType(columnType);
+                }
+                continue;
+            }
+            if (Character.isLetter(c) || c == '_') {
+                int wordEnd = i + 1;
+                while (wordEnd < value.length() && isTypeWordCharacter(value.charAt(wordEnd))) {
+                    wordEnd++;
+                }
+                String word = value.substring(i, wordEnd).toUpperCase(Locale.ROOT);
+                if (STATEMENT_KEYWORDS.contains(word)) {
+                    throw invalidColumnType(columnType);
+                }
+                if (parentheses.isEmpty()) {
+                    topLevelWords.add(word);
+                }
+                sawName = true;
+                i = wordEnd - 1;
+                continue;
+            }
+            if (Character.isDigit(c) || c == '.' || c == '$' || c == '#' || c == '%'
+                    || c == '*' || c == '+' || c == '-') {
+                continue;
+            }
+            throw invalidColumnType(columnType);
+        }
+        if (!sawName || !parentheses.isEmpty()) {
+            throw invalidColumnType(columnType);
+        }
+        for (String word : topLevelWords) {
+            if (COLUMN_CLAUSE_KEYWORDS.contains(word)) {
+                throw invalidColumnType(columnType);
+            }
+        }
+        return value;
+    }
+
+    private static int quotedIdentifierEnd(String value, int start, String originalValue) {
+        for (int i = start + 1; i < value.length(); i++) {
+            if (value.charAt(i) == '"') {
+                if (i + 1 < value.length() && value.charAt(i + 1) == '"') {
+                    i++;
+                    continue;
+                }
+                return i;
+            }
+        }
+        throw invalidColumnType(originalValue);
+    }
+
+    private static boolean isTypeWordCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#';
+    }
+
+    private static boolean startsWith(String value, int offset, String candidate) {
+        return offset + candidate.length() <= value.length() && value.startsWith(candidate, offset);
+    }
+
+    private static IllegalArgumentException invalidColumnType(String value) {
+        return new IllegalArgumentException("Invalid Oscar column type: " + value);
     }
 }

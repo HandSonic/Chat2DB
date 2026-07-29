@@ -95,7 +95,7 @@ public enum OscarColumnTypeEnum implements IColumnBuilder {
     public String buildCreateColumnSql(TableColumn column) {
         OscarColumnTypeEnum type = getByType(column.getColumnType());
         if (type == null) {
-            return OscarUtils.quoteIdentifierIgnoreCase(column.getName()) + SQLConstants.SPACE + column.getColumnType();
+            return buildUnknownColumnSql(column);
         }
         StringBuilder script = new StringBuilder();
         script.append(OscarUtils.quoteIdentifierIgnoreCase(column.getName())).append(SQLConstants.SPACE);
@@ -108,6 +108,27 @@ public enum OscarColumnTypeEnum implements IColumnBuilder {
     @Override
     public String buildAICreateColumnSql(TableColumn column) {
         return buildCreateColumnSql(column) + buildAICreateColumnCommentSql(column);
+    }
+
+    private static String buildUnknownColumnSql(TableColumn column) {
+        StringBuilder script = new StringBuilder(OscarUtils.quoteIdentifierIgnoreCase(column.getName()))
+                .append(SQLConstants.SPACE)
+                .append(OscarSqlGuards.requireColumnTypeExpression(column.getColumnType()));
+        if (StringUtils.isNotBlank(column.getDefaultValue())) {
+            String defaultValue = column.getDefaultValue().trim();
+            if (OscarConstants.EMPTY_STRING_TOKEN.equalsIgnoreCase(defaultValue)) {
+                script.append(SQLConstants.SPACE).append(SQLConstants.DEFAULT_EMPTY_STRING_SQL);
+            } else if (OscarConstants.NULL_TOKEN.equalsIgnoreCase(defaultValue)) {
+                script.append(SQLConstants.SPACE).append(SQLConstants.DEFAULT_NULL_SQL);
+            } else {
+                script.append(SQLConstants.SPACE).append(SQLConstants.DEFAULT_SQL_PREFIX)
+                        .append(OscarSqlGuards.requireDefaultValueExpression(defaultValue));
+            }
+        }
+        if (column.getNullable() != null && column.getNullable() != 1) {
+            script.append(SQLConstants.SPACE).append(SQLConstants.NOT_NULL_SQL);
+        }
+        return script.toString();
     }
 
     @Override

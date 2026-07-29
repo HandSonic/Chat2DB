@@ -1,19 +1,29 @@
 package ai.chat2db.plugin.oscar;
 
+import ai.chat2db.community.domain.api.config.TableBuilderConfig;
+import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
+import ai.chat2db.plugin.oscar.builder.OscarSqlBuilder;
 import ai.chat2db.plugin.oscar.constant.OscarConstants;
 import ai.chat2db.plugin.oscar.enums.type.OscarColumnTypeEnum;
 import ai.chat2db.plugin.oscar.enums.type.OscarIndexTypeEnum;
 import ai.chat2db.plugin.oscar.identifier.OscarIdentifierProcessor;
 import ai.chat2db.plugin.oscar.util.OscarUtils;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
+import ai.chat2db.spi.model.request.TruncateTableRequest;
+import ai.chat2db.spi.model.request.UpdateSqlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -47,6 +57,9 @@ class OscarIdentifierProcessorTest {
         assertEquals("\"SELECT\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
         assertEquals("\"select\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
         assertEquals("\"MyTable\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("\"MyTable\""));
+        assertEquals("\"a\"\"b\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("\"a\"\"b\""));
+        assertEquals("\"\"\"bad\"\"quote\"\"\"",
+                OscarIdentifierProcessor.INSTANCE.quoteIdentifier("\"bad\"quote\""));
         assertEquals("\"a\"\"b\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifier("a\"b"));
         assertEquals("\"x\"\"; DROP TABLE t; --\"",
                 OscarIdentifierProcessor.INSTANCE.quoteIdentifier("x\"; DROP TABLE t; --"));
@@ -55,12 +68,19 @@ class OscarIdentifierProcessorTest {
     @Test
     void quoteIdentifierAlwaysQuotesUnconditionally() {
         assertNull(OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+        assertEquals("\"\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("\" \"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways(" "));
         assertEquals("\"plain\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
         assertEquals("\"SYSDBA\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("SYSDBA"));
-        assertEquals("\"MyTable\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"MyTable\""));
+        assertEquals("\"\"\"MyTable\"\"\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"MyTable\""));
         assertEquals("\"a\"\"b\"", OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a\"b"));
         assertEquals("\"x\"\"; DROP TABLE t; --\"",
                 OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways("x\"; DROP TABLE t; --"));
+
+        for (String raw : List.of("", " ", "\"abc\"", "A\"B", "\"")) {
+            assertEquals(raw, OscarIdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                    OscarIdentifierProcessor.INSTANCE.quoteIdentifierAlways(raw)), raw);
+        }
     }
 
     @Test
@@ -71,9 +91,9 @@ class OscarIdentifierProcessorTest {
     }
 
     @Test
-    void escapeIdentifierStripsOneQuotePairAndDoublesEmbedded() {
+    void escapeIdentifierDoublesEveryRawQuote() {
         assertEquals("a\"\"b", OscarIdentifierProcessor.escapeIdentifier("a\"b"));
-        assertEquals("MyTable", OscarIdentifierProcessor.escapeIdentifier("\"MyTable\""));
+        assertEquals("\"\"MyTable\"\"", OscarIdentifierProcessor.escapeIdentifier("\"MyTable\""));
         assertEquals("", OscarIdentifierProcessor.escapeIdentifier(null));
     }
 
@@ -83,7 +103,7 @@ class OscarIdentifierProcessorTest {
         assertEquals("\"x\"\"; DROP TABLE t; --\"",
                 OscarUtils.quoteIdentifierIgnoreCase("x\"; DROP TABLE t; --"));
         assertEquals("\"SYSDBA\"", OscarUtils.quoteIdentifierIgnoreCase("SYSDBA"));
-        assertEquals("\"MyTable\"", OscarUtils.quoteIdentifierIgnoreCase("\"MyTable\""));
+        assertEquals("\"\"\"MyTable\"\"\"", OscarUtils.quoteIdentifierIgnoreCase("\"MyTable\""));
         assertNull(OscarUtils.quoteIdentifierIgnoreCase(null));
         assertEquals("", OscarUtils.quoteIdentifierIgnoreCase(""));
     }
@@ -210,5 +230,107 @@ class OscarIdentifierProcessorTest {
         index.setColumnList(List.of(indexColumn));
         assertThrows(IllegalArgumentException.class,
                 () -> OscarIndexTypeEnum.NORMAL.buildIndexScript(index));
+    }
+
+    @Test
+    void unknownColumnTypesAreStructurallyValidated() {
+        TableColumn custom = column("custom\"name", "\"Tenant\".CustomType(10,2)");
+        custom.setDefaultValue("0");
+        custom.setNullable(0);
+        String sql = OscarColumnTypeEnum.VARCHAR.buildCreateColumnSql(custom);
+        assertEquals("\"custom\"\"name\" \"Tenant\".CustomType(10,2) DEFAULT 0 NOT NULL", sql);
+
+        assertEquals("types.CustomType(10,2)",
+                OscarSqlGuards.requireColumnTypeExpression("  types.CustomType(10,2)  "));
+        for (String value : List.of(
+                "CustomType)", "CustomType(", "CustomType; DROP TABLE t",
+                "CustomType DEFAULT 0", "CustomType/*comment*/")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> OscarSqlGuards.requireColumnTypeExpression(value), value);
+        }
+    }
+
+    @Test
+    void createTableUsesValidatedUnknownColumnType() {
+        OscarSqlBuilder builder = new OscarSqlBuilder();
+        Table valid = Table.builder()
+                .schemaName("App")
+                .name("CustomTable")
+                .columnList(List.of(column("custom_col", "types.CustomType(10,2)")))
+                .indexList(List.of())
+                .build();
+        String sql = builder.buildCreateTable(valid, TableBuilderConfig.defaultConfig());
+        assertTrue(sql.contains("\"custom_col\" types.CustomType(10,2)"), sql);
+
+        Table invalid = Table.builder()
+                .schemaName("App")
+                .name("CustomTable")
+                .columnList(List.of(column("custom_col", "CustomType); DROP TABLE t; --")))
+                .indexList(List.of())
+                .build();
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.buildCreateTable(invalid, TableBuilderConfig.defaultConfig()));
+    }
+
+    @Test
+    void indexRequiresAtLeastOneNamedColumn() {
+        TableIndex index = TableIndex.builder()
+                .schemaName("App")
+                .tableName("T1")
+                .name("IDX1")
+                .type(OscarIndexTypeEnum.NORMAL.getName())
+                .columnList(List.of(TableIndexColumn.builder().columnName(" ").build()))
+                .build();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> OscarIndexTypeEnum.NORMAL.buildIndexScript(index));
+    }
+
+    @Test
+    void metadataAndDdlBuildersAlwaysQuoteRawIdentifiers() {
+        OscarMetaData metaData = new OscarMetaData();
+        assertSame(OscarIdentifierProcessor.INSTANCE, metaData.getSQLIdentifierProcessor());
+        assertEquals("\"App\".\"MixedTable\"", metaData.getMetaDataName("App", "MixedTable"));
+
+        OscarSqlBuilder builder = new OscarSqlBuilder();
+        assertEquals("DROP TABLE \"App\".\"MixedTable\"",
+                builder.ddl().table().buildDropTable(new DropTableRequest(null, "App", "MixedTable")));
+        assertEquals("TRUNCATE TABLE \"App\".\"MixedTable\"",
+                builder.ddl().table().buildTruncateTable(new TruncateTableRequest(null, "App", "MixedTable")));
+    }
+
+    @Test
+    void dmlBuildersEscapeTableAndColumnIdentifierBoundaries() {
+        OscarSqlBuilder builder = new OscarSqlBuilder();
+        SingleInsertSqlRequest insert = SingleInsertSqlRequest.builder()
+                .schemaName("app\";DROP TABLE t;--")
+                .tableName("tab\";DROP TABLE t;--")
+                .columnList(List.of("col\"; DROP TABLE t; --"))
+                .valueList(List.of("1"))
+                .build();
+        String insertSql = builder.dml().buildInsert(insert);
+        assertTrue(insertSql.contains("INSERT INTO \"app\"\";DROP TABLE t;--\".\"tab\"\";DROP TABLE t;--\""), insertSql);
+        assertTrue(insertSql.contains("(\"col\"\"; DROP TABLE t; --\")"), insertSql);
+        assertFalse(insertSql.contains("INTO \"app\";"), insertSql);
+
+        UpdateSqlRequest update = UpdateSqlRequest.builder()
+                .schemaName("App")
+                .tableName("MixedTable")
+                .row(Map.of("set\"; DROP TABLE t; --", "1"))
+                .primaryKeyMap(Map.of("pk\"; DROP TABLE t; --", "2"))
+                .build();
+        String updateSql = builder.dml().buildUpdate(update);
+        assertEquals("UPDATE \"App\".\"MixedTable\" SET \"set\"\"; DROP TABLE t; --\" = 1"
+                + " WHERE \"pk\"\"; DROP TABLE t; --\" = 2", updateSql);
+    }
+
+    private static TableColumn column(String name, String type) {
+        return TableColumn.builder()
+                .schemaName("App")
+                .tableName("CustomTable")
+                .name(name)
+                .columnType(type)
+                .nullable(1)
+                .build();
     }
 }
