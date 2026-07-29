@@ -1,155 +1,251 @@
 package ai.chat2db.plugin.dm;
 
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
 /**
- * Validation helpers for non-escapable SQL positions in DM DDL generation
- * (column DEFAULT expressions emitted verbatim). Escaping itself lives in
- * {@link ai.chat2db.plugin.dm.identifier.DMIdentifierProcessor}.
- * All shapes are recognized with linear-time scanners (no regex), so the
- * checks cannot be driven into regex backtracking.
+ * Structural validation for DM SQL fragments that are emitted as syntax
+ * rather than as identifiers or string literals.
  */
 public final class DMSqlGuards {
+
+    private static final Set<String> COLUMN_CLAUSE_KEYWORDS = Set.of(
+            "COLLATE", "CONSTRAINT", "CHECK", "DEFAULT", "DISABLE", "ENABLE", "GENERATED",
+            "IDENTITY", "INVISIBLE", "PRIMARY", "REFERENCES", "UNIQUE", "VISIBLE");
 
     private DMSqlGuards() {
     }
 
     /**
-     * Validates a column DEFAULT expression that is emitted verbatim into DDL.
-     * Legitimate forms: quoted string literals (with '' escapes), numeric literals,
-     * or keyword/function forms such as CURRENT_TIMESTAMP, SYSDATE, USER, SEQ.NEXTVAL.
-     * Function-call arguments tolerate quoted string literals and nested balanced
-     * parentheses (e.g. NVL(SUM(x),0)); semicolons are never allowed. Anything else
-     * is rejected because DEFAULT values are emitted verbatim.
+     * Validates one DM DEFAULT expression without re-encoding serialized
+     * literals returned by metadata.
      */
-    public static String requireDefaultExpression(String defaultValue) {
-        String trimmed = defaultValue.trim();
-        if (!isQuotedStringLiteral(trimmed) && !isNumericLiteral(trimmed) && !isIdentChainOrCall(trimmed)) {
-            throw new IllegalArgumentException("Invalid DM default expression: " + defaultValue);
+    public static String requireDefaultExpression(String value) {
+        if (StringUtils.isBlank(value)) {
+            throw invalid("DEFAULT expression", value);
+        }
+        scanExpression(value.trim(), false, "DEFAULT expression");
+        return value;
+    }
+
+    /**
+     * Validates one complete DM column type expression, including
+     * parameterized built-in and schema-qualified user-defined types.
+     */
+    public static String requireColumnTypeExpression(String typeName) {
+        if (StringUtils.isBlank(typeName)) {
+            throw invalid("column type", typeName);
+        }
+        scanExpression(typeName.trim(), true, "column type");
+        return typeName;
+    }
+
+    public static String requireUnit(String unit) {
+        String trimmed = StringUtils.trimToEmpty(unit);
+        if (!"CHAR".equalsIgnoreCase(trimmed) && !"BYTE".equalsIgnoreCase(trimmed)) {
+            throw new IllegalArgumentException("Unsupported DM VARCHAR unit: " + unit);
         }
         return trimmed;
     }
 
-    /**
-     * True when {@code s} is exactly one single-quoted string literal with '' escapes.
-     * Linear scan, no backtracking.
-     */
-    static boolean isQuotedStringLiteral(String s) {
-        return s.length() >= 2 && s.charAt(0) == '\'' && quotedLiteralEnd(s, 0) == s.length();
+    public static String requireAscOrDesc(String value) {
+        String trimmed = StringUtils.trimToEmpty(value);
+        if ("ASC".equalsIgnoreCase(trimmed)) {
+            return "ASC";
+        }
+        if ("DESC".equalsIgnoreCase(trimmed)) {
+            return "DESC";
+        }
+        throw new IllegalArgumentException("Invalid DM index sort direction: " + value);
     }
 
-    /**
-     * Returns the index just past the single-quoted literal that starts at
-     * {@code start} (where {@code s.charAt(start) == '\''}), or -1 when the literal
-     * is unterminated. Doubled quotes are consumed as escapes.
-     */
-    private static int quotedLiteralEnd(String s, int start) {
-        int i = start + 1;
-        int n = s.length();
-        while (i < n) {
-            if (s.charAt(i) == '\'') {
-                if (i + 1 < n && s.charAt(i + 1) == '\'') {
-                    i += 2;
-                    continue;
+    public static String requireBitLiteral(String value) {
+        if (StringUtils.isBlank(value)) {
+            return "NULL";
+        }
+        String trimmed = StringUtils.trimToEmpty(value);
+        if ("0".equals(trimmed) || "false".equalsIgnoreCase(trimmed)) {
+            return "0";
+        }
+        if ("1".equals(trimmed) || "true".equalsIgnoreCase(trimmed)) {
+            return "1";
+        }
+        throw new IllegalArgumentException("Invalid DM BIT literal: " + value);
+    }
+
+    private static void scanExpression(String expression, boolean typeExpression, String description) {
+        Deque<Character> delimiters = new ArrayDeque<>();
+        List<String> topLevelWords = new ArrayList<>();
+        boolean sawToken = false;
+
+        for (int i = 0; i < expression.length(); i++) {
+            char c = expression.charAt(i);
+            if (Character.isISOControl(c)) {
+                throw invalid(description, expression);
+            }
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            sawToken = true;
+
+            if (isAlternativeQuoteStart(expression, i)) {
+                if (typeExpression) {
+                    throw invalid(description, expression);
                 }
-                return i + 1;
+                i = scanAlternativeQuote(expression, i, description);
+                continue;
             }
-            i++;
-        }
-        return -1;
-    }
-
-    /**
-     * Numeric literal: optional sign, digits with optional fractional part, or a
-     * leading-dot fraction (e.g. {@code -1}, {@code 1.5}, {@code .5}).
-     */
-    private static boolean isNumericLiteral(String s) {
-        int n = s.length();
-        int i = (s.startsWith("+") || s.startsWith("-")) ? 1 : 0;
-        boolean intDigits = false;
-        while (i < n && Character.isDigit(s.charAt(i))) {
-            i++;
-            intDigits = true;
-        }
-        boolean dotSeen = false;
-        boolean fracDigits = false;
-        if (i < n && s.charAt(i) == '.') {
-            dotSeen = true;
-            i++;
-            while (i < n && Character.isDigit(s.charAt(i))) {
-                i++;
-                fracDigits = true;
-            }
-        }
-        if (i != n) {
-            return false;
-        }
-        return dotSeen ? (intDigits || fracDigits) && fracDigits : intDigits;
-    }
-
-    /**
-     * True for an identifier chain {@code ident(.ident)*} (e.g. SYSDATE, SEQ.NEXTVAL)
-     * optionally followed by a parenthesized argument list. Arguments may contain
-     * single-quoted string literals and nested balanced parentheses; semicolons and
-     * stray quotes/parens are rejected. Linear scan.
-     */
-    static boolean isIdentChainOrCall(String s) {
-        int n = s.length();
-        if (n == 0 || !isIdentStart(s.charAt(0))) {
-            return false;
-        }
-        int i = 1;
-        while (i < n) {
-            char c = s.charAt(i);
-            if (isIdentPart(c)) {
-                i++;
-            } else if (c == '.' && i + 1 < n && isIdentStart(s.charAt(i + 1))) {
-                i++;
-            } else {
-                break;
-            }
-        }
-        while (i < n && Character.isWhitespace(s.charAt(i))) {
-            i++;
-        }
-        if (i == n) {
-            return true;
-        }
-        if (s.charAt(i) != '(') {
-            return false;
-        }
-        int depth = 0;
-        while (i < n) {
-            char c = s.charAt(i);
-            if (c == '\'') {
-                int end = quotedLiteralEnd(s, i);
-                if (end < 0) {
-                    return false;
+            if (c == '\'' || c == '"') {
+                if (typeExpression && c == '\'') {
+                    throw invalid(description, expression);
+                }
+                int end = scanQuoted(expression, i, c, description);
+                if (c == '\'' && hasInvalidAttachedLiteralPrefix(expression, i, end)) {
+                    throw invalid(description, expression);
                 }
                 i = end;
                 continue;
             }
-            if (c == '(') {
-                depth++;
-            } else if (c == ')') {
-                depth--;
-                if (depth == 0) {
-                    return i == n - 1;
-                }
-                if (depth < 0) {
-                    return false;
-                }
-            } else if (c == ';') {
-                return false;
+            if (c == ';'
+                    || startsWith(expression, i, "--")
+                    || startsWith(expression, i, "/*")
+                    || startsWith(expression, i, "*/")) {
+                throw invalid(description, expression);
             }
-            i++;
+            if (c == '(') {
+                delimiters.push(c);
+                continue;
+            }
+            if (c == ')') {
+                if (delimiters.isEmpty()) {
+                    throw invalid(description, expression);
+                }
+                delimiters.pop();
+                continue;
+            }
+            if (c == '[' || c == ']' || c == '{' || c == '}') {
+                throw invalid(description, expression);
+            }
+            if (c == ',' && delimiters.isEmpty()) {
+                throw invalid(description, expression);
+            }
+            if (typeExpression && !isTypeCharacter(c)) {
+                throw invalid(description, expression);
+            }
+            if (Character.isLetter(c) || c == '_') {
+                int wordEnd = i + 1;
+                while (wordEnd < expression.length() && isWordCharacter(expression.charAt(wordEnd))) {
+                    wordEnd++;
+                }
+                if (delimiters.isEmpty()) {
+                    topLevelWords.add(expression.substring(i, wordEnd).toUpperCase(Locale.ROOT));
+                }
+                i = wordEnd - 1;
+            }
+        }
+
+        if (!sawToken || !delimiters.isEmpty()) {
+            throw invalid(description, expression);
+        }
+        rejectColumnClauseTokens(topLevelWords, description, expression);
+    }
+
+    private static int scanQuoted(String expression, int start, char quote, String description) {
+        for (int i = start + 1; i < expression.length(); i++) {
+            if (expression.charAt(i) == quote) {
+                if (i + 1 < expression.length() && expression.charAt(i + 1) == quote) {
+                    i++;
+                    continue;
+                }
+                return i;
+            }
+        }
+        throw invalid(description, expression);
+    }
+
+    private static boolean hasInvalidAttachedLiteralPrefix(String expression, int quoteStart, int quoteEnd) {
+        if (quoteStart == 0 || Character.isWhitespace(expression.charAt(quoteStart - 1))) {
+            return false;
+        }
+        if (!isWordCharacter(expression.charAt(quoteStart - 1))) {
+            return false;
+        }
+        int prefixStart = quoteStart - 1;
+        while (prefixStart > 0 && isWordCharacter(expression.charAt(prefixStart - 1))) {
+            prefixStart--;
+        }
+        String prefix = expression.substring(prefixStart, quoteStart);
+        if ("N".equalsIgnoreCase(prefix)) {
+            return false;
+        }
+        if (!"X".equalsIgnoreCase(prefix)) {
+            return true;
+        }
+        for (int i = quoteStart + 1; i < quoteEnd; i++) {
+            char c = expression.charAt(i);
+            if ((c < '0' || c > '9') && (c < 'A' || c > 'F') && (c < 'a' || c > 'f')) {
+                return true;
+            }
         }
         return false;
     }
 
-    private static boolean isIdentStart(char c) {
-        return Character.isLetter(c) || c == '_';
+    private static boolean isAlternativeQuoteStart(String expression, int offset) {
+        return offset + 2 < expression.length()
+                && (expression.charAt(offset) == 'q' || expression.charAt(offset) == 'Q')
+                && expression.charAt(offset + 1) == '\'';
     }
 
-    private static boolean isIdentPart(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
+    private static int scanAlternativeQuote(String expression, int start, String description) {
+        char open = expression.charAt(start + 2);
+        char close = switch (open) {
+            case '[' -> ']';
+            case '{' -> '}';
+            case '(' -> ')';
+            case '<' -> '>';
+            default -> open;
+        };
+        for (int i = start + 3; i + 1 < expression.length(); i++) {
+            if (expression.charAt(i) == close && expression.charAt(i + 1) == '\'') {
+                return i + 1;
+            }
+        }
+        throw invalid(description, expression);
+    }
+
+    private static void rejectColumnClauseTokens(List<String> words, String description, String expression) {
+        for (String word : words) {
+            if (COLUMN_CLAUSE_KEYWORDS.contains(word)) {
+                throw invalid(description, expression);
+            }
+        }
+        for (int i = 0; i + 1 < words.size(); i++) {
+            if ("NOT".equals(words.get(i)) && "NULL".equals(words.get(i + 1))) {
+                throw invalid(description, expression);
+            }
+        }
+    }
+
+    private static boolean isTypeCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#'
+                || c == '.' || c == '%' || c == '*' || c == '+' || c == '-' || c == ',';
+    }
+
+    private static boolean isWordCharacter(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#';
+    }
+
+    private static boolean startsWith(String value, int offset, String candidate) {
+        return offset + candidate.length() <= value.length() && value.startsWith(candidate, offset);
+    }
+
+    private static IllegalArgumentException invalid(String description, String value) {
+        return new IllegalArgumentException("Invalid DM " + description + ": " + value);
     }
 }

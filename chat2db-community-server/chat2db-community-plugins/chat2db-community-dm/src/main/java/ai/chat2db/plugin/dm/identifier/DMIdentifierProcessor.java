@@ -4,6 +4,7 @@ import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
@@ -254,7 +255,7 @@ public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public boolean isReservedKeyword(String identifier, Integer majorVersion, Integer minorVersion) {
-        return DM_RESERVED_KEYWORDS.contains(identifier);
+        return identifier != null && DM_RESERVED_KEYWORDS.contains(identifier.toUpperCase(Locale.ROOT));
     }
 
     /**
@@ -271,11 +272,18 @@ public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     @Override
     public String quoteIdentifier(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
+        if (isValidQuotedIdentifier(identifier)) {
+            return identifier;
+        }
         if (isValidIdentifier(identifier)
-                && !isReservedKeyword(identifier.toUpperCase(java.util.Locale.ROOT), null, null)) {
+                && !containsLowerCase(identifier)
+                && !isReservedKeyword(identifier, null, null)) {
             return identifier;
         }
         return quoteIdentifierAlways(identifier);
@@ -283,21 +291,23 @@ public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     /**
      * Unconditional quoting for DDL-generation call sites: wraps with double
-     * quotes, stripping one surrounding quote pair and doubling every embedded
-     * double quote. Returns {@code null} for {@code null}.
-     */
-    public String quoteIdentifierAlways(String identifier) {
-        if (identifier == null) {
-            return null;
-        }
-        return "\"" + escapeIdentifierContent(identifier) + "\"";
-    }
-
-    /**
-     * Always-quote SPI variant that preserves the original identifier case.
+     * quotes and doubling every embedded double quote, including quotes at the
+     * raw name boundaries. Returns {@code null} for {@code null}.
      */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        if (StringUtils.isBlank(identifier)) {
+            return identifier;
+        }
+        if (isValidQuotedIdentifier(identifier)) {
+            return identifier;
+        }
+        if (isValidIdentifier(identifier) && !isReservedKeyword(identifier, null, null)) {
+            return identifier;
+        }
         return quoteIdentifierAlways(identifier);
     }
 
@@ -314,28 +324,48 @@ public class DMIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     public String convertIdentifierCase(String identifier) {
         if (StringUtils.isBlank(identifier)) {
             return identifier;
-        }else {
-            return identifier.toUpperCase();
+        } else {
+            return identifier.toUpperCase(Locale.ROOT);
         }
     }
 
     private static String escapeIdentifierContent(String identifier) {
-        if (identifier == null) {
-            return null;
-        }
-        String unquoted = identifier;
-        if (unquoted.length() >= 2 && unquoted.startsWith("\"") && unquoted.endsWith("\"")) {
-            unquoted = unquoted.substring(1, unquoted.length() - 1);
-        }
-        return unquoted.replace("\"", "\"\"");
+        return identifier == null ? null : StringUtils.replace(identifier, "\"", "\"\"");
     }
 
     /**
      * Escapes identifier content for a position already surrounded by double
-     * quotes: strips one surrounding quote pair, then doubles every embedded
-     * double quote. Returns {@code null} for {@code null}.
+     * quotes. Returns {@code null} for {@code null}.
      */
     public static String escapeIdentifier(String identifier) {
         return escapeIdentifierContent(identifier);
+    }
+
+    @Override
+    public String quoteIdentifierAlways(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        return "\"" + escapeIdentifierContent(identifier) + "\"";
+    }
+
+    public String quoteStringLiteral(String value) {
+        return value == null ? null : "'" + escapeString(value) + "'";
+    }
+
+    private static boolean isValidQuotedIdentifier(String identifier) {
+        if (identifier.length() < 2 || identifier.charAt(0) != '"'
+                || identifier.charAt(identifier.length() - 1) != '"') {
+            return false;
+        }
+        for (int i = 1; i < identifier.length() - 1; i++) {
+            if (identifier.charAt(i) == '"') {
+                if (i + 1 >= identifier.length() - 1 || identifier.charAt(i + 1) != '"') {
+                    return false;
+                }
+                i++;
+            }
+        }
+        return true;
     }
 }

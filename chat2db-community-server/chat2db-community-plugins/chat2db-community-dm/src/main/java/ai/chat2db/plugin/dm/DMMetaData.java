@@ -134,7 +134,8 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
         List<TableColumn> columns = super.columns(connection, databaseName, schemaName, tableName);
         for (TableColumn column : columns) {
             String columnType = column.getColumnType();
-            if (StringUtils.equals(columnType.toUpperCase(), DMColumnTypeEnum.TIMESTAMP.name())) {
+            if (columnType != null
+                    && StringUtils.equals(columnType.toUpperCase(Locale.ROOT), DMColumnTypeEnum.TIMESTAMP.name())) {
                 column.setColumnSize(column.getDecimalDigits());
             }
         }
@@ -320,6 +321,10 @@ public class DMMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String getMetaDataName(String... names) {
+        if (names.length == 3) {
+            String qualifier = StringUtils.isNotBlank(names[1]) ? names[1] : names[0];
+            return getMetaDataName(qualifier, names[2]);
+        }
         return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(DMIdentifierProcessor.INSTANCE::quoteIdentifierAlways).collect(Collectors.joining("."));
     }
 

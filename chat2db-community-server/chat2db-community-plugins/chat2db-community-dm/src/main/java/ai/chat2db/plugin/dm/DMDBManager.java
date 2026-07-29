@@ -227,14 +227,50 @@ public class DMDBManager extends DefaultDBManager implements IDbManager {
         }
         String schemaName = connectInfo.getSchemaName();
         try {
-            DefaultSQLExecutor.getInstance().execute(connection, String.format(SQL_SET_SCHEMA, DMIdentifierProcessor.escapeIdentifier(schemaName)));
+            DefaultSQLExecutor.getInstance().execute(connection,
+                    String.format(SQL_SET_SCHEMA, DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName)));
         } catch (SQLException e) {
             log.error("connectDatabase error", e);
         }
     }
 
     @Override
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName,
+                          String newTableName, boolean copyData) throws SQLException {
+        String source = qualifiedName(schemaName, tableName, true);
+        String target = qualifiedName(schemaName, newTableName, true);
+        String sql;
+        if (copyData) {
+            sql = "CREATE TABLE " + target + " AS SELECT * FROM " + source;
+        } else {
+            sql = "CREATE TABLE " + target + " AS SELECT * FROM " + source + " WHERE 1=0";
+        }
+        DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+    }
+
+    @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        return String.format(SQL_DROP_TABLE_EXISTS, DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName));
+        return String.format(SQL_DROP_TABLE_EXISTS, qualifiedName(schemaName, tableName, false));
+    }
+
+    @Override
+    public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
+        return "TRUNCATE TABLE " + qualifiedName(schemaName, tableName, true);
+    }
+
+    private static String qualifiedName(String schemaName, String objectName, boolean normalizeQuotedObject) {
+        String normalizedObject = normalizeQuotedObject ? normalizeQuotedIdentifier(objectName) : objectName;
+        String quotedObject = DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(normalizedObject);
+        if (StringUtils.isBlank(schemaName)) {
+            return quotedObject;
+        }
+        return DMIdentifierProcessor.INSTANCE.quoteIdentifierAlways(schemaName) + "." + quotedObject;
+    }
+
+    private static String normalizeQuotedIdentifier(String identifier) {
+        if (DMIdentifierProcessor.INSTANCE.isQuoteIdentifier(identifier)) {
+            return DMIdentifierProcessor.INSTANCE.removeIdentifierQuote(identifier);
+        }
+        return identifier;
     }
 }
