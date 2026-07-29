@@ -17,7 +17,7 @@ import java.util.Set;
 public final class SUNDBSqlGuards {
 
     private static final Set<String> COLUMN_CLAUSE_KEYWORDS = Set.of(
-            "AUTO_INCREMENT", "COLLATE", "COMMENT", "CONSTRAINT", "DEFAULT", "GENERATED", "IDENTITY",
+            "AUTO_INCREMENT", "CHECK", "COLLATE", "COMMENT", "CONSTRAINT", "DEFAULT", "GENERATED", "IDENTITY",
             "PRIMARY", "REFERENCES", "UNIQUE");
 
     private static final Set<String> STATEMENT_KEYWORDS = Set.of(
@@ -26,6 +26,13 @@ public final class SUNDBSqlGuards {
 
     private static final Set<String> CONSTRAINT_TYPES = Set.of(
             "CHECK", "FOREIGN KEY", "PRIMARY KEY", "UNIQUE");
+
+    private static final Set<List<String>> INTERVAL_QUALIFIERS = Set.of(
+            List.of("YEAR"), List.of("MONTH"), List.of("DAY"), List.of("HOUR"),
+            List.of("MINUTE"), List.of("SECOND"), List.of("YEAR", "TO", "MONTH"),
+            List.of("DAY", "TO", "HOUR"), List.of("DAY", "TO", "MINUTE"),
+            List.of("DAY", "TO", "SECOND"), List.of("HOUR", "TO", "MINUTE"),
+            List.of("HOUR", "TO", "SECOND"), List.of("MINUTE", "TO", "SECOND"));
 
     private SUNDBSqlGuards() {
     }
@@ -116,6 +123,9 @@ public final class SUNDBSqlGuards {
         List<String> topLevelWords = new ArrayList<>();
         boolean sawToken = false;
         boolean topLevelLiteralEnded = false;
+        boolean intervalLiteralEnded = false;
+        boolean readingIntervalQualifier = false;
+        List<String> intervalQualifierWords = new ArrayList<>();
 
         for (int i = 0; i < expression.length(); i++) {
             char c = expression.charAt(i);
@@ -131,6 +141,7 @@ public final class SUNDBSqlGuards {
                 i = scanAlternativeQuote(expression, i, description);
                 if (parentheses.isEmpty()) {
                     topLevelLiteralEnded = true;
+                    intervalLiteralEnded = lastWordIsInterval(topLevelWords);
                 }
                 continue;
             }
@@ -144,14 +155,28 @@ public final class SUNDBSqlGuards {
                 i = scanQuoted(expression, i, c, description);
                 if (!typeExpression && parentheses.isEmpty() && c == '\'') {
                     topLevelLiteralEnded = true;
+                    intervalLiteralEnded = lastWordIsInterval(topLevelWords);
                 }
                 continue;
             }
             if (topLevelLiteralEnded && parentheses.isEmpty()) {
                 if (Character.isLetterOrDigit(c) || c == '_') {
+                    if (!intervalLiteralEnded || !Character.isLetter(c)) {
+                        throw invalid(description, expression);
+                    }
+                    readingIntervalQualifier = true;
+                    intervalQualifierWords.clear();
+                } else if (intervalLiteralEnded) {
                     throw invalid(description, expression);
                 }
                 topLevelLiteralEnded = false;
+                intervalLiteralEnded = false;
+            }
+            if (readingIntervalQualifier && !Character.isLetter(c) && c != '_') {
+                if (!INTERVAL_QUALIFIERS.contains(intervalQualifierWords)) {
+                    throw invalid(description, expression);
+                }
+                readingIntervalQualifier = false;
             }
             if (c == ';' || Character.isISOControl(c)
                     || startsWith(expression, i, "--")
@@ -188,6 +213,12 @@ public final class SUNDBSqlGuards {
                 if (STATEMENT_KEYWORDS.contains(word)) {
                     throw invalid(description, expression);
                 }
+                if (readingIntervalQualifier) {
+                    intervalQualifierWords.add(word);
+                    if (!isIntervalQualifierPrefix(intervalQualifierWords)) {
+                        throw invalid(description, expression);
+                    }
+                }
                 if (parentheses.isEmpty()) {
                     topLevelWords.add(word);
                 }
@@ -195,7 +226,8 @@ public final class SUNDBSqlGuards {
             }
         }
 
-        if (!sawToken || !parentheses.isEmpty()) {
+        if (!sawToken || !parentheses.isEmpty() || intervalLiteralEnded
+                || readingIntervalQualifier && !INTERVAL_QUALIFIERS.contains(intervalQualifierWords)) {
             throw invalid(description, expression);
         }
         for (String word : topLevelWords) {
@@ -256,6 +288,15 @@ public final class SUNDBSqlGuards {
 
     private static boolean isWordCharacter(char c) {
         return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '#';
+    }
+
+    private static boolean lastWordIsInterval(List<String> topLevelWords) {
+        return !topLevelWords.isEmpty() && "INTERVAL".equals(topLevelWords.get(topLevelWords.size() - 1));
+    }
+
+    private static boolean isIntervalQualifierPrefix(List<String> words) {
+        return INTERVAL_QUALIFIERS.stream().anyMatch(qualifier -> qualifier.size() >= words.size()
+                && qualifier.subList(0, words.size()).equals(words));
     }
 
     private static boolean startsWith(String value, int offset, String candidate) {

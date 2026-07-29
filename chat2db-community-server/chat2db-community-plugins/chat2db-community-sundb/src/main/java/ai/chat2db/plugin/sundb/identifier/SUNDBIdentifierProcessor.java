@@ -22,12 +22,12 @@ public class SUNDBIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     private static final Set<String> RESERVED_KEYWORDS = Set.of(
             "ACCESS", "ADD", "ALL", "ALTER", "AND", "ANY", "AS", "ASC", "AUTHORIZATION",
-            "BETWEEN", "BY", "CASE", "CHECK", "COLUMN", "COMMENT", "CONNECT", "CONSTRAINT",
+            "BETWEEN", "BY", "CASE", "CAST", "CHECK", "COLUMN", "COMMENT", "CONNECT", "CONSTRAINT",
             "CREATE", "CURRENT", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER",
             "DATABASE", "DATE", "DEFAULT", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "END",
             "EXISTS", "FALSE", "FOR", "FOREIGN", "FROM", "GRANT", "GROUP", "HAVING", "IN",
-            "INDEX", "INSERT", "INTERSECT", "INTO", "IS", "JOIN", "LIKE", "NOT", "NULL", "ON",
-            "OR", "ORDER", "PRIMARY", "PROCEDURE", "REFERENCES", "REVOKE", "ROW", "SCHEMA",
+            "INDEX", "INSERT", "INTERSECT", "INTERVAL", "INTO", "IS", "JOIN", "LIKE", "LIMIT", "NOT",
+            "NULL", "OFFSET", "ON", "OR", "ORDER", "PRIMARY", "PROCEDURE", "REFERENCES", "REVOKE", "ROW", "SCHEMA",
             "SELECT", "SESSION_USER", "SET", "SYSDATE", "TABLE", "THEN", "TO", "TRIGGER", "TRUE",
             "UNION", "UNIQUE", "UPDATE", "USER", "VALUES", "VIEW", "WHEN", "WHERE", "WITH");
 

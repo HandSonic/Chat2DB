@@ -66,10 +66,9 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             SUNDBColumnTypeEnum typeEnum = SUNDBColumnTypeEnum.getByType(column.getColumnType());
-            if (typeEnum != null) {
-                String createColumnSql = typeEnum.buildCreateColumnSql(column);
-                script.append(SQLConstants.TAB).append(createColumnSql).append(SQLConstants.COMMA_LINE_SEPARATOR);
-            }
+            typeEnum = typeEnum == null ? SUNDBColumnTypeEnum.INT : typeEnum;
+            String createColumnSql = typeEnum.buildCreateColumnSql(column);
+            script.append(SQLConstants.TAB).append(createColumnSql).append(SQLConstants.COMMA_LINE_SEPARATOR);
         }
 
         script = new StringBuilder(script.substring(0, script.length() - 2));
@@ -138,9 +137,7 @@ public class SUNDBSqlBuilder extends DefaultSqlBuilder {
             String editStatus = tableColumn.getEditStatus();
             if (StringUtils.isNotBlank(editStatus)) {
                 SUNDBColumnTypeEnum typeEnum = SUNDBColumnTypeEnum.getByType(tableColumn.getColumnType());
-                if(typeEnum == null){
-                    continue;
-                }
+                typeEnum = typeEnum == null ? SUNDBColumnTypeEnum.INT : typeEnum;
                 script.append(SQLConstants.TAB);
                 if (!typeEnum.buildModifyColumn(tableColumn).isEmpty()) {
                     script.append(typeEnum.buildModifyColumn(tableColumn)).append(SQLConstants.SEMICOLON_LINE_SEPARATOR);

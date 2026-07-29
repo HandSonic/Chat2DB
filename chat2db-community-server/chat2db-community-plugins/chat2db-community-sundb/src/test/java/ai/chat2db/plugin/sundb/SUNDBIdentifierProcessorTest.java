@@ -2,6 +2,7 @@ package ai.chat2db.plugin.sundb;
 
 import ai.chat2db.community.domain.api.model.metadata.Database;
 import ai.chat2db.community.domain.api.model.metadata.Schema;
+import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
@@ -60,6 +61,9 @@ class SUNDBIdentifierProcessorTest {
         assertEquals("T_PRIMARY_KEY_INDEX", processor.quoteIdentifier("T_PRIMARY_KEY_INDEX"));
         assertEquals("\"col_1\"", processor.quoteIdentifier("col_1"));
         assertEquals("\"SELECT\"", processor.quoteIdentifier("SELECT"));
+        for (String keyword : List.of("CAST", "INTERVAL", "LIMIT", "OFFSET")) {
+            assertEquals("\"" + keyword + "\"", processor.quoteIdentifier(keyword), keyword);
+        }
         // anything needing quotes is wrapped with embedded-quote doubling
         assertEquals("\"we\"\"ird\"", processor.quoteIdentifier("we\"ird"));
         assertEquals("\"has space\"", processor.quoteIdentifier("has space"));
@@ -236,7 +240,8 @@ class SUNDBIdentifierProcessorTest {
         assertTrue(SUNDBColumnTypeEnum.INT.buildCreateColumnSql(validSequence).contains("DEFAULT SEQ.NEXTVAL"));
 
         String[] validExpressions = {"now()", "SYS_GUID()", "TO_DATE('2024-01-01','YYYY-MM-DD')",
-                "CURRENT_DATE + 1", "'a'||'b'"};
+                "CURRENT_DATE + 1", "'a'||'b'", "CAST(1 AS NUMBER)", "INTERVAL '1' DAY",
+                "INTERVAL '1-2' YEAR TO MONTH", "INTERVAL '1' DAY + INTERVAL '2' HOUR"};
         for (String expression : validExpressions) {
             TableColumn column = new TableColumn();
             column.setName("c1");
@@ -283,7 +288,9 @@ class SUNDBIdentifierProcessorTest {
                 "0 NULL",
                 "0 NOT NULL",
                 "NULL REFERENCES victims",
-                "CURRENT_TIMESTAMP UNIQUE"
+                "CURRENT_TIMESTAMP UNIQUE",
+                "0 CHECK (1=1)",
+                "INTERVAL '1' BANANA"
         };
         for (String payload : payloads) {
             TableColumn column = new TableColumn();
@@ -366,11 +373,20 @@ class SUNDBIdentifierProcessorTest {
         assertEquals("\"co\"\"l\" APP.MONEY_TYPE(12,2)",
                 SUNDBColumnTypeEnum.INT.buildCreateColumnSql(column));
 
-        String[] invalidTypes = {"INT NOT NULL", "INT DEFAULT 0", "INT); DROP TABLE x--", "VARCHAR(10), x INT"};
+        Table table = new Table();
+        table.setSchemaName("sch");
+        table.setName("t");
+        table.setColumnList(List.of(column));
+        table.setIndexList(List.of());
+        assertTrue(new SUNDBSqlBuilder().buildCreateTable(table, null)
+                .contains("\"co\"\"l\" APP.MONEY_TYPE(12,2)"));
+
+        String[] invalidTypes = {"INT NOT NULL", "INT DEFAULT 0", "INT CHECK (1=1)",
+                "INT); DROP TABLE x--", "VARCHAR(10), x INT"};
         for (String invalidType : invalidTypes) {
             column.setColumnType(invalidType);
             assertThrows(IllegalArgumentException.class,
-                    () -> SUNDBColumnTypeEnum.INT.buildCreateColumnSql(column), invalidType);
+                    () -> new SUNDBSqlBuilder().buildCreateTable(table, null), invalidType);
         }
     }
 
