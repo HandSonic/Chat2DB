@@ -1,8 +1,8 @@
 package ai.chat2db.community.domain.api.enums.plugin;
 
 import ai.chat2db.community.tools.enums.IBaseEnum;
+import ai.chat2db.community.tools.util.EasyStringUtils;
 import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
 
 
 @Getter
@@ -159,13 +159,7 @@ public enum DataTypeEnum implements IBaseEnum<String> {
     }
 
     public static String getStringValue(String value) {
-        if (StringUtils.isBlank(value)) {
-            return "'" + value + "'";
-        }
-        value = value.replace("\\", "\\\\");
-        value = value.replace("'", "\\'");
-        value = value.replace("\"", "\\\"");
-        return "'" + value + "'";
+        return EasyStringUtils.escapeAndQuoteString(value);
     }
 
 }

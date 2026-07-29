@@ -11,16 +11,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DataTypeEnumTest {
 
     @Test
-    void stringBranchEscapesQuotesAndBackslashes() {
-        assertEquals("'O\\'Brien'", DataTypeEnum.STRING.getSqlValue("O'Brien"));
+    void stringBranchEscapesLiteralDelimitersAndBackslashes() {
+        assertEquals("'O''Brien'", DataTypeEnum.STRING.getSqlValue("O'Brien"));
         assertEquals("'a\\\\b'", DataTypeEnum.STRING.getSqlValue("a\\b"));
+        assertEquals("'a\"b'", DataTypeEnum.STRING.getSqlValue("a\"b"));
     }
 
     @Test
     void datetimeBranchEscapesLikeString() {
         assertEquals(DataTypeEnum.STRING.getSqlValue("2024-01-01 '; DROP TABLE t; --"),
                 DataTypeEnum.DATETIME.getSqlValue("2024-01-01 '; DROP TABLE t; --"));
-        assertEquals("'O\\'Brien'", DataTypeEnum.DATETIME.getSqlValue("O'Brien"));
+        assertEquals("'O''Brien'", DataTypeEnum.DATETIME.getSqlValue("O'Brien"));
     }
 
     @Test
