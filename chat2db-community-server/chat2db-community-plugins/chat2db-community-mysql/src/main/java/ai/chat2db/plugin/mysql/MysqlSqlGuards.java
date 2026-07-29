@@ -21,9 +21,14 @@ public final class MysqlSqlGuards {
     private static final Pattern BIT_LITERAL_PATTERN = Pattern.compile("^[01]+$");
     private static final Pattern HEX_DIGITS_PATTERN = Pattern.compile("^[0-9a-fA-F]+$");
     private static final Pattern HEX_LITERAL_PATTERN = Pattern.compile("^0[xX][0-9a-fA-F]+$");
-    private static final String DEFINER_QUOTED_PART = "'([^'\\\\]|\\\\[\\s\\S])*'|`[^`]+`";
+    private static final String DEFINER_SINGLE_QUOTED_PART = "'(?:''|[^'\\\\])+'";
+    private static final String DEFINER_BACKTICK_QUOTED_PART = "`(?:``|[^`\\\\])+`";
+    private static final String DEFINER_QUOTED_PART = "(?:" + DEFINER_SINGLE_QUOTED_PART + "|"
+            + DEFINER_BACKTICK_QUOTED_PART + ")";
     private static final Pattern DEFINER_PATTERN = Pattern.compile(
             "^([A-Za-z0-9_$]+|" + DEFINER_QUOTED_PART + ")@([A-Za-z0-9_.%:$-]+|" + DEFINER_QUOTED_PART + ")$");
+    private static final Pattern COLUMN_TYPE_PATTERN = Pattern.compile(
+            "^[A-Za-z][A-Za-z0-9_]*(?:\\s*\\(\\s*\\d+(?:\\s*,\\s*\\d+)?\\s*\\))?(?:\\s+[A-Za-z][A-Za-z0-9_]*)*$");
 
     private MysqlSqlGuards() {
     }
@@ -89,6 +94,18 @@ public final class MysqlSqlGuards {
     }
 
     /**
+     * Validate a fallback column type expression while preserving common custom type names,
+     * optional numeric precision/scale and keyword modifiers.
+     */
+    public static String requireColumnType(String value) {
+        String trimmed = StringUtils.trimToEmpty(value);
+        if (!COLUMN_TYPE_PATTERN.matcher(trimmed).matches()) {
+            throw new IllegalArgumentException("Invalid MySQL column type: " + value);
+        }
+        return trimmed;
+    }
+
+    /**
      * Validate an index sort direction: only ASC/DESC are legal, returned in canonical uppercase.
      */
     public static String requireAscOrDesc(String value) {
@@ -116,9 +133,9 @@ public final class MysqlSqlGuards {
     }
 
     /**
-     * Re-escape a comma-separated ENUM/SET value list: each item is stripped of its surrounding
-     * single quotes (if any), escaped as a SQL string literal and re-quoted. A surrounding pair of
-     * parentheses is preserved.
+     * Parse and re-escape a comma-separated ENUM/SET value list. Quoted values are decoded before
+     * they are escaped again, so metadata such as {@code 'can''t'} is not double-escaped. A
+     * surrounding pair of parentheses is preserved.
      */
     public static String quoteEnumValues(String raw) {
         if (raw == null) {
@@ -128,36 +145,14 @@ public final class MysqlSqlGuards {
         if (trimmed.isEmpty()) {
             return trimmed;
         }
-        boolean parenthesized = trimmed.length() >= 2 && trimmed.startsWith("(") && trimmed.endsWith(")");
-        String inner = parenthesized ? trimmed.substring(1, trimmed.length() - 1) : trimmed;
-        List<String> items = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuote = false;
-        for (int i = 0; i < inner.length(); i++) {
-            char c = inner.charAt(i);
-            if (inQuote) {
-                current.append(c);
-                if (c == '\\' && i + 1 < inner.length()) {
-                    current.append(inner.charAt(++i));
-                } else if (c == '\'') {
-                    if (i + 1 < inner.length() && inner.charAt(i + 1) == '\'') {
-                        current.append('\'');
-                        i++;
-                    } else {
-                        inQuote = false;
-                    }
-                }
-            } else if (c == '\'') {
-                inQuote = true;
-                current.append(c);
-            } else if (c == ',') {
-                items.add(current.toString());
-                current.setLength(0);
-            } else {
-                current.append(c);
-            }
+        boolean startsWithParenthesis = trimmed.startsWith("(");
+        boolean endsWithParenthesis = trimmed.endsWith(")");
+        if (startsWithParenthesis != endsWithParenthesis) {
+            throw invalidEnumValues(raw);
         }
-        items.add(current.toString());
+        boolean parenthesized = startsWithParenthesis;
+        String inner = parenthesized ? trimmed.substring(1, trimmed.length() - 1) : trimmed;
+        List<String> items = parseEnumValues(inner, raw);
         StringBuilder result = new StringBuilder();
         if (parenthesized) {
             result.append('(');
@@ -166,7 +161,7 @@ public final class MysqlSqlGuards {
             if (i > 0) {
                 result.append(',');
             }
-            result.append('\'').append(MysqlIdentifierProcessor.INSTANCE.escapeString(unquoteSingle(items.get(i).trim()))).append('\'');
+            result.append('\'').append(MysqlIdentifierProcessor.INSTANCE.escapeString(items.get(i))).append('\'');
         }
         if (parenthesized) {
             result.append(')');
@@ -174,10 +169,90 @@ public final class MysqlSqlGuards {
         return result.toString();
     }
 
-    private static String unquoteSingle(String item) {
-        if (item.length() >= 2 && item.startsWith("'") && item.endsWith("'")) {
-            return item.substring(1, item.length() - 1);
+    private static List<String> parseEnumValues(String inner, String raw) {
+        List<String> values = new ArrayList<>();
+        int index = 0;
+        while (index < inner.length()) {
+            while (index < inner.length() && Character.isWhitespace(inner.charAt(index))) {
+                index++;
+            }
+            if (index >= inner.length()) {
+                throw invalidEnumValues(raw);
+            }
+
+            String value;
+            if (inner.charAt(index) == '\'') {
+                StringBuilder decoded = new StringBuilder();
+                index = parseQuotedEnumValue(inner, index + 1, decoded, raw);
+                value = decoded.toString();
+                while (index < inner.length() && Character.isWhitespace(inner.charAt(index))) {
+                    index++;
+                }
+                if (index < inner.length() && inner.charAt(index) != ',') {
+                    throw invalidEnumValues(raw);
+                }
+            } else {
+                int comma = inner.indexOf(',', index);
+                int end = comma < 0 ? inner.length() : comma;
+                value = inner.substring(index, end).trim();
+                if (value.isEmpty()) {
+                    throw invalidEnumValues(raw);
+                }
+                index = end;
+            }
+            values.add(value);
+
+            if (index >= inner.length()) {
+                break;
+            }
+            index++;
+            if (index >= inner.length()) {
+                throw invalidEnumValues(raw);
+            }
         }
-        return item;
+        if (values.isEmpty()) {
+            throw invalidEnumValues(raw);
+        }
+        return values;
+    }
+
+    private static int parseQuotedEnumValue(String inner, int index, StringBuilder decoded, String raw) {
+        while (index < inner.length()) {
+            char current = inner.charAt(index++);
+            if (current == '\'') {
+                if (index < inner.length() && inner.charAt(index) == '\'') {
+                    decoded.append('\'');
+                    index++;
+                    continue;
+                }
+                return index;
+            }
+            if (current == '\\') {
+                if (index >= inner.length()) {
+                    throw invalidEnumValues(raw);
+                }
+                appendMysqlEscapedCharacter(decoded, inner.charAt(index++));
+                continue;
+            }
+            decoded.append(current);
+        }
+        throw invalidEnumValues(raw);
+    }
+
+    private static void appendMysqlEscapedCharacter(StringBuilder decoded, char escaped) {
+        switch (escaped) {
+            case '0' -> decoded.append('\0');
+            case 'b' -> decoded.append('\b');
+            case 'n' -> decoded.append('\n');
+            case 'r' -> decoded.append('\r');
+            case 't' -> decoded.append('\t');
+            case 'Z' -> decoded.append((char) 26);
+            case '%', '_' -> decoded.append('\\').append(escaped);
+            default -> decoded.append(escaped);
+        }
+    }
+
+    private static IllegalArgumentException invalidEnumValues(String raw) {
+        return new IllegalArgumentException("Invalid MySQL ENUM/SET values: " + raw);
     }
 }

@@ -296,8 +296,7 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     /**
      * SPI-facing conditional quote: identifiers that are already valid plain identifiers
-     * and not reserved keywords pass through unquoted; anything else is wrapped in
-     * backticks with one surrounding pair stripped and embedded backticks doubled.
+     * and not reserved keywords pass through unquoted; anything else is safely quoted.
      */
     @Override
     public String quoteIdentifier(String identifier, Integer majorVersion, Integer minorVersion) {
@@ -317,25 +316,6 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
     }
 
     /**
-     * Unconditional backtick quote for DDL-generation call sites: strips one surrounding
-     * backtick pair, then doubles every embedded backtick.
-     */
-    public String quoteIdentifierAlways(String identifier) {
-        if (identifier == null) {
-            return null;
-        }
-        return "`" + escapeIdentifierContent(identifier) + "`";
-    }
-
-    /**
-     * Always-quote variant that preserves the original identifier case.
-     */
-    @Override
-    public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifierAlways(identifier);
-    }
-
-    /**
      * Escapes a value interpolated into a single-quoted SQL string literal (surrounding
      * quotes NOT added). MySQL treats backslash as an escape character, so backslashes
      * are doubled before single quotes (mirrors MysqlAccountSqlBuilder.stringLiteral).
@@ -345,26 +325,22 @@ public class MysqlIdentifierProcessor extends DefaultSQLIdentifierProcessor {
         if (str == null) {
             return null;
         }
-        return str.replace("\\", "\\\\").replace("'", "''");
-    }
-
-    private static String escapeIdentifierContent(String identifier) {
-        if (StringUtils.isBlank(identifier)) {
-            return identifier;
+        StringBuilder escaped = new StringBuilder(str.length());
+        for (int i = 0; i < str.length(); i++) {
+            char current = str.charAt(i);
+            switch (current) {
+                case '\0' -> escaped.append("\\0");
+                case '\b' -> escaped.append("\\b");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                case 26 -> escaped.append("\\Z");
+                case '\\' -> escaped.append("\\\\");
+                case '\'' -> escaped.append("''");
+                default -> escaped.append(current);
+            }
         }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("`") && stripped.endsWith("`")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "`", "``");
-    }
-
-    /**
-     * Escapes identifier content for a position already surrounded by backticks:
-     * strips one surrounding backtick pair, then doubles every embedded backtick.
-     */
-    public static String escapeIdentifier(String identifier) {
-        return escapeIdentifierContent(identifier);
+        return escaped.toString();
     }
 
     @Override

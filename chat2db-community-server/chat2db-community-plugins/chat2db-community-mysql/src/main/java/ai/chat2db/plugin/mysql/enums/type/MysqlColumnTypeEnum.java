@@ -142,6 +142,21 @@ public enum MysqlColumnTypeEnum implements IColumnBuilder {
         }
     }
 
+    @Override
+    public String buildDefaultColumn(TableColumn column, boolean comment) {
+        StringBuilder script = new StringBuilder();
+        script.append(MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName()))
+                .append(" ")
+                .append(MysqlSqlGuards.requireColumnType(column.getColumnType()));
+        if (comment && StringUtils.isNotBlank(column.getComment())) {
+            script.append(" ")
+                    .append(SQL_COMMENT_SPACE_SINGLE_QUOTE)
+                    .append(MysqlIdentifierProcessor.INSTANCE.escapeString(column.getComment()))
+                    .append("'");
+        }
+        return script.toString();
+    }
+
 
     @Override
     public String buildCreateColumnSql(TableColumn column) {

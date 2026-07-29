@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static ai.chat2db.plugin.mysql.constant.MysqlSqlConstants.SQL_DROP_VIEW_TEMPLATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -45,9 +44,9 @@ class MysqlIdentifierProcessorTest {
         assertEquals("`select`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("select"));
         assertEquals("`weird``name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("weird`name"));
         assertEquals("`a``; DROP TABLE b; --`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`; DROP TABLE b; --"));
-        // one surrounding backtick pair is stripped before doubling
-        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
-        assertEquals("`quoted`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
+        // quoteIdentifier treats its argument as raw identifier content
+        assertEquals("```a``b```", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
+        assertEquals("```quoted```", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("`quoted`"));
         // versioned overload delegates to the same conditional behavior
         assertEquals("users", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("users", null, null));
         assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifier("a`b", null, null));
@@ -61,17 +60,16 @@ class MysqlIdentifierProcessorTest {
         assertEquals("`plain_name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain_name"));
         assertEquals("`weird``name`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("weird`name"));
         assertEquals("`a``; DROP TABLE b; --`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a`; DROP TABLE b; --"));
-        assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
-        assertEquals("`quoted`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
+        assertEquals("```a``b```", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
+        assertEquals("```quoted```", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
+        assertEquals("`quoted`", MysqlIdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                MysqlIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`")));
     }
 
     @Test
-    void escapeIdentifierEscapesContentForQuotedTemplates() {
-        assertEquals("WE``IRD", MysqlIdentifierProcessor.escapeIdentifier("WE`IRD"));
-        assertEquals("ALREADY", MysqlIdentifierProcessor.escapeIdentifier("`ALREADY`"));
-        // quoteIdentifierIgnoreCase is the always-quote, case-preserving variant
+    void quoteIdentifierIgnoreCaseKeepsConditionalSpiSemantics() {
         assertEquals("`a``b`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a`b"));
-        assertEquals("`plain`", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+        assertEquals("plain", MysqlIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
     }
 
     @Test
@@ -104,6 +102,9 @@ class MysqlIdentifierProcessorTest {
         assertEquals("root@localhost", MysqlSqlGuards.requireDefiner("root@localhost"));
         assertEquals("'root'@'%'", MysqlSqlGuards.requireDefiner("'root'@'%'"));
         assertEquals("`root`@`localhost`", MysqlSqlGuards.requireDefiner("`root`@`localhost`"));
+        assertEquals("'ro''ot'@'%'", MysqlSqlGuards.requireDefiner("'ro''ot'@'%'"));
+        assertThrows(IllegalArgumentException.class,
+                () -> MysqlSqlGuards.requireDefiner("'root\\\\name'@'localhost'"));
         assertThrows(IllegalArgumentException.class,
                 () -> MysqlSqlGuards.requireDefiner("root@localhost SQL SECURITY INVOKER"));
     }
@@ -117,13 +118,16 @@ class MysqlIdentifierProcessorTest {
     }
 
     @Test
-    void quoteEnumValuesKeepsBenignListAndNeutralizesMaliciousList() {
+    void quoteEnumValuesDecodesBeforeReEscapingAndRejectsMalformedLists() {
         assertEquals("'draft','published'", MysqlSqlGuards.quoteEnumValues("'draft','published'"));
         assertEquals("('draft','published')", MysqlSqlGuards.quoteEnumValues("('draft','published')"));
-        // unbalanced quote: whole input is re-escaped into a single inert string literal
-        assertEquals("'''),DROP TABLE t;-- x'", MysqlSqlGuards.quoteEnumValues("'),DROP TABLE t;-- x"));
-        // balanced items stay split; hostile content stays inside a re-escaped literal
-        assertEquals("'a','b''); DROP TABLE t;-- '", MysqlSqlGuards.quoteEnumValues("'a','b'); DROP TABLE t;-- '"));
+        assertEquals("'can''t'", MysqlSqlGuards.quoteEnumValues("'can''t'"));
+        assertEquals("'can''t'", MysqlSqlGuards.quoteEnumValues("'can\\'t'"));
+        assertEquals("'a\\\\b'", MysqlSqlGuards.quoteEnumValues("'a\\\\b'"));
+        assertThrows(IllegalArgumentException.class,
+                () -> MysqlSqlGuards.quoteEnumValues("'),DROP TABLE t;-- x"));
+        assertThrows(IllegalArgumentException.class,
+                () -> MysqlSqlGuards.quoteEnumValues("'a','b'); DROP TABLE t;-- '"));
     }
 
     @Test
@@ -142,16 +146,30 @@ class MysqlIdentifierProcessorTest {
     }
 
     @Test
-    void createEnumColumnSqlReEscapesValueList() {
+    void createEnumColumnSqlRejectsMalformedValueList() {
         TableColumn column = TableColumn.builder()
                 .name("e")
                 .columnType("ENUM")
                 .value("'),DROP TABLE t;-- x")
                 .build();
 
-        String sql = MysqlColumnTypeEnum.ENUM.buildCreateColumnSql(column);
+        assertThrows(IllegalArgumentException.class,
+                () -> MysqlColumnTypeEnum.ENUM.buildCreateColumnSql(column));
+    }
 
-        assertTrue(sql.contains("ENUM('''),DROP TABLE t;-- x')"), sql);
+    @Test
+    void fallbackColumnQuotesNameEscapesCommentAndValidatesType() {
+        TableColumn column = TableColumn.builder()
+                .name("a`b")
+                .columnType("CUSTOM_TYPE(10) UNSIGNED")
+                .comment("it's")
+                .build();
+        assertEquals("`a``b` CUSTOM_TYPE(10) UNSIGNED COMMENT 'it''s'",
+                MysqlColumnTypeEnum.VARCHAR.buildDefaultColumn(column, true));
+
+        column.setColumnType("CUSTOM_TYPE); DROP TABLE t;--");
+        assertThrows(IllegalArgumentException.class,
+                () -> MysqlColumnTypeEnum.VARCHAR.buildDefaultColumn(column, true));
     }
 
     @Test
@@ -248,8 +266,8 @@ class MysqlIdentifierProcessorTest {
         MysqlDBManager manager = new MysqlDBManager();
         assertEquals("DROP TABLE `a``;DROP TABLE b;--`",
                 manager.dropTable(null, null, null, "a`;DROP TABLE b;--"));
-        assertEquals("DROP VIEW `db`.`v`",
-                String.format(SQL_DROP_VIEW_TEMPLATE, MysqlDBManager.format("db"), MysqlDBManager.format("v")));
+        assertEquals("DROP VIEW `db`.`v`", MysqlDBManager.buildDropViewSql("db", "v"));
+        assertEquals("DROP VIEW `v`", MysqlDBManager.buildDropViewSql(null, "v"));
     }
 
     @Test
@@ -296,5 +314,12 @@ class MysqlIdentifierProcessorTest {
                 MysqlDBManager.buildCopyTableSql("o`t", "n`t", false));
         assertEquals("CREATE TABLE `c` AS SELECT * FROM `a``; DROP TABLE b; --`",
                 MysqlDBManager.buildCopyTableSql("a`; DROP TABLE b; --", "c", true));
+    }
+
+    @Test
+    void exportTitleValueCannotTerminateCommentLine() {
+        assertEquals("orders DROP TABLE users;-- ",
+                MysqlDBManager.formatExportTitleValue("orders\nDROP TABLE users;--\r"));
+        assertNull(MysqlDBManager.formatExportTitleValue(null));
     }
 }
