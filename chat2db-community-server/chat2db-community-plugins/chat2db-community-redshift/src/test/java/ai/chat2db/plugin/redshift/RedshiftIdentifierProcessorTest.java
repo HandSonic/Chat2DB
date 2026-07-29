@@ -3,8 +3,11 @@ package ai.chat2db.plugin.redshift;
 import ai.chat2db.plugin.redshift.identifier.RedshiftIdentifierProcessor;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedshiftIdentifierProcessorTest {
@@ -25,9 +28,9 @@ class RedshiftIdentifierProcessorTest {
     }
 
     @Test
-    void escapeIdentifierStripsOneSurroundingQuotePair() {
-        assertEquals("foo", RedshiftIdentifierProcessor.escapeIdentifier("\"foo\""));
-        assertEquals("fo\"\"o", RedshiftIdentifierProcessor.escapeIdentifier("\"fo\"o\""));
+    void escapeIdentifierTreatsWrappingQuotesAsRawContent() {
+        assertEquals("\"\"foo\"\"", RedshiftIdentifierProcessor.escapeIdentifier("\"foo\""));
+        assertEquals("\"\"fo\"\"o\"\"", RedshiftIdentifierProcessor.escapeIdentifier("\"fo\"o\""));
     }
 
     @Test
@@ -41,11 +44,13 @@ class RedshiftIdentifierProcessorTest {
         assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("we\"ird"));
         assertEquals("\"has space\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("has space"));
         assertEquals("\"2leading\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("2leading"));
+        assertEquals("\"MixedCase\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("MixedCase"));
+        assertEquals("\"SELECT\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("SELECT"));
     }
 
     @Test
     void quoteIdentifierRequotesAlreadyQuotedInput() {
-        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("\"foo\""));
+        assertEquals("\"\"\"foo\"\"\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifier("\"foo\""));
     }
 
     @Test
@@ -62,8 +67,8 @@ class RedshiftIdentifierProcessorTest {
     }
 
     @Test
-    void quoteIdentifierIgnoreCaseAlwaysQuotes() {
-        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("foo"));
+    void quoteIdentifierIgnoreCaseUsesPostgreSqlConditionalRules() {
+        assertEquals("foo", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("foo"));
         assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("we\"ird"));
         assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(""));
         assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
@@ -72,11 +77,18 @@ class RedshiftIdentifierProcessorTest {
     @Test
     void quoteIdentifierAlwaysWrapsAndEscapes() {
         assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("foo"));
-        assertEquals("\"foo\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"foo\""));
+        assertEquals("\"\"\"foo\"\"\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("\"foo\""));
         assertEquals("\"we\"\"ird\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways("we\"ird"));
-        // blank passes through unchanged instead of producing an empty quoted identifier
-        assertEquals("", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
+        assertEquals("\"\"", RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(""));
         assertNull(RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
+    }
+
+    @Test
+    void alwaysQuoteRoundTripsEveryRawIdentifierShape() {
+        for (String raw : List.of("plain", "a\"b", "\"already\"", "\"", "a.b", "", " ")) {
+            assertEquals(raw, RedshiftIdentifierProcessor.INSTANCE.removeIdentifierQuote(
+                    RedshiftIdentifierProcessor.INSTANCE.quoteIdentifierAlways(raw)), raw);
+        }
     }
 
     @Test
@@ -96,7 +108,19 @@ class RedshiftIdentifierProcessorTest {
     void benignNamesProduceSameSqlAsBefore() {
         assertEquals("SHOW CREATE TABLE \"public\".\"orders\"",
                 RedshiftMetaData.buildShowCreateTableSql("public", "orders"));
-        assertEquals("SHOW CREATE TABLE \"public\".\"orders\"",
-                RedshiftMetaData.buildShowCreateTableSql("\"public\"", "\"orders\""));
+    }
+
+    @Test
+    void showCreateTableHandlesOptionalSchemaAndRejectsEmptyTable() {
+        assertEquals("SHOW CREATE TABLE \"orders\"",
+                RedshiftMetaData.buildShowCreateTableSql(null, "orders"));
+        assertEquals("SHOW CREATE TABLE \"orders\"",
+                RedshiftMetaData.buildShowCreateTableSql("", "orders"));
+        assertEquals("SHOW CREATE TABLE \" \".\" \"",
+                RedshiftMetaData.buildShowCreateTableSql(" ", " "));
+        assertThrows(IllegalArgumentException.class,
+                () -> RedshiftMetaData.buildShowCreateTableSql("public", ""));
+        assertThrows(IllegalArgumentException.class,
+                () -> RedshiftMetaData.buildShowCreateTableSql("public", null));
     }
 }
