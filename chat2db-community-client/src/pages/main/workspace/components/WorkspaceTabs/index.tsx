@@ -53,13 +53,19 @@ import { copyToClipboard, getTemporaryId, isTemporaryId } from '@/utils';
 import { useIndexDBStore } from '@/store/indexDB';
 import { getDatabaseSupport } from '@/utils/database';
 import ConsoleERModal from '@/blocks/ERModal/ConsoleERModal';
-import { getLocalTextFileIcon, SQL_FILE_EXTENSION_NAME } from '../../utils/localTextFile';
+import {
+  getLocalTextFileIcon,
+  getLocalTextFileTabPresentation,
+  SQL_FILE_EXTENSION_NAME,
+} from '../../utils/localTextFile';
 import { EditorType } from '@/components/SQLEditor';
+import { ShortcutAction } from '@/constants/shortcut';
 
 const SplitPaneAny = SplitPane as any;
 const MAIN_WORKSPACE_TAB_PANE: WorkspaceTabPaneId = 'main';
 const SPLIT_WORKSPACE_TAB_PANE: WorkspaceTabPaneId = 'split';
 const WORKSPACE_TAB_PANE_DROPPABLE_PREFIX = 'workspace-tab-pane:';
+const WORKSPACE_TAB_WIDTH = 200;
 type WorkspaceTabSplitNodePath = Array<'first' | 'second'>;
 
 function getWorkspaceTabPaneDroppableId(paneId: WorkspaceTabPaneId) {
@@ -1493,17 +1499,27 @@ const WorkspaceTabs = memo(() => {
 
   const getWorkspaceTabItems = (tabs: IWorkspaceTab[]) => {
     return tabs.map((item) => {
-      const popoverContent = item.uniqueData?.popoverContent;
+      const localFileTabPresentation =
+        item.type === WorkspaceTabType.LocalSQLFile
+          ? getLocalTextFileTabPresentation(item.uniqueData?.filePath, item.title)
+          : undefined;
+      const popoverContent = localFileTabPresentation?.popover || item.uniqueData?.popoverContent;
       return {
         prefixIcon:
           item.type === WorkspaceTabType.LocalSQLFile
             ? getLocalTextFileIcon(item.uniqueData?.fileExtension)
             : workspaceTabConfig[item.type]?.icon,
-        label: item.title,
+        label: localFileTabPresentation?.label ?? item.title,
         popover: popoverContent ? <div style={{ padding: '4px 6px' }}>{popoverContent}</div> : undefined,
         key: item.id,
         editableName: item.type === WorkspaceTabType.CONSOLE,
         pinned: item.pinned,
+        styles: {
+          width: WORKSPACE_TAB_WIDTH,
+          maxWidth: WORKSPACE_TAB_WIDTH,
+          flexShrink: 0,
+          boxSizing: 'border-box' as const,
+        },
         children: <Fragment key={item.id}>{workspaceTabConnectionMap(item)}</Fragment>,
       };
     });
@@ -1622,6 +1638,7 @@ const WorkspaceTabs = memo(() => {
           draggingTabKey={draggingWorkspaceTabKey}
           onDraggingTabKeyChange={setDraggingWorkspaceTabKey}
           tabPaneDroppableId={workspaceTabSplitLayout ? getWorkspaceTabPaneDroppableId(paneId) : undefined}
+          closeShortcutAction={ShortcutAction.CloseCurrentConsole}
         />
       </div>
     );
@@ -1680,6 +1697,7 @@ const WorkspaceTabs = memo(() => {
         contextActions={commonWorkspaceTabContextActions}
         contextActionAvailability={getWorkspaceTabContextActionAvailability}
         contextActionHandlers={commonWorkspaceTabContextActionHandlers}
+        closeShortcutAction={ShortcutAction.CloseCurrentConsole}
       />
     )
   ) : (

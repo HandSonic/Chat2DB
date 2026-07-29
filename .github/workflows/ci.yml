@@ -51,6 +51,9 @@ jobs:
       - name: Run active workspace tab locator contract
         run: yarn run test:active-tab-locator
 
+      - name: Run local file tab title contract
+        run: yarn run test:local-file-tab-title
+
       - name: Run saved console tree refresh contract
         run: yarn run test:saved-console-tree-refresh
 
@@ -69,11 +72,32 @@ jobs:
       - name: Run result inspector contract
         run: yarn run test:result-inspector
 
+      - name: Run result operation record contract
+        run: yarn run test:result-operation-record
+
+      - name: Run result tab preference contract
+        run: yarn run test:result-tab-preferences
+
+      - name: Run execution console preference contract
+        run: yarn run test:execution-console
+
       - name: Run SQL execution log contract
         run: yarn run test:sql-execution-log
 
+      - name: Run SQL execution batch contract
+        run: yarn run test:sql-execution-batch
+
+      - name: Run SQL execution request tracker contract
+        run: yarn run test:sql-execution-request-tracker
+
+      - name: Run SQL execution stream contract
+        run: yarn run test:sql-execution-stream
+
       - name: Run verification-code countdown lifecycle contract
         run: yarn run test:verification-code-countdown
+
+      - name: Run settings layout contract
+        run: yarn run test:settings-layout
 
       - name: Build Community web client
         run: yarn run build:web:community --app_version=5.3.0
