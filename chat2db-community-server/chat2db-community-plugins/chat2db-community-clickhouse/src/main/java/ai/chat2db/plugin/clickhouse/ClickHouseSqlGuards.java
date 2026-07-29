@@ -1,12 +1,13 @@
 package ai.chat2db.plugin.clickhouse;
 
-import ai.chat2db.plugin.clickhouse.identifier.ClickHouseIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+
 /**
- * Validation helpers for non-escapable SQL positions in ClickHouse DDL
- * generation (column type expressions, table engines, column default
- * expressions). Escaping itself lives in {@link ClickHouseIdentifierProcessor}.
+ * Structural validation for ClickHouse expressions that cannot be escaped
+ * because they are emitted as SQL syntax.
  */
 public final class ClickHouseSqlGuards {
 
@@ -14,72 +15,179 @@ public final class ClickHouseSqlGuards {
     }
 
     /**
-     * Validates a column type expression that is emitted verbatim into DDL
-     * (e.g. Int32, Decimal(10,2), Array(Nullable(String)), Enum8('a'=1)).
-     * Only letters/digits/underscore are allowed at the top level; spaces,
-     * commas, single quotes and equals signs are only allowed inside balanced
-     * parentheses. Semicolons, dashes, double quotes and backticks are always
-     * rejected.
+     * Accepts one ClickHouse column type expression, including nested types,
+     * enum literals, time zones, and quoted tuple field names.
      */
     public static String requireColumnTypeExpression(String columnType) {
         if (StringUtils.isBlank(columnType)) {
-            throw new IllegalArgumentException("Invalid ClickHouse column type: " + columnType);
+            throw invalid("column type", columnType);
         }
-        int depth = 0;
-        for (int i = 0; i < columnType.length(); i++) {
-            char c = columnType.charAt(i);
-            if (c == '(') {
-                depth++;
-                continue;
+        String expression = columnType.trim();
+        int nameEnd = scanIdentifier(expression, 0);
+        if (nameEnd == 0) {
+            throw invalid("column type", columnType);
+        }
+        int argumentsStart = skipWhitespace(expression, nameEnd);
+        if (argumentsStart == expression.length()) {
+            return expression;
+        }
+        if (expression.charAt(argumentsStart) != '(') {
+            throw invalid("column type", columnType);
+        }
+        int argumentsEnd = scanExpression(expression, argumentsStart, true, true, false, "column type");
+        if (skipWhitespace(expression, argumentsEnd + 1) != expression.length()) {
+            throw invalid("column type", columnType);
+        }
+        return expression;
+    }
+
+    /**
+     * Accepts one engine name with an optional, fully balanced argument list.
+     */
+    public static String requireEngine(String engine) {
+        if (StringUtils.isBlank(engine)) {
+            throw invalid("engine", engine);
+        }
+        String expression = engine.trim();
+        int nameEnd = scanIdentifier(expression, 0);
+        if (nameEnd == 0) {
+            throw invalid("engine", engine);
+        }
+        int argumentsStart = skipWhitespace(expression, nameEnd);
+        if (argumentsStart == expression.length()) {
+            return expression;
+        }
+        if (expression.charAt(argumentsStart) != '(') {
+            throw invalid("engine", engine);
+        }
+        int argumentsEnd = scanExpression(expression, argumentsStart, true, false, false, "engine");
+        if (skipWhitespace(expression, argumentsEnd + 1) != expression.length()) {
+            throw invalid("engine", engine);
+        }
+        return expression;
+    }
+
+    /**
+     * Validates one default expression without re-encoding serialized SQL
+     * literals returned by {@code system.columns.default_expression}.
+     */
+    public static String escapeDefaultExpression(String defaultValue) {
+        if (StringUtils.isBlank(defaultValue)) {
+            throw invalid("default expression", defaultValue);
+        }
+        String expression = defaultValue.trim();
+        scanExpression(expression, 0, false, false, true, "default expression");
+        return expression;
+    }
+
+    private static int scanIdentifier(String expression, int offset) {
+        if (offset >= expression.length()
+                || !(Character.isLetter(expression.charAt(offset)) || expression.charAt(offset) == '_')) {
+            return offset;
+        }
+        int current = offset + 1;
+        while (current < expression.length()) {
+            char c = expression.charAt(current);
+            if (!Character.isLetterOrDigit(c) && c != '_') {
+                break;
             }
-            if (c == ')') {
-                depth--;
-                if (depth < 0) {
-                    throw new IllegalArgumentException("Invalid ClickHouse column type: " + columnType);
+            current++;
+        }
+        return current;
+    }
+
+    private static int skipWhitespace(String expression, int offset) {
+        int current = offset;
+        while (current < expression.length() && Character.isWhitespace(expression.charAt(current))) {
+            current++;
+        }
+        return current;
+    }
+
+    /**
+     * Scans a quote-aware expression. When {@code stopAtRootClose} is true,
+     * scanning starts on an opening parenthesis and returns its matching close.
+     */
+    private static int scanExpression(String expression, int start, boolean stopAtRootClose,
+                                      boolean typeCharactersOnly, boolean rejectTopLevelComma,
+                                      String description) {
+        Deque<Character> delimiters = new ArrayDeque<>();
+        char quote = 0;
+        for (int i = start; i < expression.length(); i++) {
+            char c = expression.charAt(i);
+            if (quote != 0) {
+                if (c == '\\') {
+                    if (i + 1 >= expression.length()) {
+                        throw invalid(description, expression);
+                    }
+                    i++;
+                    continue;
+                }
+                if (c == quote) {
+                    if (i + 1 < expression.length() && expression.charAt(i + 1) == quote) {
+                        i++;
+                    } else {
+                        quote = 0;
+                    }
                 }
                 continue;
             }
-            boolean ok = Character.isLetterOrDigit(c) || c == '_'
-                    || (depth > 0 && (c == ' ' || c == ',' || c == '\'' || c == '='));
-            if (!ok) {
-                throw new IllegalArgumentException("Invalid ClickHouse column type: " + columnType);
+
+            if (c == '\'' || c == '`' || c == '"') {
+                quote = c;
+                continue;
+            }
+            if (c == ';' || c == '#' || c == '\n' || c == '\r'
+                    || startsWith(expression, i, "--")
+                    || startsWith(expression, i, "/*")
+                    || startsWith(expression, i, "*/")) {
+                throw invalid(description, expression);
+            }
+            if (c == '(' || c == '[' || c == '{') {
+                delimiters.push(c);
+                continue;
+            }
+            if (c == ')' || c == ']' || c == '}') {
+                if (delimiters.isEmpty() || !matches(delimiters.pop(), c)) {
+                    throw invalid(description, expression);
+                }
+                if (stopAtRootClose && delimiters.isEmpty()) {
+                    return i;
+                }
+                continue;
+            }
+            if (rejectTopLevelComma && c == ',' && delimiters.isEmpty()) {
+                throw invalid(description, expression);
+            }
+            if (typeCharactersOnly && !isTypeCharacter(c)) {
+                throw invalid(description, expression);
+            }
+            if (Character.isISOControl(c)) {
+                throw invalid(description, expression);
             }
         }
-        if (depth != 0 || !Character.isLetter(columnType.charAt(0))) {
-            throw new IllegalArgumentException("Invalid ClickHouse column type: " + columnType);
+        if (quote != 0 || !delimiters.isEmpty() || stopAtRootClose) {
+            throw invalid(description, expression);
         }
-        return columnType;
+        return expression.length();
     }
 
-    /**
-     * Validates a table engine expression emitted verbatim into CREATE TABLE
-     * DDL (e.g. MergeTree, ReplicatedMergeTree('/path','replica')). Only a
-     * dotted-free identifier with an optional balanced argument list is
-     * accepted; semicolons are never allowed inside the arguments.
-     */
-    public static String requireEngine(String engine) {
-        if (!engine.matches("[A-Za-z0-9_]+(\\s*\\([^;)]*\\))?")) {
-            throw new IllegalArgumentException("Invalid ClickHouse engine: " + engine);
-        }
-        return engine;
+    private static boolean isTypeCharacter(char c) {
+        return Character.isLetterOrDigit(c) || Character.isWhitespace(c)
+                || c == '_' || c == ',' || c == '=' || c == '+' || c == '-'
+                || c == '.';
     }
 
-    /**
-     * Renders a column default expression safe for inclusion in generated DDL:
-     * values wrapped in single quotes are treated as string literals whose
-     * inner content is re-escaped; unquoted values must match a conservative
-     * allow-list (numbers, identifiers, function calls without semicolons);
-     * anything else is rejected (fail closed).
-     */
-    public static String escapeDefaultExpression(String defaultValue) {
-        String trimmed = defaultValue.trim();
-        // Quoted string literals stay literals; the content is escaped before re-quoting.
-        if (trimmed.length() >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-            return "'" + ClickHouseIdentifierProcessor.INSTANCE.escapeString(trimmed.substring(1, trimmed.length() - 1)) + "'";
-        }
-        if (!trimmed.matches("[-+]?(\\d+(\\.\\d+)?|[A-Za-z_][A-Za-z0-9_]*(\\s*\\([^;)]*\\))?)")) {
-            throw new IllegalArgumentException("Invalid ClickHouse default expression: " + defaultValue);
-        }
-        return trimmed;
+    private static boolean startsWith(String value, int offset, String candidate) {
+        return offset + candidate.length() <= value.length()
+                && value.startsWith(candidate, offset);
+    }
+
+    private static boolean matches(char open, char close) {
+        return open == '(' && close == ')' || open == '[' && close == ']' || open == '{' && close == '}';
+    }
+
+    private static IllegalArgumentException invalid(String description, String value) {
+        return new IllegalArgumentException("Invalid ClickHouse " + description + ": " + value);
     }
 }

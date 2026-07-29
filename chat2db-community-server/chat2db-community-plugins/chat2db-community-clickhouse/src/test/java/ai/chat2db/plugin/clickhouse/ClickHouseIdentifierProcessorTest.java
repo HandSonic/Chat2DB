@@ -1,17 +1,24 @@
 package ai.chat2db.plugin.clickhouse;
 
+import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.model.metadata.Database;
+import ai.chat2db.community.domain.api.model.metadata.Schema;
 import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.plugin.clickhouse.builder.ClickHouseSqlBuilder;
 import ai.chat2db.plugin.clickhouse.enums.type.ClickHouseColumnTypeEnum;
 import ai.chat2db.plugin.clickhouse.identifier.ClickHouseIdentifierProcessor;
+import ai.chat2db.spi.model.request.DropTableRequest;
+import ai.chat2db.spi.model.request.TruncateTableRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,7 +27,7 @@ class ClickHouseIdentifierProcessorTest {
     @Test
     void shouldDoubleSingleQuotesInLiterals() {
         assertEquals("owner''s", ClickHouseIdentifierProcessor.INSTANCE.escapeString("owner's"));
-        assertEquals("", ClickHouseIdentifierProcessor.INSTANCE.escapeString(null));
+        assertNull(ClickHouseIdentifierProcessor.INSTANCE.escapeString(null));
     }
 
     @Test
@@ -56,19 +63,27 @@ class ClickHouseIdentifierProcessorTest {
     }
 
     @Test
-    void shouldAlwaysQuoteInIgnoreCaseAndAlwaysVariants() {
-        assertEquals("`plain`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
+    void shouldKeepConditionalSemanticsInIgnoreCaseVariant() {
+        assertEquals("plain", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("plain"));
         assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("a`b"));
+        assertEquals("`select`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase("select"));
+        assertEquals("", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(""));
         assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierIgnoreCase(null));
+    }
+
+    @Test
+    void shouldAlwaysQuoteWithoutDiscardingRawBoundaryBackticks() {
         assertEquals("`plain`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain"));
         assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("a`b"));
+        assertEquals("```quoted```", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`quoted`"));
+        assertEquals("```a``b```", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
         assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(null));
     }
 
     @Test
-    void shouldStripSurroundingBackticksBeforeDoubling() {
-        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
-        assertEquals("`a``b`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
+    void shouldTreatQuotedLookingInputAsRawIdentifierContent() {
+        assertEquals("```a``b```", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("`a`b`"));
+        assertEquals("```a``b```", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("`a`b`"));
     }
 
     @Test
@@ -81,13 +96,32 @@ class ClickHouseIdentifierProcessorTest {
         assertEquals("name", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("\"name\""));
         assertEquals("name", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("name"));
         assertEquals(null, ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote(null));
+        assertEquals("a`b", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("`a``b`"));
+        assertEquals("db.ta`ble", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("`db`.`ta``ble`"));
+        assertEquals("prefix`a`suffix",
+                ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("prefix`a`suffix"));
+        assertEquals("`mixed\"",
+                ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("`mixed\""));
     }
 
     @Test
     void shouldRoundTripThroughAlwaysQuoteAndRemove() {
-        assertEquals("plain", ClickHouseIdentifierProcessor.INSTANCE
-                .removeIdentifierQuote(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("plain")));
+        for (String raw : List.of("plain", "a`b", "`quoted`", "`a`b`", "db.table")) {
+            assertEquals(raw, ClickHouseIdentifierProcessor.INSTANCE
+                    .removeIdentifierQuote(ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(raw)));
+        }
         assertEquals("db.table", ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote("`db`.`table`"));
+    }
+
+    @Test
+    void shouldCheckReservedKeywordsWithLocaleIndependentCaseFolding() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertEquals("`in`", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifier("in"));
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
@@ -203,15 +237,27 @@ class ClickHouseIdentifierProcessorTest {
     }
 
     @Test
-    void shouldEscapeQuotedStringDefaultContent() {
+    void shouldRejectMalformedQuotedDefaultExpression() {
         TableColumn column = new TableColumn();
         column.setName("c");
         column.setColumnType("String");
         column.setDefaultValue("'a');DROP TABLE t;--'");
 
+        assertThrows(IllegalArgumentException.class,
+                () -> ClickHouseColumnTypeEnum.String.buildCreateColumnSql(column));
+    }
+
+    @Test
+    void shouldPreserveSerializedStringDefaultExactly() {
+        TableColumn column = new TableColumn();
+        column.setName("c");
+        column.setColumnType("String");
+        column.setDefaultValue("'O''Brien'");
+
         String sql = ClickHouseColumnTypeEnum.String.buildCreateColumnSql(column);
 
-        assertTrue(sql.contains("DEFAULT 'a'');DROP TABLE t;--'"), sql);
+        assertTrue(sql.contains("DEFAULT 'O''Brien'"), sql);
+        assertEquals("'a\\\\b'", ClickHouseSqlGuards.escapeDefaultExpression("'a\\\\b'"));
     }
 
     @Test
@@ -333,15 +379,13 @@ class ClickHouseIdentifierProcessorTest {
     }
 
     @Test
-    void shouldRejectNegativeEnumValues() {
-        // Deliberate fail-closed trade-off: dashes are always rejected so that
-        // comment injection ("--") is impossible, at the cost of rejecting
-        // legal ClickHouse enum forms like Enum8('a' = -1).
+    void shouldAcceptNegativeEnumValues() {
         TableColumn column = new TableColumn();
         column.setName("e");
         column.setColumnType("Enum8('a' = -1)");
-        assertThrows(IllegalArgumentException.class,
-                () -> ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column));
+
+        assertTrue(ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column)
+                .startsWith("`e` Enum8('a' = -1)"));
     }
 
     @Test
@@ -354,5 +398,110 @@ class ClickHouseIdentifierProcessorTest {
         String sql = ClickHouseColumnTypeEnum.buildCreateColumnSqlSafely(column);
 
         assertTrue(sql.startsWith("`agg` AggregateFunction(uniq, String)"), sql);
+    }
+
+    @Test
+    void shouldAcceptLegalQuotedAndNestedTypeSyntax() {
+        for (String type : List.of(
+                "Enum16('min' = -32768, 'max' = 32767)",
+                "DateTime64(3, 'Asia/Shanghai')",
+                "Tuple(`a-b` String, inner UInt8)",
+                "Enum8(')' = 1)",
+                "Map(String, Array(Tuple(x UInt8, y DateTime64(3, 'UTC'))))")) {
+            assertEquals(type, ClickHouseSqlGuards.requireColumnTypeExpression(type));
+        }
+    }
+
+    @Test
+    void shouldAcceptNestedEngineAndDefaultExpressions() {
+        assertEquals("S3('https://bucket/path(test).csv', 'CSV')",
+                ClickHouseSqlGuards.requireEngine("S3('https://bucket/path(test).csv', 'CSV')"));
+        assertEquals("Distributed(cluster, db, table, cityHash64(id))",
+                ClickHouseSqlGuards.requireEngine("Distributed(cluster, db, table, cityHash64(id))"));
+        assertEquals("toDateTime64(now(), 3)",
+                ClickHouseSqlGuards.escapeDefaultExpression("toDateTime64(now(), 3)"));
+        assertEquals("if(length(')') > 0, 1, 0)",
+                ClickHouseSqlGuards.escapeDefaultExpression("if(length(')') > 0, 1, 0)"));
+    }
+
+    @Test
+    void shouldEscapeInheritedBuilderIdentifierPaths() {
+        ClickHouseSqlBuilder builder = new ClickHouseSqlBuilder();
+        String schema = "analytics`x";
+        String table = "orders`x";
+
+        assertEquals("SELECT COUNT(1) FROM `analytics``x`.`orders``x`",
+                builder.buildSelectCount(null, schema, table));
+        assertEquals("SELECT COUNT(1) FROM `analytics``x`.`orders``x`",
+                builder.buildSelectCount("ignored_catalog", schema, table));
+        assertEquals("SELECT * FROM `analytics``x`.`orders``x`",
+                builder.buildSelectTable(null, schema, table));
+        assertEquals("DROP TABLE `analytics``x`.`orders``x`",
+                builder.buildDropTable(new DropTableRequest(null, schema, table)));
+        assertEquals("TRUNCATE TABLE `analytics``x`.`orders``x`",
+                builder.buildTruncateTable(new TruncateTableRequest(null, schema, table)));
+
+        Schema schemaModel = new Schema();
+        schemaModel.setName(schema);
+        assertEquals("CREATE DATABASE `analytics``x`", builder.buildCreateSchema(schemaModel));
+        assertEquals("DROP DATABASE `analytics``x`", builder.buildDropSchema(schema));
+    }
+
+    @Test
+    void shouldBuildSchemaQualifiedManagerStatementsOnce() throws Exception {
+        ClickHouseDBManager manager = new ClickHouseDBManager();
+        String source = ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("ord`ers");
+        String target = ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways("ord`ers_copy");
+
+        assertEquals("DROP TABLE IF EXISTS `analytics`.`ord``ers`",
+                manager.dropTable(null, null, "analytics", "ord`ers"));
+        assertEquals("DROP TABLE IF EXISTS ```analytics```.```orders```",
+                manager.dropTable(null, null, "`analytics`", "`orders`"));
+        assertEquals("TRUNCATE TABLE `analytics`.`ord``ers`",
+                manager.truncateTable(null, null, "analytics", source));
+        assertEquals(List.of(
+                        "CREATE TABLE `analytics`.`ord``ers_copy` AS `analytics`.`ord``ers`",
+                        "INSERT INTO `analytics`.`ord``ers_copy` SELECT * FROM `analytics`.`ord``ers`"),
+                ClickHouseDBManager.buildCopyTableStatements(null, "analytics", source, target, true));
+    }
+
+    @Test
+    void shouldBuildAlterCommentWithValidSpacingAndEscaping() {
+        Table oldTable = new Table();
+        oldTable.setName("events");
+        oldTable.setComment("old");
+
+        Table newTable = new Table();
+        newTable.setName("events");
+        newTable.setComment("owner's");
+
+        assertEquals("ALTER TABLE `events`\n\tMODIFY COMMENT 'owner''s';",
+                new ClickHouseSqlBuilder().buildAlterTable(oldTable, newTable));
+    }
+
+    @Test
+    void shouldAlterParameterizedTypeAndRenameWithoutMalformedFragment() {
+        Table oldTable = new Table();
+        oldTable.setSchemaName("analytics");
+        oldTable.setName("events");
+        oldTable.setColumnList(List.of());
+        oldTable.setIndexList(List.of());
+
+        TableColumn column = new TableColumn();
+        column.setOldName("old");
+        column.setName("new");
+        column.setColumnType("Decimal(10,2)");
+        column.setEditStatus(EditStatusEnum.MODIFY.name());
+
+        Table newTable = new Table();
+        newTable.setSchemaName("analytics");
+        newTable.setName("events");
+        newTable.setColumnList(List.of(column));
+        newTable.setIndexList(List.of());
+
+        assertEquals("ALTER TABLE `analytics`.`events`\n"
+                        + "\tRENAME COLUMN `old` TO `new`,\n"
+                        + "\tMODIFY COLUMN `new` Decimal(10,2);",
+                new ClickHouseSqlBuilder().buildAlterTable(oldTable, newTable));
     }
 }

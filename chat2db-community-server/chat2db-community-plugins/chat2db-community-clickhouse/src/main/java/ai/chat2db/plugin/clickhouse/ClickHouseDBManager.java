@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import static ai.chat2db.plugin.clickhouse.constant.ClickHouseDBManagerConstants.*;
@@ -113,18 +115,48 @@ public class ClickHouseDBManager extends DefaultDBManager implements IDbManager 
 
     @Override
     public String dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
-        String sql = "DROP TABLE IF EXISTS " + ClickHouseMetaData.format(schemaName) + "." + ClickHouseMetaData.format(tableName);
-        return sql;
+        return "DROP TABLE IF EXISTS " + qualifiedTableName(databaseName, schemaName, tableName, false);
     }
 
+    @Override
+    public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) {
+        return "TRUNCATE TABLE " + qualifiedTableName(databaseName, schemaName, tableName, true);
+    }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
-        String sql = "CREATE TABLE " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " AS " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName) + "";
-        DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
-        if (copyData) {
-            sql = "INSERT INTO " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(newTableName) + " SELECT * FROM " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableName);
+        for (String sql : buildCopyTableStatements(databaseName, schemaName, tableName, newTableName, copyData)) {
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         }
+    }
+
+    static List<String> buildCopyTableStatements(String databaseName, String schemaName, String tableName,
+                                                  String newTableName, boolean copyData) {
+        String source = qualifiedTableName(databaseName, schemaName, tableName, true);
+        String target = qualifiedTableName(databaseName, schemaName, newTableName, true);
+        List<String> statements = new ArrayList<>();
+        statements.add("CREATE TABLE " + target + " AS " + source);
+        if (copyData) {
+            statements.add("INSERT INTO " + target + " SELECT * FROM " + source);
+        }
+        return statements;
+    }
+
+    private static String qualifiedTableName(String databaseName, String schemaName, String tableName,
+                                             boolean normalizeQuotedTable) {
+        String qualifier = StringUtils.isNotBlank(schemaName) ? schemaName : databaseName;
+        String normalizedTable = normalizeQuotedTable ? normalizeQuotedIdentifier(tableName) : tableName;
+        if (StringUtils.isBlank(qualifier)) {
+            return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(normalizedTable);
+        }
+        return ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(qualifier)
+                + "." + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(normalizedTable);
+    }
+
+    private static String normalizeQuotedIdentifier(String identifier) {
+        if (ClickHouseIdentifierProcessor.INSTANCE.isQuoteIdentifier(identifier)) {
+            return ClickHouseIdentifierProcessor.INSTANCE.removeIdentifierQuote(identifier);
+        }
+        return identifier;
     }
 }

@@ -4,8 +4,8 @@ import ai.chat2db.spi.DefaultSQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * ClickHouse dialect identifier processor.
@@ -23,8 +23,6 @@ import java.util.regex.Pattern;
 public class ClickHouseIdentifierProcessor extends DefaultSQLIdentifierProcessor {
 
     public static final ClickHouseIdentifierProcessor INSTANCE = new ClickHouseIdentifierProcessor();
-
-    private static final Pattern CLICKHOUSE_PATTERN = Pattern.compile("[`\"](.*?)[`\"]");
 
     private static final Set<String> CLICKHOUSE_RESERVED_KEYWORDS = new HashSet<>();
 
@@ -159,15 +157,14 @@ public class ClickHouseIdentifierProcessor extends DefaultSQLIdentifierProcessor
 
     @Override
     public boolean isReservedKeyword(String identifier, Integer majorVersion, Integer minorVersion) {
-        return identifier != null && CLICKHOUSE_RESERVED_KEYWORDS.contains(identifier.toUpperCase());
+        return identifier != null && CLICKHOUSE_RESERVED_KEYWORDS.contains(identifier.toUpperCase(Locale.ROOT));
     }
 
     /**
      * SPI-facing conditional quoting: {@code null} passes through, blank is
      * returned unchanged, valid plain identifiers that are not reserved
      * keywords are returned unquoted, and everything else is wrapped in
-     * backticks with one surrounding pair stripped and embedded backticks
-     * doubled.
+     * backticks with every raw backtick doubled.
      */
     @Override
     public String quoteIdentifier(String identifier) {
@@ -190,8 +187,8 @@ public class ClickHouseIdentifierProcessor extends DefaultSQLIdentifierProcessor
 
     /**
      * Unconditional quoting for DDL-generation call sites: {@code null} passes
-     * through, every other value is wrapped in backticks with one surrounding
-     * backtick pair stripped and every embedded backtick doubled.
+     * through, every other raw value is wrapped in backticks with every
+     * backtick doubled.
      */
     public String quoteIdentifierAlways(String identifier) {
         if (identifier == null) {
@@ -201,11 +198,11 @@ public class ClickHouseIdentifierProcessor extends DefaultSQLIdentifierProcessor
     }
 
     /**
-     * Always-quote variant that preserves the original identifier case.
+     * Conditional quote variant that preserves the original identifier case.
      */
     @Override
     public String quoteIdentifierIgnoreCase(String identifier) {
-        return quoteIdentifierAlways(identifier);
+        return quoteIdentifier(identifier);
     }
 
     @Override
@@ -213,7 +210,59 @@ public class ClickHouseIdentifierProcessor extends DefaultSQLIdentifierProcessor
         if (StringUtils.isBlank(identifier)) {
             return identifier;
         }
-        return removePattern(identifier, CLICKHOUSE_PATTERN);
+        StringBuilder unquoted = new StringBuilder(identifier.length());
+        boolean removedQuote = false;
+        int offset = 0;
+        while (offset < identifier.length()) {
+            char first = identifier.charAt(offset);
+            if (first == '`' || first == '"') {
+                char delimiter = first;
+                StringBuilder part = new StringBuilder();
+                boolean closed = false;
+                offset++;
+                while (offset < identifier.length()) {
+                    char current = identifier.charAt(offset);
+                    if (current == delimiter) {
+                        if (offset + 1 < identifier.length()
+                                && identifier.charAt(offset + 1) == delimiter) {
+                            part.append(delimiter);
+                            offset += 2;
+                            continue;
+                        }
+                        offset++;
+                        closed = true;
+                        break;
+                    }
+                    part.append(current);
+                    offset++;
+                }
+                if (!closed || (offset < identifier.length() && identifier.charAt(offset) != '.')) {
+                    return identifier;
+                }
+                unquoted.append(part);
+                removedQuote = true;
+            } else {
+                int partEnd = identifier.indexOf('.', offset);
+                if (partEnd < 0) {
+                    partEnd = identifier.length();
+                }
+                String part = identifier.substring(offset, partEnd);
+                if (part.indexOf('`') >= 0 || part.indexOf('"') >= 0) {
+                    return identifier;
+                }
+                unquoted.append(part);
+                offset = partEnd;
+            }
+
+            if (offset < identifier.length()) {
+                unquoted.append('.');
+                offset++;
+                if (offset == identifier.length()) {
+                    return identifier;
+                }
+            }
+        }
+        return removedQuote ? unquoted.toString() : identifier;
     }
 
     @Override
@@ -234,24 +283,19 @@ public class ClickHouseIdentifierProcessor extends DefaultSQLIdentifierProcessor
      */
     @Override
     public String escapeString(String str) {
-        return str == null ? "" : StringUtils.replace(StringUtils.replace(str, "\\", "\\\\"), "'", "''");
+        return str == null ? null : StringUtils.replace(StringUtils.replace(str, "\\", "\\\\"), "'", "''");
     }
 
     private static String escapeIdentifierContent(String identifier) {
         if (identifier == null) {
             return "";
         }
-        String stripped = identifier;
-        if (stripped.length() >= 2 && stripped.startsWith("`") && stripped.endsWith("`")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
-        }
-        return StringUtils.replace(stripped, "`", "``");
+        return StringUtils.replace(identifier, "`", "``");
     }
 
     /**
      * Escapes identifier content for a position already surrounded by
-     * backticks: strips one surrounding backtick pair, then doubles every
-     * embedded backtick.
+     * backticks: doubles every embedded backtick.
      */
     public static String escapeIdentifier(String identifier) {
         return escapeIdentifierContent(identifier);

@@ -115,8 +115,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements IDbMetaDat
     @Override
     public String tableDDL(Connection connection, @NotEmpty String databaseName, String schemaName,
                            @NotEmpty String tableName) {
-        String sql = "SHOW CREATE TABLE " + format(schemaName) + "."
-                + format(tableName);
+        String sql = "SHOW CREATE TABLE " + getMetaDataName(schemaName, tableName);
         return DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 return resultSet.getString("statement");

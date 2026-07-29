@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static ai.chat2db.plugin.clickhouse.constant.ClickHouseColumnTypeEnumConstants.*;
@@ -85,7 +86,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
             // and checked instead of silently dropped.
             return null;
         }
-        return COLUMN_TYPE_MAP.get(normalized.toUpperCase());
+        return COLUMN_TYPE_MAP.get(normalized.toUpperCase(Locale.ROOT));
     }
 
     /**
@@ -98,6 +99,14 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
             return buildValidatedFallbackColumn(column);
         }
         return type.buildCreateColumnSql(column);
+    }
+
+    /**
+     * Builds an ALTER action while preserving parameterized and newer
+     * ClickHouse types that are not represented by this enum.
+     */
+    public static String buildModifyColumnSqlSafely(TableColumn column) {
+        return buildModifyColumnSql(column, buildCreateColumnSqlSafely(column).stripTrailing());
     }
 
     private static String buildValidatedFallbackColumn(TableColumn column) {
@@ -119,7 +128,7 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
     }
 
     private static boolean isNullableWrappable(String columnType) {
-        String upper = columnType.toUpperCase();
+        String upper = columnType.toUpperCase(Locale.ROOT);
         return !upper.startsWith("ARRAY(") && !upper.startsWith("MAP(") && !upper.startsWith("TUPLE(")
                 && !upper.startsWith("NESTED(") && !upper.startsWith("NULLABLE(")
                 && !upper.startsWith("AGGREGATEFUNCTION(") && !upper.startsWith("SIMPLEAGGREGATEFUNCTION(");
@@ -134,6 +143,22 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
         }
         if ("NULL".equalsIgnoreCase(column.getDefaultValue().trim())) {
             return "DEFAULT NULL";
+        }
+        String typeName = column.getColumnType().trim();
+        int arguments = typeName.indexOf('(');
+        if (arguments >= 0) {
+            typeName = typeName.substring(0, arguments);
+        }
+        if ("ENUM8".equalsIgnoreCase(typeName) || "ENUM16".equalsIgnoreCase(typeName)
+                || "DATE".equalsIgnoreCase(typeName) || "DATE32".equalsIgnoreCase(typeName)) {
+            return buildTextDefault(column.getDefaultValue());
+        }
+        if ("DATETIME".equalsIgnoreCase(typeName) || "DATETIME64".equalsIgnoreCase(typeName)) {
+            String trimmed = column.getDefaultValue().trim();
+            if ("CURRENT_TIMESTAMP".equalsIgnoreCase(trimmed) || trimmed.indexOf('(') >= 0) {
+                return "DEFAULT " + ClickHouseSqlGuards.escapeDefaultExpression(trimmed);
+            }
+            return buildTextDefault(column.getDefaultValue());
         }
         return "DEFAULT " + ClickHouseSqlGuards.escapeDefaultExpression(column.getDefaultValue());
     }
@@ -169,20 +194,25 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
 
     @Override
     public String buildModifyColumn(TableColumn tableColumn) {
+        return buildModifyColumnSql(tableColumn, buildCreateColumnSql(tableColumn).stripTrailing());
+    }
 
-        if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("DROP COLUMN ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()));
+    private static String buildModifyColumnSql(TableColumn column, String definition) {
+        if (EditStatusEnum.DELETE.name().equals(column.getEditStatus())) {
+            return "DROP COLUMN " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName());
         }
-        if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
-            return StringUtils.join("ADD COLUMN ", buildCreateColumnSql(tableColumn));
+        if (EditStatusEnum.ADD.name().equals(column.getEditStatus())) {
+            return "ADD COLUMN " + definition;
         }
-        if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
-            String modifyColumn = "";
-            if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
-                modifyColumn = StringUtils.join("RENAME COLUMN ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getOldName()), " TO ", ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(tableColumn.getName()),
-                        ", ", buildCreateColumnSql(tableColumn));
+        if (EditStatusEnum.MODIFY.name().equals(column.getEditStatus())) {
+            String modify = "MODIFY COLUMN " + definition;
+            if (!StringUtils.equals(column.getOldName(), column.getName())) {
+                return "RENAME COLUMN "
+                        + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getOldName())
+                        + " TO " + ClickHouseIdentifierProcessor.INSTANCE.quoteIdentifierAlways(column.getName())
+                        + ",\n\t" + modify;
             }
-            return StringUtils.join(modifyColumn, "MODIFY COLUMN ", buildCreateColumnSql(tableColumn));
+            return modify;
         }
         return "";
     }
@@ -207,22 +237,31 @@ public enum ClickHouseColumnTypeEnum implements IColumnBuilder {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        if (Arrays.asList(Enum8,Enum16).contains(type)) {
-            return StringUtils.join("DEFAULT '", ClickHouseIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
+        if (Arrays.asList(Enum8, Enum16).contains(type)) {
+            return buildTextDefault(column.getDefaultValue());
         }
 
-        if (Arrays.asList(Date).contains(type)) {
-            return StringUtils.join("DEFAULT '", ClickHouseIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
+        if (Arrays.asList(Date, DATE32).contains(type)) {
+            return buildTextDefault(column.getDefaultValue());
         }
 
-        if (Arrays.asList(DateTime).contains(type)) {
-            if ("CURRENT_TIMESTAMP".equalsIgnoreCase(column.getDefaultValue().trim())) {
-                return StringUtils.join("DEFAULT ", column.getDefaultValue());
+        if (Arrays.asList(DateTime, DateTime64).contains(type)) {
+            String trimmed = column.getDefaultValue().trim();
+            if ("CURRENT_TIMESTAMP".equalsIgnoreCase(trimmed) || trimmed.indexOf('(') >= 0) {
+                return "DEFAULT " + ClickHouseSqlGuards.escapeDefaultExpression(trimmed);
             }
-            return StringUtils.join("DEFAULT '", ClickHouseIdentifierProcessor.INSTANCE.escapeString(column.getDefaultValue()), "'");
+            return buildTextDefault(column.getDefaultValue());
         }
 
         return StringUtils.join("DEFAULT ", ClickHouseSqlGuards.escapeDefaultExpression(column.getDefaultValue()));
+    }
+
+    private static String buildTextDefault(String value) {
+        String trimmed = value.trim();
+        if (trimmed.startsWith("'") || trimmed.endsWith("'")) {
+            return "DEFAULT " + ClickHouseSqlGuards.escapeDefaultExpression(trimmed);
+        }
+        return "DEFAULT '" + ClickHouseIdentifierProcessor.INSTANCE.escapeString(value) + "'";
     }
 
     private String buildNullableAndDataType(TableColumn column, ClickHouseColumnTypeEnum type) {
