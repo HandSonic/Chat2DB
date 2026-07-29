@@ -96,7 +96,7 @@ class RedisSqlBuilderTest {
                         operation("DELETE", List.of("2", "w", "2.0"), null)),
                 new HashMap<>());
 
-        assertEquals("MULTI \n" + "ZADD 'k' 1.5 'v'\n" + "ZREM 'k' 'w'\n" + "EXEC",
+        assertEquals("MULTI \n" + "ZADD 'k' '1.5' 'v'\n" + "ZREM 'k' 'w'\n" + "EXEC",
                 RedisSqlBuilder.getInstance().buildByQueryResult(queryResult));
     }
 
@@ -112,9 +112,17 @@ class RedisSqlBuilderTest {
 
         // DELETE on row 1 is positional now (tombstone via LSET+LREM) so duplicate
         // values cannot remove the wrong occurrence.
-        assertEquals("MULTI \n" + "LSET 'k' 1 'b'\n" + "RPUSH 'k' 'c'\n"
-                        + "LSET 'k' 0 '__chat2db_deleted__0'\n" + "LREM 'k' 1 '__chat2db_deleted__0'\n" + "EXEC",
-                RedisSqlBuilder.getInstance().buildByQueryResult(queryResult));
+        String script = RedisSqlBuilder.getInstance().buildByQueryResult(queryResult);
+        String[] lines = script.split("\\n");
+
+        assertEquals("MULTI ", lines[0]);
+        assertEquals("LSET 'k' 1 'b'", lines[1]);
+        assertEquals("RPUSH 'k' 'c'", lines[2]);
+        String tombstone = lines[3].substring(lines[3].lastIndexOf(' ') + 1);
+        assertTrue(tombstone.matches("'__chat2db_deleted__[0-9a-f-]+'"));
+        assertEquals("LSET 'k' 0 " + tombstone, lines[3]);
+        assertEquals("LREM 'k' 1 " + tombstone, lines[4]);
+        assertEquals("EXEC", lines[5]);
     }
 
     @Test

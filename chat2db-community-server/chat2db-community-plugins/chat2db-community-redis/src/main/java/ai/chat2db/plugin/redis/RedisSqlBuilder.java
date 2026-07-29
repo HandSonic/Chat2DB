@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 import static ai.chat2db.plugin.redis.util.RedisValueUtils.getRedisValue;
 
@@ -303,7 +304,7 @@ public class RedisSqlBuilder implements ISqlBuilder, IDqlSqlBuilder, IDmlSqlBuil
                 // Positional delete so a later duplicate occurrence removes exactly the
                 // edited row: LSET idx <tombstone> then LREM 1 <tombstone>. Value-based
                 // LREM would always hit the FIRST duplicate instead.
-                String tombstone = "__chat2db_deleted__" + index;
+                String tombstone = "__chat2db_deleted__" + UUID.randomUUID();
                 script.append("LSET ").append(getRedisValue(keyName))
                         .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR).append(index)
                         .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR).append(getRedisValue(tombstone))
@@ -345,7 +346,8 @@ public class RedisSqlBuilder implements ISqlBuilder, IDqlSqlBuilder, IDmlSqlBuil
 
     private void appendZAddCommand(StringBuilder script, String keyName, String score, String value) {
         script.append(RedisConstants.COMMAND_ZSET_ADD_PREFIX).append(getRedisValue(keyName))
-                .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR).append(score)
+                .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR)
+                .append(getRedisValue(StringUtils.defaultString(score)))
                 .append(RedisConstants.COMMAND_ARGUMENT_SEPARATOR)
                 .append(getRedisValue(StringUtils.defaultString(value)))
                 .append(SQLConstants.LINE_SEPARATOR);
