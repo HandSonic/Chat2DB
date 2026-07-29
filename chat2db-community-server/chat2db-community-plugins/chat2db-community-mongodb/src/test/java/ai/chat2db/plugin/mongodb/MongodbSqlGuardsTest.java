@@ -9,8 +9,10 @@ import ai.chat2db.spi.constant.SQLConstants;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MongodbSqlGuardsTest {
 
@@ -72,6 +74,30 @@ class MongodbSqlGuardsTest {
             manager.truncateTable(null, null, null, "users"));
         assertEquals("db.getCollection(\"a.b\").deleteMany({})",
             manager.truncateTable(null, null, null, "a.b"));
+    }
+
+    @Test
+    void editableQueryParsingKeepsCollectionNameAndEditabilityAligned() {
+        MongodbScriptExecutor executor = new MongodbScriptExecutor();
+        assertTrue(executor.canEdit("db.users.find({})"));
+        assertEquals("users", executor.getTableName(null, "db.users.find({})"));
+
+        String collectionName = "my-field.1\"); \\ quoted";
+        String generatedQuery = "db." + MongodbSqlGuards.collectionAccessor(collectionName) + ".find()";
+        assertTrue(executor.canEdit(generatedQuery));
+        assertEquals(collectionName, executor.getTableName(null, generatedQuery));
+
+        assertFalse(executor.canEdit("db.getCollection(collectionName).find()"));
+        assertEquals("", executor.getTableName(null, "db.getCollection(collectionName).find()"));
+        assertEquals("explicit", executor.getTableName("explicit", generatedQuery));
+    }
+
+    @Test
+    void selectTableCommandUsesAQuotedCollectionAccessor() {
+        assertEquals("db.getCollection(\"my-field.1\").find()",
+            MongodbScriptExecutor.selectTableCommand("my-field.1"));
+        assertEquals("db.getCollection(\"x\\\"); db.dropDatabase(); //\").find()",
+            MongodbScriptExecutor.selectTableCommand("x\"); db.dropDatabase(); //"));
     }
 
     @Test
