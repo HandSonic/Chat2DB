@@ -24,4 +24,11 @@ class OracleMetaDataConstantsTest {
         assertTrue(OracleMetaDataConstants.SELECT_TABLE_INDEX.contains("aic.index_owner = ex.index_owner"),
                 "all_ind_columns must join ALL_IND_EXPRESSIONS on index owner to avoid cross-schema index collisions");
     }
+
+    @Test
+    void selectTableIndexJoinsExpressionsOnColumnPosition() {
+        assertTrue(OracleMetaDataConstants.SELECT_TABLE_INDEX.contains(
+                        "aic.COLUMN_POSITION = ex.COLUMN_POSITION"),
+                "each function-based index column must join only its expression at the same position");
+    }
 }
