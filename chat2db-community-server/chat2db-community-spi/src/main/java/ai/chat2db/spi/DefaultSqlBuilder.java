@@ -918,11 +918,13 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
                     return SQLConstants.WHERE_SQL_PREFIX + columnName + SQLConstants.SQL_IS_NULL;
                 } else {
                     sqlDataValue.setValue(singleValue);
+                    String columnExpression = copyWhereColumnExpression(
+                            columnName, sqlDataValue.getDataType().getDataTypeName());
                     if (useLikeForCopyWhere()
                             && valueProcessor.isStringDataType(sqlDataValue.getDataType().getDataTypeName())) {
-                        return SQLConstants.WHERE_SQL_PREFIX + columnName + SQLConstants.SQL_LIKE + valueProcessor.getSqlValueString(sqlDataValue);
+                        return SQLConstants.WHERE_SQL_PREFIX + columnExpression + SQLConstants.SQL_LIKE + valueProcessor.getSqlValueString(sqlDataValue);
                     } else {
-                        return SQLConstants.WHERE_SQL_PREFIX + columnName + SQLConstants.EQUAL_SQL + valueProcessor.getSqlValueString(sqlDataValue);
+                        return SQLConstants.WHERE_SQL_PREFIX + columnExpression + SQLConstants.EQUAL_SQL + valueProcessor.getSqlValueString(sqlDataValue);
                     }
                 }
             } else {
@@ -938,10 +940,12 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
                         Integer colIndex = selectCols.get(i);
                         SQLDataValue sqlDataValue = dataTypes.get(colIndex);
                         String value = dataList.get(colIndex);
-                        rowConditionBuilder.append(columnNameList.get(colIndex));
+                        String columnName = columnNameList.get(colIndex);
                         if (Objects.isNull(value)) {
-                            rowConditionBuilder.append(SQLConstants.SQL_IS_NULL);
+                            rowConditionBuilder.append(columnName).append(SQLConstants.SQL_IS_NULL);
                         } else {
+                            rowConditionBuilder.append(copyWhereColumnExpression(
+                                    columnName, sqlDataValue.getDataType().getDataTypeName()));
                             boolean stringDataType = useLikeForCopyWhere()
                                     && valueProcessor.isStringDataType(sqlDataValue.getDataType().getDataTypeName());
                             if (stringDataType) {
@@ -968,6 +972,10 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
         return true;
     }
 
+    protected String copyWhereColumnExpression(String columnName, String dataTypeName) {
+        return columnName;
+    }
+
     private String buildWhereClauseForSameColumnValues(String columnName, List<String> values, SQLDataValue sqlDataValue,
                                                        IValueProcessor valueProcessor) {
         List<String> conditions = new ArrayList<>();
@@ -983,7 +991,9 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
                 })
                 .toList();
         if (CollectionUtils.isNotEmpty(nonNullValues)) {
-            conditions.add(columnName + SQLConstants.SQL_IN_OPEN_PARENTHESIS
+            String columnExpression = copyWhereColumnExpression(
+                    columnName, sqlDataValue.getDataType().getDataTypeName());
+            conditions.add(columnExpression + SQLConstants.SQL_IN_OPEN_PARENTHESIS
                     + String.join(SQLConstants.COMMA_SPACE, nonNullValues)
                     + SQLConstants.CLOSE_PARENTHESIS);
         }

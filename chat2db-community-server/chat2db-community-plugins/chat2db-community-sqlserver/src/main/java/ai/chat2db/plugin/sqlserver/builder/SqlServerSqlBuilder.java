@@ -53,6 +53,17 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         return false;
     }
 
+    @Override
+    protected String copyWhereColumnExpression(String columnName, String dataTypeName) {
+        if (SqlServerColumnTypeEnum.TEXT.name().equalsIgnoreCase(dataTypeName)) {
+            return "CAST(" + columnName + " AS VARCHAR(MAX))";
+        }
+        if (SqlServerColumnTypeEnum.NTEXT.name().equalsIgnoreCase(dataTypeName)) {
+            return "CAST(" + columnName + " AS NVARCHAR(MAX))";
+        }
+        return columnName;
+    }
+
 
 
 

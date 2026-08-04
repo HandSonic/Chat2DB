@@ -12,6 +12,8 @@ import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -77,12 +79,66 @@ class SqlServerSqlBuilderTest {
 
     @Test
     void shouldUseExactEqualityAndUnicodeLiteralForNTypes() {
-        for (String columnType : List.of("NCHAR", "NVARCHAR", "NTEXT")) {
+        for (String columnType : List.of("NCHAR", "NVARCHAR")) {
             assertEquals("WHERE value = N'\u6587\u5b57_100%'", buildCopyWhere(columnType, "\u6587\u5b57_100%"), columnType);
         }
     }
 
+    @Test
+    void shouldCastLegacyTextTypesBeforeExactComparison() {
+        assertEquals("WHERE CAST(value AS VARCHAR(MAX)) = N'50%_off'",
+                buildCopyWhere("TEXT", "50%_off"));
+        assertEquals("WHERE CAST(value AS NVARCHAR(MAX)) = N'\u6587\u5b57_100%'",
+                buildCopyWhere("NTEXT", "\u6587\u5b57_100%"));
+    }
+
+    @Test
+    void shouldCastLegacyTextForSameColumnInClause() {
+        assertEquals("WHERE CAST(value AS VARCHAR(MAX)) IN (N'first', N'second')",
+                buildCopyWhere("TEXT", List.of("first", "second")));
+    }
+
+    @Test
+    void shouldKeepNullPredicateOnTheUncastColumn() {
+        assertEquals("WHERE value IS NULL", buildCopyWhere("TEXT", (String) null));
+        assertEquals("WHERE value IS NULL OR CAST(value AS NVARCHAR(MAX)) IN (N'next')",
+                buildCopyWhere("NTEXT", Arrays.asList(null, "next")));
+    }
+
+    @Test
+    void shouldCastLegacyTextOnlyForNonNullCompositeComparisons() {
+        ResultOperation operation = new ResultOperation();
+        operation.setType(SQLConstants.WHERE_KEYWORD);
+        operation.setDataList(Arrays.asList("50%_off", null));
+        operation.setSelectCols(List.of(0, 1));
+
+        assertEquals("WHERE CAST(legacy_text AS VARCHAR(MAX)) = N'50%_off' AND label IS NULL"
+                        + SQLConstants.LINE_SEPARATOR,
+                buildCopyWhere(List.of(
+                        Header.builder().name("legacy_text").columnType("TEXT").build(),
+                        Header.builder().name("label").columnType("NVARCHAR").build()),
+                        List.of(operation)));
+    }
+
     private static String buildCopyWhere(String columnType, String value) {
+        return buildCopyWhere(columnType, Collections.singletonList(value));
+    }
+
+    private static String buildCopyWhere(String columnType, List<String> values) {
+        List<ResultOperation> operations = values.stream().map(value -> {
+            ResultOperation operation = new ResultOperation();
+            operation.setType(SQLConstants.WHERE_KEYWORD);
+            operation.setDataList(Collections.singletonList(value));
+            operation.setSelectCols(List.of(0));
+            return operation;
+        }).toList();
+        return buildCopyWhere(List.of(Header.builder()
+                .name("value")
+                .columnType(columnType)
+                .build()), operations);
+    }
+
+    private static String buildCopyWhere(List<Header> headers, List<ResultOperation> operations) {
         IPlugin previousPlugin = Chat2DBContext.PLUGIN_MAP.put("SQLSERVER", new SqlServerPlugin());
         ConnectInfo connectInfo = new ConnectInfo();
         connectInfo.setDbType("SQLSERVER");
@@ -91,15 +147,8 @@ class SqlServerSqlBuilderTest {
 
         try {
             QueryResponse queryResponse = new QueryResponse();
-            queryResponse.setHeaderList(List.of(Header.builder()
-                    .name("value")
-                    .columnType(columnType)
-                    .build()));
-            ResultOperation operation = new ResultOperation();
-            operation.setType(SQLConstants.WHERE_KEYWORD);
-            operation.setDataList(List.of(value));
-            operation.setSelectCols(List.of(0));
-            queryResponse.setOperations(List.of(operation));
+            queryResponse.setHeaderList(headers);
+            queryResponse.setOperations(operations);
             return new SqlServerSqlBuilder().buildCopyByQueryResult(queryResponse);
         } finally {
             Chat2DBContext.removeContext();
