@@ -25,16 +25,19 @@ public class TaskThread extends Thread {
 
     public void cancel() {
         asyncContext.stop();
+        interrupt();
     }
 
     @Override
     public void run() {
         try {
             runnable.run();
-        } catch (Exception e){
-            log.error("task error", e);
-            asyncContext.error(e.getMessage());
-        }finally {
+        } catch (Exception e) {
+            if (!asyncContext.isStopped()) {
+                log.error("task error", e);
+                asyncContext.error(e.getMessage());
+            }
+        } finally {
             TaskThreadPoolManager.remove(taskId);
             asyncContext.finish();
         }

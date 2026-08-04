@@ -16,30 +16,38 @@ class TaskThreadPoolManagerTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void cancelTaskUsesCooperativeCancelWithoutStoppingThread() throws Exception {
+    void cancelTaskInterruptsTaskAndPreventsCompletionSideEffect() throws Exception {
         Long taskId = 990001L;
         CountDownLatch started = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch blocker = new CountDownLatch(1);
+        AtomicBoolean interrupted = new AtomicBoolean(false);
         AtomicBoolean ranToCompletion = new AtomicBoolean(false);
         AsyncContext asyncContext = new AsyncContext(null, null, null, false);
         TaskThread task = new TaskThread(null, asyncContext, taskId, () -> {
             started.countDown();
             try {
-                release.await(10, TimeUnit.SECONDS);
+                blocker.await(10, TimeUnit.SECONDS);
+                ranToCompletion.set(true);
             } catch (InterruptedException e) {
+                interrupted.set(true);
                 Thread.currentThread().interrupt();
             }
-            ranToCompletion.set(true);
         });
 
-        TaskThreadPoolManager.submitTask(taskId, task);
-        assertTrue(started.await(5, TimeUnit.SECONDS), "task thread did not start");
+        try {
+            TaskThreadPoolManager.submitTask(taskId, task);
+            assertTrue(started.await(5, TimeUnit.SECONDS), "task thread did not start");
 
-        TaskThreadPoolManager.cancelTask(taskId);
-        release.countDown();
-        task.join(5000);
+            TaskThreadPoolManager.cancelTask(taskId);
+            task.join(5000);
+        } finally {
+            blocker.countDown();
+        }
 
-        assertTrue(ranToCompletion.get(), "task thread must run to completion; Thread.stop() must not be used");
+        assertFalse(task.isAlive(), "cancelled task must terminate after interruption");
+        assertTrue(interrupted.get(), "cancel must interrupt a blocking task");
+        assertFalse(ranToCompletion.get(), "cancelled task must not execute its completion side effect");
+        assertTrue(asyncContext.isStopped(), "cancelled task status must remain STOP");
         Field field = TaskThreadPoolManager.class.getDeclaredField("taskMap");
         field.setAccessible(true);
         Map<Long, TaskThread> taskMap = (Map<Long, TaskThread>) field.get(null);

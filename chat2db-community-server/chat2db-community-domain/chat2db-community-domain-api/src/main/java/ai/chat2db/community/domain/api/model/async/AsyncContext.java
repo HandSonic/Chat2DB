@@ -16,6 +16,12 @@ import java.util.Map;
 @Slf4j
 public class AsyncContext {
 
+    private enum State {
+        RUNNING,
+        FINISHED,
+        STOP
+    }
+
     private File writeFile;
 
     protected PrintWriter writer;
@@ -27,6 +33,8 @@ public class AsyncContext {
     protected volatile boolean finish;
 
     protected volatile Integer progress;
+
+    private volatile State state = State.RUNNING;
 
     private volatile StringBuffer info = new StringBuffer();
 
@@ -69,23 +77,42 @@ public class AsyncContext {
         info.append(message).append("\n");
     }
 
-    public void stop() {
-        this.finish = true;
+    public synchronized void stop() {
+        if (state != State.RUNNING) {
+            return;
+        }
+        state = State.STOP;
+        finish = true;
+        closeWriter();
+        callUpdate();
     }
 
-    public void finish() {
+    public boolean isStopped() {
+        return state == State.STOP;
+    }
+
+    public synchronized void finish() {
         finish = true;
+        if (state != State.RUNNING) {
+            closeWriter();
+            return;
+        }
+        state = State.FINISHED;
         this.progress = 100;
         String message = DateUtil.formatDateTime(new Date()) + " " + "finish. ";
         if (writeFile != null) {
             message += "File path:" + writeFile.getAbsolutePath();
         }
         info(message);
+        closeWriter();
+        callUpdate();
+    }
+
+    private void closeWriter() {
         if (writer != null) {
             writer.flush();
             writer.close();
         }
-        callUpdate();
     }
 
     public void write(String message) {
@@ -122,7 +149,7 @@ public class AsyncContext {
         }
     }
 
-    private void callUpdate() {
+    private synchronized void callUpdate() {
         if (call == null) {
             return;
         }
@@ -130,8 +157,8 @@ public class AsyncContext {
         map.put("progress", progress);
         map.put("info", info.toString());
         map.put("error", error.toString());
-        map.put("status", finish ? "FINISHED" : "RUNNING");
-        if (progress == 100 && writeFile != null) {
+        map.put("status", state.name());
+        if (state == State.FINISHED && progress == 100 && writeFile != null) {
             map.put("downloadUrl", writeFile.getAbsolutePath());
         }
         info = new StringBuffer();
