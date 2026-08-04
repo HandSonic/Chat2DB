@@ -136,4 +136,32 @@ class LocalWorkspaceStoragePaginationTest {
         assertEquals(3L, page2.getTotal());
         assertFalse(page2.getHasNextPage());
     }
+
+    @Test
+    void hugePageNumberReturnsEmptyPageInsteadOfOverflowingOffset() {
+        TaskStorage.INSTANCE.save(new Task());
+        TaskRecordPageRequest request = new TaskRecordPageRequest();
+        request.setPageNo(Integer.MAX_VALUE);
+        request.setPageSize(2);
+
+        PageResponse<Task> page = workspaceStorage.taskList(request);
+
+        assertTrue(page.getData().isEmpty());
+        assertEquals(1L, page.getTotal());
+        assertFalse(page.getHasNextPage());
+    }
+
+    @Test
+    void maxPageSizeOnSecondPageReturnsEmptyPageInsteadOfOverflowingEndIndex() {
+        DataSourceStorage.INSTANCE.save(new DataSource());
+        DbDataSourcePageQueryRequest request = new DbDataSourcePageQueryRequest();
+        request.setPageNo(2);
+        request.setPageSize(Integer.MAX_VALUE);
+
+        PageResponse<?> page = workspaceStorage.listDataSources(request);
+
+        assertTrue(page.getData().isEmpty());
+        assertEquals(1L, page.getTotal());
+        assertFalse(page.getHasNextPage());
+    }
 }
