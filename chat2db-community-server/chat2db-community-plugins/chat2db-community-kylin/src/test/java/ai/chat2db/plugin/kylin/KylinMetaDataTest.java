@@ -65,6 +65,67 @@ class KylinMetaDataTest {
     }
 
     @Test
+    void tableDdlSupportsKylinAnyAndArrayTypes() {
+        Connection connection = connectionWithMetadata(
+                List.of(
+                        List.<Object>of("attributes", "VARCHAR(256) CHARACTER SET \"ISO-8859-1\" "
+                                + "COLLATE \"ISO-8859-1$en_US\" NOT NULL ARRAY NOT NULL",
+                                Types.ARRAY, -1, 0, 1, ""),
+                        List.<Object>of("any_value", "ANY NOT NULL ARRAY", Types.ARRAY, -1, 0, 1, ""),
+                        List.<Object>of("any_precision", "ANY(8) NOT NULL ARRAY", Types.ARRAY, -1, 0, 1, ""),
+                        List.<Object>of("any_precision_scale", "ANY(8, 2) NOT NULL ARRAY",
+                                Types.ARRAY, -1, 0, 1, ""),
+                        List.<Object>of("raw", "ANY", Types.JAVA_OBJECT, -1, 0, 1, "")),
+                List.of());
+
+        String ddl = new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "events");
+
+        assertEquals("CREATE TABLE \"events\" (\n"
+                + "\t\"attributes\" ARRAY<VARCHAR(256)>,\n"
+                + "\t\"any_value\" ARRAY<ANY>,\n"
+                + "\t\"any_precision\" ARRAY<ANY(8)>,\n"
+                + "\t\"any_precision_scale\" ARRAY<ANY(8,2)>,\n"
+                + "\t\"raw\" ANY\n"
+                + ");", ddl);
+    }
+
+    @Test
+    void tableDdlRejectsHostileArrayTypeName() {
+        Connection connection = connectionWithMetadata(
+                List.of(List.<Object>of("payload", "VARCHAR(256) NOT NULL ARRAY); DROP TABLE users; --",
+                        Types.ARRAY, -1, 0, 1, "")),
+                List.of());
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "events"));
+
+        assertEquals("Unsupported Kylin JDBC ARRAY type for column: payload", exception.getMessage());
+    }
+
+    @Test
+    void tableDdlRejectsMalformedArrayTypeNames() {
+        List<String> typeNames = List.of(
+                "VARCHAR(256) CHARACTER SET \"ISO-8859-1\" NOT NULL ARRAY",
+                "VARCHAR(256) COLLATE \"ISO-8859-1$en_US\" NOT NULL ARRAY",
+                "VARCHAR(256) CHARACTER SET \"ISO-8859-1\" COLLATE NOT NULL ARRAY",
+                "VARCHAR(256) NOT NULL ARRAY NOT NULL ARRAY",
+                "VARCHAR(256) NOT NULL ARRAY trailing",
+                "VARCHAR(256) NOT NULL ARRAY\n",
+                "VARCHAR(256)\r NOT NULL ARRAY");
+
+        for (String typeName : typeNames) {
+            Connection connection = connectionWithMetadata(
+                    List.of(List.<Object>of("payload", typeName, Types.ARRAY, -1, 0, 1, "")),
+                    List.of());
+
+            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                    () -> new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "events"), typeName);
+
+            assertEquals("Unsupported Kylin JDBC ARRAY type for column: payload", exception.getMessage(), typeName);
+        }
+    }
+
+    @Test
     void tableDdlNormalizesEmptyCatalogAndSchemaForMetadataCalls() {
         MetadataCallArguments callArguments = new MetadataCallArguments();
         Connection connection = connectionWithMetadata(

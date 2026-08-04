@@ -11,10 +11,22 @@ import org.apache.commons.lang3.StringUtils;
 import java.sql.Connection;
 import java.sql.Types;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.StringJoiner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class KylinMetaData extends DefaultMetaService implements IDbMetaData {
+
+    private static final Pattern ARRAY_TYPE_NAME_PATTERN = Pattern.compile(
+            "\\A((?:BOOLEAN|TINYINT|SMALLINT|INTEGER|BIGINT|FLOAT|REAL|DOUBLE|DATE)"
+                    + "|(?:CHAR|VARCHAR|TIME|TIMESTAMP)(?:\\([0-9]+\\))?"
+                    + "|(?:DECIMAL|ANY)(?:\\([0-9]+(?:[ \\t]*,[ \\t]*[0-9]+)?\\))?)"
+                    + "(?:[ \\t]+CHARACTER[ \\t]+SET[ \\t]+\"(?:[^\"\\r\\n]|\"\")*\""
+                    + "[ \\t]+COLLATE[ \\t]+\"(?:[^\"\\r\\n]|\"\")*\")?"
+                    + "[ \\t]+NOT[ \\t]+NULL[ \\t]+ARRAY(?:[ \\t]+NOT[ \\t]+NULL)?\\z",
+            Pattern.CASE_INSENSITIVE);
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
@@ -85,6 +97,8 @@ public class KylinMetaData extends DefaultMetaService implements IDbMetaData {
             case Types.DATE -> "DATE";
             case Types.TIME -> "TIME";
             case Types.TIMESTAMP -> "TIMESTAMP";
+            case Types.JAVA_OBJECT -> "ANY";
+            case Types.ARRAY -> renderArrayType(column);
             default -> throw new IllegalArgumentException("Unsupported Kylin JDBC column type: " + jdbcType);
         };
 
@@ -100,6 +114,23 @@ public class KylinMetaData extends DefaultMetaService implements IDbMetaData {
             return typeName + '(' + columnSize.toString() + ')';
         }
         return typeName;
+    }
+
+    private String renderArrayType(TableColumn column) {
+        String jdbcTypeName = column.getColumnType();
+        if (StringUtils.isBlank(jdbcTypeName)) {
+            throw new IllegalArgumentException("Missing JDBC type name for Kylin ARRAY column: " + column.getName());
+        }
+
+        Matcher matcher = ARRAY_TYPE_NAME_PATTERN.matcher(jdbcTypeName);
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("Unsupported Kylin JDBC ARRAY type for column: " + column.getName());
+        }
+        String elementType = matcher.group(1)
+                .replace(" ", "")
+                .replace("\t", "")
+                .toUpperCase(Locale.ROOT);
+        return "ARRAY<" + elementType + '>';
     }
 
     private String buildCreateIndex(String tableName, TableIndex index) {
