@@ -9,11 +9,9 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Regression test for plugin:kylin-1: KylinMetaData must override tableDDL so that
@@ -22,30 +20,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KylinMetaDataTest {
 
     @Test
-    void tableDdlDoesNotThrowAndBuildsDdlFromJdbcMetadata() {
-        Connection connection = connectionWithColumns(
+    void tableDdlQuotesIdentifiersAndEscapesCommentLiterals() {
+        Connection connection = connectionWithMetadata(
                 List.of(
-                        Map.of("COLUMN_NAME", "ID", "TYPE_NAME", "BIGINT", "COLUMN_SIZE", 19, "NULLABLE", 0,
-                                "REMARKS", "primary key"),
-                        Map.of("COLUMN_NAME", "USER_NAME", "TYPE_NAME", "VARCHAR", "COLUMN_SIZE", 64, "NULLABLE", 1,
-                                "REMARKS", "")));
+                        List.<Object>of("display name", "VARCHAR", 64, 0, 1, "employee's id"),
+                        List.<Object>of("a\"b", "DECIMAL", 10, 2, 0, "")),
+                List.of(
+                        List.<Object>of("select", "display name", false, (short) 1),
+                        List.<Object>of("select", "a\"b", false, (short) 2)));
 
-        String ddl = assertDoesNotThrow(
-                () -> new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "TEST_TABLE"));
+        String ddl = new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "order");
 
-        assertTrue(ddl.contains("CREATE TABLE TEST_TABLE"), "ddl should create the table: " + ddl);
-        assertTrue(ddl.contains("ID BIGINT"), "ddl should contain the ID column: " + ddl);
-        assertTrue(ddl.contains("NOT NULL"), "non-nullable column should be marked: " + ddl);
-        assertTrue(ddl.contains("USER_NAME VARCHAR(64)"), "varchar size should be rendered: " + ddl);
+        assertEquals("CREATE TABLE \"order\" (\n"
+                + "\t\"display name\" VARCHAR(64) COMMENT 'employee''s id',\n"
+                + "\t\"a\"\"b\" DECIMAL(10,2) NOT NULL\n"
+                + ");\n"
+                + "CREATE UNIQUE INDEX \"select\" ON \"order\" (\"display name\", \"a\"\"b\");", ddl);
     }
 
-    private static Connection connectionWithColumns(List<Map<String, Object>> columnRows) {
-        ResultSet columnsRs = resultSet(List.of("COLUMN_NAME", "TYPE_NAME", "COLUMN_SIZE", "NULLABLE", "REMARKS"),
-                columnRows.stream()
-                        .map(row -> List.of(row.get("COLUMN_NAME"), row.get("TYPE_NAME"), row.get("COLUMN_SIZE"),
-                                row.get("NULLABLE"), row.get("REMARKS")))
-                        .toList());
-        ResultSet indexRs = resultSet(List.of("INDEX_NAME", "COLUMN_NAME", "NON_UNIQUE"), List.of());
+    private static Connection connectionWithMetadata(List<List<Object>> columnRows, List<List<Object>> indexRows) {
+        ResultSet columnsRs = resultSet(
+                List.of("COLUMN_NAME", "TYPE_NAME", "COLUMN_SIZE", "DECIMAL_DIGITS", "NULLABLE", "REMARKS"),
+                columnRows);
+        ResultSet indexRs = resultSet(
+                List.of("INDEX_NAME", "COLUMN_NAME", "NON_UNIQUE", "ORDINAL_POSITION"), indexRows);
         DatabaseMetaData metaData = proxy(DatabaseMetaData.class, (p, method, args) -> switch (method.getName()) {
             case "getColumns" -> columnsRs;
             case "getIndexInfo" -> indexRs;
