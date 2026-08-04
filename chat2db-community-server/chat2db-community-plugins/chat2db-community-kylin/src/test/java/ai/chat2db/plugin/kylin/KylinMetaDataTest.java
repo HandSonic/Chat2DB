@@ -8,10 +8,13 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.Types;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Regression test for plugin:kylin-1: KylinMetaData must override tableDDL so that
@@ -23,8 +26,8 @@ class KylinMetaDataTest {
     void tableDdlQuotesIdentifiersAndEscapesCommentLiterals() {
         Connection connection = connectionWithMetadata(
                 List.of(
-                        List.<Object>of("display name", "VARCHAR", 64, 0, 1, "employee's id"),
-                        List.<Object>of("a\"b", "DECIMAL", 10, 2, 0, "")),
+                        List.<Object>of("display name", "VARCHAR", Types.VARCHAR, 64, 0, 1, "employee's id"),
+                        List.<Object>of("a\"b", "DECIMAL", Types.DECIMAL, 10, 2, 0, "")),
                 List.of(
                         List.<Object>of("select", "display name", false, (short) 1),
                         List.<Object>of("select", "a\"b", false, (short) 2)));
@@ -38,16 +41,80 @@ class KylinMetaDataTest {
                 + "CREATE UNIQUE INDEX \"select\" ON \"order\" (\"display name\", \"a\"\"b\");", ddl);
     }
 
+    @Test
+    void tableDdlUsesJdbcTypeInsteadOfHostileTypeName() {
+        Connection connection = connectionWithMetadata(
+                List.of(List.<Object>of("id", "INTEGER); DROP TABLE users; --", Types.INTEGER, 10, 0, 0, "")),
+                List.of());
+
+        String ddl = new KylinMetaData().tableDDL(connection, "DEFAULT", "", "orders");
+
+        assertEquals("CREATE TABLE \"orders\" (\n\t\"id\" INTEGER NOT NULL\n);", ddl);
+    }
+
+    @Test
+    void tableDdlRejectsUnsupportedJdbcType() {
+        Connection connection = connectionWithMetadata(
+                List.of(List.<Object>of("payload", "OTHER", Types.OTHER, 0, 0, 1, "")),
+                List.of());
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "orders"));
+
+        assertEquals("Unsupported Kylin JDBC column type: " + Types.OTHER, exception.getMessage());
+    }
+
+    @Test
+    void tableDdlNormalizesEmptyCatalogAndSchemaForMetadataCalls() {
+        MetadataCallArguments callArguments = new MetadataCallArguments();
+        Connection connection = connectionWithMetadata(
+                List.of(List.<Object>of("id", "BIGINT", Types.BIGINT, 19, 0, 1, "")),
+                List.of(), callArguments);
+
+        new KylinMetaData().tableDDL(connection, "", "", "orders");
+
+        assertNull(callArguments.columns[0]);
+        assertNull(callArguments.columns[1]);
+        assertEquals("orders", callArguments.columns[2]);
+        assertNull(callArguments.columns[3]);
+        assertNull(callArguments.indexes[0]);
+        assertNull(callArguments.indexes[1]);
+        assertEquals("orders", callArguments.indexes[2]);
+    }
+
+    @Test
+    void tableDdlReturnsEmptyStringWhenMetadataHasNoColumns() {
+        MetadataCallArguments callArguments = new MetadataCallArguments();
+        Connection connection = connectionWithMetadata(List.of(), List.of(), callArguments);
+
+        String ddl = new KylinMetaData().tableDDL(connection, "DEFAULT", "DEFAULT", "missing_table");
+
+        assertEquals("", ddl);
+        assertNull(callArguments.indexes);
+    }
+
     private static Connection connectionWithMetadata(List<List<Object>> columnRows, List<List<Object>> indexRows) {
+        return connectionWithMetadata(columnRows, indexRows, new MetadataCallArguments());
+    }
+
+    private static Connection connectionWithMetadata(List<List<Object>> columnRows, List<List<Object>> indexRows,
+                                                     MetadataCallArguments callArguments) {
         ResultSet columnsRs = resultSet(
-                List.of("COLUMN_NAME", "TYPE_NAME", "COLUMN_SIZE", "DECIMAL_DIGITS", "NULLABLE", "REMARKS"),
+                List.of("COLUMN_NAME", "TYPE_NAME", "DATA_TYPE", "COLUMN_SIZE", "DECIMAL_DIGITS", "NULLABLE",
+                        "REMARKS"),
                 columnRows);
         ResultSet indexRs = resultSet(
                 List.of("INDEX_NAME", "COLUMN_NAME", "NON_UNIQUE", "ORDINAL_POSITION"), indexRows);
-        DatabaseMetaData metaData = proxy(DatabaseMetaData.class, (p, method, args) -> switch (method.getName()) {
-            case "getColumns" -> columnsRs;
-            case "getIndexInfo" -> indexRs;
-            default -> defaultValue(method.getReturnType());
+        DatabaseMetaData metaData = proxy(DatabaseMetaData.class, (p, method, args) -> {
+            if ("getColumns".equals(method.getName())) {
+                callArguments.columns = args.clone();
+                return columnsRs;
+            }
+            if ("getIndexInfo".equals(method.getName())) {
+                callArguments.indexes = args.clone();
+                return indexRs;
+            }
+            return defaultValue(method.getReturnType());
         });
         return proxy(Connection.class, (p, method, args) -> {
             if ("getMetaData".equals(method.getName())) {
@@ -55,6 +122,11 @@ class KylinMetaDataTest {
             }
             return defaultValue(method.getReturnType());
         });
+    }
+
+    private static final class MetadataCallArguments {
+        private Object[] columns;
+        private Object[] indexes;
     }
 
     private static ResultSet resultSet(List<String> labels, List<List<Object>> rows) {

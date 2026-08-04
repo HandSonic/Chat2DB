@@ -4,12 +4,12 @@ import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
 import ai.chat2db.spi.DefaultMetaService;
-import ai.chat2db.spi.DefaultSQLExecutor;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.ISQLIdentifierProcessor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
+import java.sql.Types;
 import java.util.List;
 import java.util.Objects;
 import java.util.StringJoiner;
@@ -18,10 +18,11 @@ public class KylinMetaData extends DefaultMetaService implements IDbMetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        List<TableColumn> columns = DefaultSQLExecutor.getInstance()
-                .columns(connection, databaseName, schemaName, tableName, null);
-        List<TableIndex> indexes = DefaultSQLExecutor.getInstance()
-                .indexes(connection, databaseName, schemaName, tableName);
+        List<TableColumn> columns = columns(connection, databaseName, schemaName, tableName, null);
+        if (columns.isEmpty()) {
+            return "";
+        }
+        List<TableIndex> indexes = indexes(connection, databaseName, schemaName, tableName);
 
         StringBuilder ddl = new StringBuilder(buildCreateTable(tableName, columns));
         for (TableIndex index : indexes) {
@@ -47,21 +48,10 @@ public class KylinMetaData extends DefaultMetaService implements IDbMetaData {
     }
 
     private String buildColumnDefinition(TableColumn column) {
-        String dataType = StringUtils.defaultIfBlank(column.getColumnType(), "VARCHAR");
+        String dataType = renderColumnType(column);
         StringBuilder definition = new StringBuilder(quoteIdentifier(column.getName()))
                 .append(' ')
                 .append(dataType);
-
-        Integer columnSize = column.getColumnSize();
-        if (StringUtils.equalsAnyIgnoreCase(dataType, "VARCHAR", "CHAR") && columnSize != null) {
-            definition.append('(').append(columnSize).append(')');
-        } else if (StringUtils.equalsAnyIgnoreCase(dataType, "DECIMAL", "NUMERIC") && columnSize != null) {
-            definition.append('(').append(columnSize);
-            if (column.getDecimalDigits() != null) {
-                definition.append(',').append(column.getDecimalDigits());
-            }
-            definition.append(')');
-        }
 
         if (Objects.equals(column.getNullable(), 0)) {
             definition.append(" NOT NULL");
@@ -72,6 +62,44 @@ public class KylinMetaData extends DefaultMetaService implements IDbMetaData {
                     .append('\'');
         }
         return definition.toString();
+    }
+
+    private String renderColumnType(TableColumn column) {
+        Integer jdbcType = column.getDataType();
+        if (jdbcType == null) {
+            throw new IllegalArgumentException("Missing JDBC type for Kylin column: " + column.getName());
+        }
+
+        String typeName = switch (jdbcType) {
+            case Types.BIT, Types.BOOLEAN -> "BOOLEAN";
+            case Types.TINYINT -> "TINYINT";
+            case Types.SMALLINT -> "SMALLINT";
+            case Types.INTEGER -> "INTEGER";
+            case Types.BIGINT -> "BIGINT";
+            case Types.FLOAT -> "FLOAT";
+            case Types.REAL -> "REAL";
+            case Types.DOUBLE -> "DOUBLE";
+            case Types.NUMERIC, Types.DECIMAL -> "DECIMAL";
+            case Types.CHAR, Types.NCHAR -> "CHAR";
+            case Types.VARCHAR, Types.LONGVARCHAR, Types.NVARCHAR, Types.LONGNVARCHAR -> "VARCHAR";
+            case Types.DATE -> "DATE";
+            case Types.TIME -> "TIME";
+            case Types.TIMESTAMP -> "TIMESTAMP";
+            default -> throw new IllegalArgumentException("Unsupported Kylin JDBC column type: " + jdbcType);
+        };
+
+        Integer columnSize = column.getColumnSize();
+        if (StringUtils.equalsAny(typeName, "VARCHAR", "CHAR") && columnSize != null && columnSize > 0) {
+            return typeName + '(' + columnSize.toString() + ')';
+        }
+        if ("DECIMAL".equals(typeName) && columnSize != null && columnSize > 0) {
+            Integer decimalDigits = column.getDecimalDigits();
+            if (decimalDigits != null && decimalDigits >= 0) {
+                return typeName + '(' + columnSize.toString() + ',' + decimalDigits + ')';
+            }
+            return typeName + '(' + columnSize.toString() + ')';
+        }
+        return typeName;
     }
 
     private String buildCreateIndex(String tableName, TableIndex index) {
