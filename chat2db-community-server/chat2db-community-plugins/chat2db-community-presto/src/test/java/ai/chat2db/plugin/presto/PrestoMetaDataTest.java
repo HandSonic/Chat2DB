@@ -54,7 +54,17 @@ class PrestoMetaDataTest {
         String ddl = new PrestoMetaData().tableDDL(connection, request);
 
         assertEquals(EXPECTED_DDL, ddl);
-        assertEquals("SHOW CREATE TABLE \"web\".\"page_views\"", executedSql.get());
+        assertEquals("SHOW CREATE TABLE \"hive\".\"web\".\"page_views\"", executedSql.get());
+    }
+
+    @Test
+    void quotesCatalogSchemaAndTableWithoutLosingEmbeddedQuotes() {
+        AtomicReference<String> executedSql = new AtomicReference<>();
+        Connection connection = stubConnection(EXPECTED_DDL, executedSql);
+
+        new PrestoMetaData().tableDDL(connection, "hive-prod", "order", "daily\"sales");
+
+        assertEquals("SHOW CREATE TABLE \"hive-prod\".\"order\".\"daily\"\"sales\"", executedSql.get());
     }
 
     private static Connection stubConnection(String ddl, AtomicReference<String> executedSql) {
