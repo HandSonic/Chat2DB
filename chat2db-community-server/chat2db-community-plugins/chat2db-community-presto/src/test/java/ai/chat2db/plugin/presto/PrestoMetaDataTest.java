@@ -67,6 +67,47 @@ class PrestoMetaDataTest {
         assertEquals("SHOW CREATE TABLE \"hive-prod\".\"order\".\"daily\"\"sales\"", executedSql.get());
     }
 
+    @Test
+    void usesDefaultCatalogWhenOnlySchemaIsAvailable() {
+        AtomicReference<String> executedSql = new AtomicReference<>();
+        Connection connection = stubConnection(EXPECTED_DDL, executedSql);
+
+        new PrestoMetaData().tableDDL(connection, null, "web", "page_views");
+
+        assertEquals("SHOW CREATE TABLE \"web\".\"page_views\"", executedSql.get());
+    }
+
+    @Test
+    void usesSessionDefaultsWhenCatalogAndSchemaAreBlank() {
+        AtomicReference<String> executedSql = new AtomicReference<>();
+        Connection connection = stubConnection(EXPECTED_DDL, executedSql);
+
+        new PrestoMetaData().tableDDL(connection, " ", null, "page_views");
+
+        assertEquals("SHOW CREATE TABLE \"page_views\"", executedSql.get());
+    }
+
+    @Test
+    void rejectsCatalogWithoutSchema() {
+        IllegalArgumentException nullSchema = assertThrows(IllegalArgumentException.class,
+                () -> new PrestoMetaData().tableDDL(null, "hive", null, "page_views"));
+        IllegalArgumentException blankSchema = assertThrows(IllegalArgumentException.class,
+                () -> new PrestoMetaData().tableDDL(null, "hive", " ", "page_views"));
+
+        assertEquals("Presto schema name is required when catalog name is provided", nullSchema.getMessage());
+        assertEquals("Presto schema name is required when catalog name is provided", blankSchema.getMessage());
+    }
+
+    @Test
+    void rejectsMissingTableName() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new PrestoMetaData().tableDDL(null, null, null, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> new PrestoMetaData().tableDDL(null, null, null, ""));
+        assertThrows(IllegalArgumentException.class,
+                () -> new PrestoMetaData().tableDDL(null, null, null, " "));
+    }
+
     private static Connection stubConnection(String ddl, AtomicReference<String> executedSql) {
         ResultSet resultSet = (ResultSet) Proxy.newProxyInstance(PrestoMetaDataTest.class.getClassLoader(),
                 new Class<?>[] {ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
