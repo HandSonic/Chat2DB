@@ -1,7 +1,9 @@
 package ai.chat2db.plugin.gbase8s;
 
 import ai.chat2db.plugin.generic.GenericMetaData;
+import ai.chat2db.plugin.gbase8s.builder.GBase8sSqlBuilder;
 import ai.chat2db.spi.IDbMetaData;
+import ai.chat2db.spi.ISqlBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -10,6 +12,11 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class GBase8sMetaData extends GenericMetaData implements IDbMetaData {
+
+    @Override
+    public ISqlBuilder getSqlBuilder() {
+        return new GBase8sSqlBuilder();
+    }
 
     @Override
     public String getMetaDataName(String... names) {

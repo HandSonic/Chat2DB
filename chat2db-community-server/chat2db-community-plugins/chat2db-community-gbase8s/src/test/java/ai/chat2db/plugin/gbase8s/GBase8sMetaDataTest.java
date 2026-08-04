@@ -1,12 +1,19 @@
 package ai.chat2db.plugin.gbase8s;
 
+import ai.chat2db.plugin.gbase8s.builder.GBase8sSqlBuilder;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 class GBase8sMetaDataTest {
 
     private final GBase8sMetaData metaData = new GBase8sMetaData();
+
+    @Test
+    void registersGBase8sSqlBuilder() {
+        assertInstanceOf(GBase8sSqlBuilder.class, metaData.getSqlBuilder());
+    }
 
     @Test
     void databaseAndTableUseColonForTwoOrThreeSlots() {
