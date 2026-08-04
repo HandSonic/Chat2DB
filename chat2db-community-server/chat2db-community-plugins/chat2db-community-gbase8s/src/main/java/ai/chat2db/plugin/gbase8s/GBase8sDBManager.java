@@ -13,6 +13,11 @@ public class GBase8sDBManager extends GenericDBManager implements IDbManager {
 
     @Override
     public Connection getConnection(ConnectInfo connectInfo) {
+        appendServerAttributeIfAbsent(connectInfo);
+        return super.getConnection(connectInfo);
+    }
+
+    static void appendServerAttributeIfAbsent(ConnectInfo connectInfo) {
         String url = connectInfo.getUrl();
         String service = connectInfo.getServiceName();
         // The shared ConnectInfo is reused on every (re)connect, so append the server
@@ -20,6 +25,5 @@ public class GBase8sDBManager extends GenericDBManager implements IDbManager {
         if (StringUtils.isNotBlank(service) && url != null && !url.contains("GBASEDBTSERVER=")) {
             connectInfo.setUrl(url + ":" + "GBASEDBTSERVER=" + service);
         }
-        return super.getConnection(connectInfo);
     }
 }
