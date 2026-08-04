@@ -48,6 +48,11 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
                 .collect(Collectors.joining(SQLConstants.DOT));
     }
 
+    @Override
+    protected boolean useLikeForCopyWhere() {
+        return false;
+    }
+
 
 
 

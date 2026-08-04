@@ -918,7 +918,8 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
                     return SQLConstants.WHERE_SQL_PREFIX + columnName + SQLConstants.SQL_IS_NULL;
                 } else {
                     sqlDataValue.setValue(singleValue);
-                    if (valueProcessor.isStringDataType(sqlDataValue.getDataType().getDataTypeName())) {
+                    if (useLikeForCopyWhere()
+                            && valueProcessor.isStringDataType(sqlDataValue.getDataType().getDataTypeName())) {
                         return SQLConstants.WHERE_SQL_PREFIX + columnName + SQLConstants.SQL_LIKE + valueProcessor.getSqlValueString(sqlDataValue);
                     } else {
                         return SQLConstants.WHERE_SQL_PREFIX + columnName + SQLConstants.EQUAL_SQL + valueProcessor.getSqlValueString(sqlDataValue);
@@ -941,7 +942,8 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
                         if (Objects.isNull(value)) {
                             rowConditionBuilder.append(SQLConstants.SQL_IS_NULL);
                         } else {
-                            boolean stringDataType = valueProcessor.isStringDataType(sqlDataValue.getDataType().getDataTypeName());
+                            boolean stringDataType = useLikeForCopyWhere()
+                                    && valueProcessor.isStringDataType(sqlDataValue.getDataType().getDataTypeName());
                             if (stringDataType) {
                                 rowConditionBuilder.append(SQLConstants.SQL_LIKE);
                             } else {
@@ -960,6 +962,10 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
                 }).collect(Collectors.joining(SQLConstants.SQL_OR));
 
         return SQLConstants.WHERE_SQL_PREFIX + whereClause;
+    }
+
+    protected boolean useLikeForCopyWhere() {
+        return true;
     }
 
     private String buildWhereClauseForSameColumnValues(String columnName, List<String> values, SQLDataValue sqlDataValue,
