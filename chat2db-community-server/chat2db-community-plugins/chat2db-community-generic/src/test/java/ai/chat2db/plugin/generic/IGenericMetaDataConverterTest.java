@@ -9,6 +9,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -16,6 +17,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -124,6 +126,13 @@ class IGenericMetaDataConverterTest {
             assertFalse(columnTypes.get("GEOMETRY").isSupportScale());
             assertFalse(columnTypes.get("ENUM").isSupportScale());
             assertTrue(columnTypes.values().stream().noneMatch(ColumnType::isSupportDefaultValue));
+
+            try (Statement statement = connection.createStatement()) {
+                assertThrows(SQLException.class,
+                        () -> statement.execute("CREATE TABLE invalid_scale(value GEOMETRY(10, 2))"));
+                assertThrows(SQLException.class,
+                        () -> statement.execute("CREATE TABLE invalid_default(value GEOMETRY DEFAULT NULL)"));
+            }
         }
     }
 }
