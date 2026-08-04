@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DataSourceWebConverterTest {
 
@@ -85,5 +86,19 @@ class DataSourceWebConverterTest {
         DataSourceCreateRequest request = DataSourceWebConverter.INSTANCE.rs2Request(resultSet(row));
 
         assertEquals(3L, request.getEnvironmentId());
+    }
+
+    @Test
+    void readsDriverConfigFromItsOwnColumn() throws Exception {
+        Map<String, String> row = baseRow();
+        row.put("ssh", "{\"use\":true,\"hostName\":\"ssh.example\"}");
+        row.put("driver_config", "{\"jdbcDriver\":\"driver.jar\",\"jdbcDriverClass\":\"org.example.Driver\"}");
+
+        DataSourceCreateRequest request = DataSourceWebConverter.INSTANCE.rs2Request(resultSet(row));
+
+        assertTrue(request.getSsh().isUse());
+        assertEquals("ssh.example", request.getSsh().getHostName());
+        assertEquals("driver.jar", request.getDriverConfig().getJdbcDriver());
+        assertEquals("org.example.Driver", request.getDriverConfig().getJdbcDriverClass());
     }
 }

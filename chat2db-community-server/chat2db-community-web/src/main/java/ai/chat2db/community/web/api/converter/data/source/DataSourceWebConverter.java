@@ -119,7 +119,7 @@ public abstract class DataSourceWebConverter {
         request.setSid(sid);
         request.setDriver(driver);
         request.setJdbc(jdbcUrl);
-        request.setDriverConfig(StringUtils.isBlank(driverConfig) ? null : JSON.parseObject(ssh, DriverConfig.class));
+        request.setDriverConfig(StringUtils.isBlank(driverConfig) ? null : JSON.parseObject(driverConfig, DriverConfig.class));
         request.setEnvironmentId(parseEnvironmentId(env));
         request.setServiceName(serviceName);
         request.setServiceType(serviceType);
