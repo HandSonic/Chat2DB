@@ -245,11 +245,12 @@ public class DefaultSQLExecutor implements ICommandExecutor {
         Assert.notNull(sql, "SQL must not be null");
         ExecuteResponse executeResult = ExecuteResponse.builder().sql(sql).success(Boolean.TRUE).build();
         checkTaskCancellation(cancellationChecker);
-        PreparedStatement stmt = connection.prepareStatement(sql);
-        try (stmt) {
+        PreparedStatement statementToNotify = null;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            statementToNotify = stmt;
             notifyStatementCreated(statementListener, stmt);
-            checkTaskCancellation(cancellationChecker);
             try {
+                checkTaskCancellation(cancellationChecker);
                 stmt.setFetchSize(IEasyToolsConstant.MAX_PAGE_SIZE);
                 if (sql.toLowerCase().startsWith("select")) {
                     if (offset != null && count != null) {
@@ -284,7 +285,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
                 throw e;
             }
         } finally {
-            notifyStatementClosed(statementListener, stmt);
+            notifyStatementClosed(statementListener, statementToNotify);
         }
         return executeResult;
     }

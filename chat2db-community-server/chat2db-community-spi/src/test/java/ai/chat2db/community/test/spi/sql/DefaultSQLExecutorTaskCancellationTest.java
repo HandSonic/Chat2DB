@@ -19,6 +19,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -92,6 +93,39 @@ class DefaultSQLExecutorTaskCancellationTest {
         } finally {
             cancelled.countDown();
             executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void statementCloseNotificationFollowsJdbcClose() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:close_notification;DB_CLOSE_DELAY=-1")) {
+            createTable(connection);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("INSERT INTO records VALUES (1)");
+            }
+            AtomicInteger notifications = new AtomicInteger();
+            AtomicBoolean statementClosed = new AtomicBoolean();
+            ISqlExecutionStatementListener listener = new ISqlExecutionStatementListener() {
+                @Override
+                public void onStatementCreated(Statement statement) {
+                }
+
+                @Override
+                public void onStatementClosed(Statement statement) {
+                    notifications.incrementAndGet();
+                    try {
+                        statementClosed.set(statement.isClosed());
+                    } catch (SQLException e) {
+                        throw new AssertionError(e);
+                    }
+                }
+            };
+
+            assertThrows(SQLException.class, () -> DefaultSQLExecutor.getInstance()
+                    .execute(connection, "INSERT INTO records VALUES (1)", listener, null));
+
+            assertEquals(1, notifications.get());
+            assertTrue(statementClosed.get());
         }
     }
 
