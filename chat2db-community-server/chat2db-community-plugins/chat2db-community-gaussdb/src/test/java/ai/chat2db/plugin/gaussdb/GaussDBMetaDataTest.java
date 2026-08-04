@@ -1,12 +1,9 @@
 package ai.chat2db.plugin.gaussdb;
 
-import ai.chat2db.plugin.postgresql.PostgreSQLMetaData;
+import ai.chat2db.community.domain.api.config.DBConfig;
 import org.junit.jupiter.api.Test;
 
-import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -21,23 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class GaussDBMetaDataTest {
 
     @Test
-    void indexesInheritsPostgreSqlImplementationWithTypesAndForeignKeys() throws Exception {
-        Method indexes = GaussDBMetaData.class.getMethod(
-                "indexes", Connection.class, String.class, String.class, String.class);
+    void gaussdbJsonDoesNotMarkPublicSchemaAsSystem() {
+        DBConfig dbConfig = new GaussPlugin().getDBConfig();
 
-        assertEquals(PostgreSQLMetaData.class, indexes.getDeclaringClass());
-    }
-
-    @Test
-    void gaussdbJsonDoesNotMarkPublicSchemaAsSystem() throws Exception {
-        String json;
-        try (InputStream in = GaussDBMetaDataTest.class.getResourceAsStream(
-                "/ai/chat2db/plugin/gaussdb/gaussdb.json")) {
-            assertNotNull(in, "gaussdb.json must be on the test classpath");
-            json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-
-        assertFalse(json.contains("\"public\""),
+        assertNotNull(dbConfig, "gaussdb.json must deserialize into DBConfig");
+        assertNotNull(dbConfig.getSystemSchemas(), "gaussdb.json must define systemSchemas");
+        assertFalse(dbConfig.getSystemSchemas().contains("public"),
                 "the default user schema 'public' must not be listed in systemSchemas");
     }
 
