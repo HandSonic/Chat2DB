@@ -58,12 +58,61 @@ class GBase8sDBManagerTest {
     }
 
     @Test
+    void urlsWithoutDatabaseRecognizeThePropertySection() {
+        String withoutDatabase = "jdbc:gbasedbt-sqli://localhost:1533";
+        String existingProperty = withoutDatabase + ":CLIENT_LOCALE=en_us.utf8";
+        String existingServer = withoutDatabase + ":GBASEDBTSERVER=custom";
+
+        assertEquals(withoutDatabase + ":GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(withoutDatabase, "svc"));
+        assertEquals(existingProperty + ";GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(existingProperty, "svc"));
+        assertEquals(existingServer,
+                GBase8sDBManager.appendServerAttributeIfAbsent(existingServer, "svc"));
+    }
+
+    @Test
+    void ipv6UrlsWithoutDatabaseRecognizeThePropertySection() {
+        String withoutDatabase = "jdbc:gbasedbt-sqli://[2001:db8::1]:1533";
+        String existingProperty = withoutDatabase + ":CLIENT_LOCALE=en_us.utf8";
+        String unbracketed = "jdbc:gbasedbt-sqli://2001:db8:0:1::1:1533";
+
+        assertEquals(withoutDatabase + ":GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(withoutDatabase, "svc"));
+        assertEquals(existingProperty + ";GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(existingProperty, "svc"));
+        assertEquals(unbracketed + ":GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(unbracketed, "svc"));
+        assertEquals(unbracketed + ":CLIENT_LOCALE=en_us.utf8;GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(
+                        unbracketed + ":CLIENT_LOCALE=en_us.utf8", "svc"));
+    }
+
+    @Test
     void existingServerAttributeIsRecognizedCaseInsensitively() {
         String lowerCase = BASE_URL + ":CLIENT_LOCALE=en_us.utf8;gbasedbtserver=custom";
         String mixedCase = BASE_URL + ":GBaseDbtServer=custom";
 
         assertEquals(lowerCase, GBase8sDBManager.appendServerAttributeIfAbsent(lowerCase, "svc"));
         assertEquals(mixedCase, GBase8sDBManager.appendServerAttributeIfAbsent(mixedCase, "svc"));
+    }
+
+    @Test
+    void blankAndDuplicateServerAttributesReceiveANonBlankValue() {
+        String blankServer = BASE_URL + ":GBASEDBTSERVER=";
+        String duplicateBlankServers = BASE_URL + ":GBASEDBTSERVER=;CLIENT_LOCALE=en_us.utf8;gbasedbtserver=";
+        String duplicateWithConfiguredServer = BASE_URL + ":GBASEDBTSERVER=custom;gbasedbtserver=";
+        String duplicateConfiguredServers = BASE_URL
+                + ":GBASEDBTSERVER=one;gbasedbtserver=two;GBASEDBTSERVER=";
+
+        assertEquals(BASE_URL + ":GBASEDBTSERVER=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(blankServer, "svc"));
+        assertEquals(BASE_URL + ":GBASEDBTSERVER=svc;CLIENT_LOCALE=en_us.utf8;gbasedbtserver=svc",
+                GBase8sDBManager.appendServerAttributeIfAbsent(duplicateBlankServers, "svc"));
+        assertEquals(BASE_URL + ":GBASEDBTSERVER=custom;gbasedbtserver=custom",
+                GBase8sDBManager.appendServerAttributeIfAbsent(duplicateWithConfiguredServer, "svc"));
+        assertEquals(BASE_URL + ":GBASEDBTSERVER=one;gbasedbtserver=two;GBASEDBTSERVER=two",
+                GBase8sDBManager.appendServerAttributeIfAbsent(duplicateConfiguredServers, "svc"));
     }
 
     @Test
