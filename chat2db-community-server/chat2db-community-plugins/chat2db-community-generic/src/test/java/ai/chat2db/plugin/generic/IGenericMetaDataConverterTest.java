@@ -2,104 +2,96 @@ package ai.chat2db.plugin.generic;
 
 import ai.chat2db.community.domain.api.model.metadata.ColumnType;
 import ai.chat2db.community.domain.api.model.metadata.Type;
+import ai.chat2db.spi.DefaultSQLExecutor;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Regression test for the JDBC-metadata fallback used when generic.json declares no columnTypes
- * (ELASTICSEARCH, TDENGINE): MapStruct previously mapped only typeName, leaving every supportXxx
- * flag false, which made the table editor emit DDL without NULL/DEFAULT/length clauses.
+ * Regression tests for the JDBC-metadata fallback used when generic.json declares no columnTypes
+ * (ELASTICSEARCH, TDENGINE).
  */
 class IGenericMetaDataConverterTest {
 
     @Test
-    void derivesSupportFlagsFromTypeInfo() {
+    void mapsCapabilitiesReportedDirectlyByJdbcTypeInfo() {
         Type type = Type.builder()
-                .typeName("INT")
-                .dataType(java.sql.Types.INTEGER)
-                .precision(10)
-                .maximumScale((short) 0)
+                .typeName("DECIMAL")
+                .createParams(" precision, SCALE ")
                 .nullable((short) DatabaseMetaData.typeNullable)
                 .autoIncrement(Boolean.TRUE)
                 .build();
 
         ColumnType columnType = IGenericMetaDataConverter.INSTANCE.type2columnType(type);
 
-        assertEquals("INT", columnType.getTypeName());
-        // PRECISION alone is not proof of a length clause (INTEGER(10) is rejected by
-        // most engines): without CREATE_PARAMS the flag stays off.
-        assertFalse(columnType.isSupportLength());
-        assertFalse(columnType.isSupportScale());
+        assertEquals("DECIMAL", columnType.getTypeName());
+        assertTrue(columnType.isSupportLength());
+        assertTrue(columnType.isSupportScale());
         assertTrue(columnType.isSupportNullable());
         assertTrue(columnType.isSupportAutoIncrement());
+        assertFalse(columnType.isSupportDefaultValue());
     }
 
     @Test
-    void createParamsDrivesLengthAndScaleSupport() {
+    void doesNotInferLengthOrDefaultSupportFromTypeNameAndPrecision() {
         Type type = Type.builder()
-                .typeName("DECIMAL")
-                .dataType(java.sql.Types.DECIMAL)
-                .createParams("precision,scale")
-                .precision(38)
-                .maximumScale((short) 18)
+                .typeName("VARCHAR")
+                .precision(255)
                 .nullable((short) DatabaseMetaData.typeNullable)
-                .autoIncrement(Boolean.FALSE)
                 .build();
 
         ColumnType columnType = IGenericMetaDataConverter.INSTANCE.type2columnType(type);
 
-        assertTrue(columnType.isSupportLength());
-        assertTrue(columnType.isSupportScale());
+        assertFalse(columnType.isSupportLength());
+        assertFalse(columnType.isSupportDefaultValue());
     }
 
     @Test
-    void decimalTypeSupportsScale() {
+    void commaSeparatedNonScaleParametersDoNotEnableScale() {
         Type type = Type.builder()
-                .typeName("DECIMAL")
-                .dataType(java.sql.Types.DECIMAL)
-                .createParams("precision,scale")
-                .precision(38)
-                .maximumScale((short) 18)
-                .nullable((short) DatabaseMetaData.typeNullable)
-                .autoIncrement(Boolean.FALSE)
+                .typeName("GEOMETRY")
+                .createParams("TYPE,SRID")
                 .build();
 
         ColumnType columnType = IGenericMetaDataConverter.INSTANCE.type2columnType(type);
 
-        assertTrue(columnType.isSupportLength());
-        assertTrue(columnType.isSupportScale());
-        assertTrue(columnType.isSupportNullable());
-        assertFalse(columnType.isSupportAutoIncrement());
+        assertFalse(columnType.isSupportScale());
     }
 
     @Test
-    void nonNullableTypeWithoutPrecisionHasNoFlags() {
-        Type type = Type.builder()
-                .typeName("TIMESTAMP")
-                .dataType(java.sql.Types.TIMESTAMP)
+    void nullableUnknownRemainsDisabled() {
+        Type unknown = Type.builder()
+                .typeName("UNKNOWN_NULLABILITY")
+                .nullable((short) DatabaseMetaData.typeNullableUnknown)
+                .build();
+        Type noNulls = Type.builder()
+                .typeName("NO_NULLS")
                 .nullable((short) DatabaseMetaData.typeNoNulls)
                 .build();
 
-        ColumnType columnType = IGenericMetaDataConverter.INSTANCE.type2columnType(type);
+        List<ColumnType> columnTypes = IGenericMetaDataConverter.INSTANCE
+                .type2columnType(List.of(unknown, noNulls));
 
-        assertEquals("TIMESTAMP", columnType.getTypeName());
-        assertFalse(columnType.isSupportLength());
-        assertFalse(columnType.isSupportScale());
-        assertFalse(columnType.isSupportNullable());
-        assertFalse(columnType.isSupportAutoIncrement());
+        assertFalse(columnTypes.get(0).isSupportNullable());
+        assertFalse(columnTypes.get(1).isSupportNullable());
     }
 
     @Test
     void listMappingAppliesFlagsToEachElement() {
-        Type withPrecision = Type.builder()
+        Type withLength = Type.builder()
                 .typeName("VARCHAR")
-                .precision(255)
+                .createParams("length")
                 .nullable((short) DatabaseMetaData.typeNullable)
                 .build();
         Type plain = Type.builder()
@@ -108,12 +100,30 @@ class IGenericMetaDataConverterTest {
                 .build();
 
         List<ColumnType> columnTypes = IGenericMetaDataConverter.INSTANCE
-                .type2columnType(List.of(withPrecision, plain));
+                .type2columnType(List.of(withLength, plain));
 
         assertEquals(2, columnTypes.size());
         assertTrue(columnTypes.get(0).isSupportLength());
         assertTrue(columnTypes.get(0).isSupportNullable());
         assertFalse(columnTypes.get(1).isSupportLength());
         assertTrue(columnTypes.get(1).isSupportNullable());
+    }
+
+    @Test
+    void convertsRealH2TypeInfoWithoutTreatingSyntaxCommasAsScale() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:generic-type-info")) {
+            List<Type> types = DefaultSQLExecutor.getInstance().types(connection);
+            Map<String, ColumnType> columnTypes = IGenericMetaDataConverter.INSTANCE.type2columnType(types).stream()
+                    .collect(Collectors.toMap(ColumnType::getTypeName, Function.identity()));
+
+            assertTrue(columnTypes.get("NUMERIC").isSupportLength());
+            assertTrue(columnTypes.get("NUMERIC").isSupportScale());
+            assertTrue(columnTypes.get("CHARACTER VARYING").isSupportLength());
+            assertFalse(columnTypes.get("CHARACTER VARYING").isSupportScale());
+            assertFalse(columnTypes.get("INTEGER").isSupportLength());
+            assertFalse(columnTypes.get("GEOMETRY").isSupportScale());
+            assertFalse(columnTypes.get("ENUM").isSupportScale());
+            assertTrue(columnTypes.values().stream().noneMatch(ColumnType::isSupportDefaultValue));
+        }
     }
 }
