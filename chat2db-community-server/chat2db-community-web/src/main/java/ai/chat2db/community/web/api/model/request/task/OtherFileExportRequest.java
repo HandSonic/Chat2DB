@@ -22,4 +22,10 @@ public class OtherFileExportRequest extends DataSourceBaseRequest {
 
 
     private String exportPath;
+
+
+    private String exportFileName;
+
+
+    private Boolean overwriteExistingFile;
 }

@@ -35,6 +35,11 @@ public class TaskSchedulerAdapter implements ITaskSchedulerService {
         return TaskThreadPoolManager.cancelTask(taskId);
     }
 
+    @Override
+    public boolean isTerminalUpdatePending(Long taskId) {
+        return TaskThreadPoolManager.isTerminalUpdatePending(taskId);
+    }
+
     private void updateTask(Long taskId, Map<String, Object> map) {
         TaskRecordUpdateRequest taskUpdateRequest = new TaskRecordUpdateRequest();
         taskUpdateRequest.setId(taskId);

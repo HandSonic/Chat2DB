@@ -31,4 +31,16 @@ public interface ITaskSchedulerService {
      * @return true when cancellation was accepted; false when the task was absent or already completed.
      */
     boolean cancel(Long taskId);
+
+    /**
+     * Returns whether the task has reached a terminal state whose persistence
+     * callback is still in flight. The default preserves compatibility with
+     * schedulers that cannot expose in-memory task state.
+     *
+     * @param taskId task identifier.
+     * @return true only while a terminal callback is pending.
+     */
+    default boolean isTerminalUpdatePending(Long taskId) {
+        return false;
+    }
 }

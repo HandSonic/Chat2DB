@@ -17,6 +17,11 @@ public class TaskThreadPoolManager {
         return thread != null && thread.cancel();
     }
 
+    public static boolean isTerminalUpdatePending(Long taskId) {
+        TaskThread thread = taskMap.get(taskId);
+        return thread != null && thread.isTerminalUpdatePending();
+    }
+
     public static void remove(Long taskId, TaskThread task) {
         taskMap.remove(taskId, task);
     }

@@ -18,6 +18,10 @@ public class SqlFileExportRequest extends DataSourceBaseRequest {
 
     private String exportPath;
 
+    private String exportFileName;
+
+    private Boolean overwriteExistingFile;
+
 
     private ExportScopeTypeEnum scope;
 }

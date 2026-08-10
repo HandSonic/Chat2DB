@@ -8,6 +8,7 @@ import { IconButton } from '@chat2db/ui';
 import { ImportExportType, ImportExportFileType } from '@/constants/importExport';
 import { isDevelopment } from '@/utils/env';
 import jcefApi from '@/jcef';
+import { getDefaultExportFileName, updateExportFileExtension } from './exportFileName';
 
 interface IProps {
   className?: string;
@@ -32,8 +33,10 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
   const [fileUrlList, setFileUrlList] = useState<string[]>([]);
   const [exportLocation, setExportLocation] = useState<string>('');
   const [formValue, setFormValue] = useState<any>({
-    exportType: 'CSV',
+    exportType: ImportExportFileType.CSV,
     containsHeader: true,
+    exportFileName: '',
+    overwriteExistingFile: false,
   });
 
   const { importExportDataBoundInfo } = useImportExportStore((state) => {
@@ -49,11 +52,20 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
     if (importExportDataBoundInfo) {
       const { dataSourceName, databaseName, schemaName, tableName } = importExportDataBoundInfo;
       const tableNameDisplay = [dataSourceName, databaseName, schemaName, tableName].filter(Boolean).join('/');
+      const nextFormValue = {
+        exportType: ImportExportFileType.CSV,
+        containsHeader: true,
+        exportFileName: getDefaultExportFileName(tableName, ImportExportFileType.CSV),
+        overwriteExistingFile: false,
+      };
       form.setFieldsValue({
         tableNameDisplay: tableNameDisplay,
+        ...nextFormValue,
       });
+      setFormValue(nextFormValue);
+      setExportLocation('');
     }
-  }, [importExportDataBoundInfo]);
+  }, [form, importExportDataBoundInfo]);
 
   // Gets the corresponding file type based on the export type
   const uploadLocalFileAccept = useMemo(() => {
@@ -69,7 +81,7 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
 
   useEffect(() => {
     if (isExport) {
-      setIsReady && setIsReady(!!exportLocation || formValue.fileUrl);
+      setIsReady && setIsReady(!!(exportLocation || formValue.fileUrl) && !!formValue.exportFileName?.trim());
     }
   }, [exportLocation, formValue]);
 
@@ -90,6 +102,8 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
         values.tableNames = [tableName];
         values.exportPath = exportLocation || formValue.fileUrl;
         values.exportType = formValue.exportType;
+        values.exportFileName = formValue.exportFileName;
+        values.overwriteExistingFile = formValue.overwriteExistingFile;
       } else {
         values.tableName = tableName;
         values.fileName = fileUrlList[0] || formValue.fileUrl;
@@ -100,10 +114,19 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
   }));
 
   const handleFormChange = (changedValues, allValues) => {
-    setFormValue({
-      ...formValue,
-      ...allValues,
-    });
+    const nextValues = { ...allValues };
+    if (changedValues.exportType) {
+      nextValues.exportFileName = updateExportFileExtension(
+        allValues.exportFileName,
+        changedValues.exportType,
+        importExportDataBoundInfo?.tableName,
+      );
+      form.setFieldsValue({ exportFileName: nextValues.exportFileName });
+    }
+    setFormValue((currentValue) => ({
+      ...currentValue,
+      ...nextValues,
+    }));
   };
 
   const handleSelectExportLocation = async () => {
@@ -128,17 +151,30 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
         <Select options={exportTypeOptions} />
       </Form.Item>
       {isExport && (
-        <Form.Item label={`${i18n('workspace.importExport.exportLocation')}:`} name="exportLocation">
-          <div className={styles.exportLocationBox}>
-            <Input autoComplete="off" disabled value={exportLocation} />
-            <IconButton
-              className={styles.iconButton}
-              size={{ boxSize: 30, iconSize: 22, borderRadius: 6 } as any}
-              code="icon-folder"
-              onClick={handleSelectExportLocation}
+        <>
+          <Form.Item label={`${i18n('workspace.importExport.exportLocation')}:`} name="exportLocation">
+            <div className={styles.exportLocationBox}>
+              <Input autoComplete="off" disabled value={exportLocation} />
+              <IconButton
+                className={styles.iconButton}
+                size={{ boxSize: 30, iconSize: 22, borderRadius: 6 } as any}
+                code="icon-folder"
+                onClick={handleSelectExportLocation}
+              />
+            </div>
+          </Form.Item>
+          <Form.Item label={`${i18n('workspace.importExport.exportFileName')}:`} name="exportFileName">
+            <Input autoComplete="off" />
+          </Form.Item>
+          <Form.Item label={`${i18n('workspace.importExport.existingFile')}:`} name="overwriteExistingFile">
+            <Select
+              options={[
+                { label: i18n('workspace.importExport.renameIfExists'), value: false },
+                { label: i18n('workspace.importExport.overwriteIfExists'), value: true },
+              ]}
             />
-          </div>
-        </Form.Item>
+          </Form.Item>
+        </>
       )}
       {isImport && (
         <Form.Item>

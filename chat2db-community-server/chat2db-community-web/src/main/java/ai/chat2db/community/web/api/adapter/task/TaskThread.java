@@ -33,12 +33,19 @@ public class TaskThread extends Thread {
         return cancelled;
     }
 
+    public boolean isTerminalUpdatePending() {
+        return asyncContext.isTerminalUpdatePending();
+    }
+
     @Override
     public void run() {
         try {
             runnable.run();
         } catch (CancellationException e) {
             log.debug("task cancelled: {}", taskId);
+            if (!asyncContext.hasError()) {
+                asyncContext.stop();
+            }
         } catch (Exception e) {
             if (!asyncContext.isStopped()) {
                 log.error("task error", e);

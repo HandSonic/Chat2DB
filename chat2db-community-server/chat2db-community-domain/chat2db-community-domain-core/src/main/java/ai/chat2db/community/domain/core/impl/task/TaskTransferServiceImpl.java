@@ -3,9 +3,11 @@ package ai.chat2db.community.domain.core.impl.task;
 import ai.chat2db.community.domain.api.enums.ExportScopeTypeEnum;
 import ai.chat2db.community.domain.api.enums.TaskTypeEnum;
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
+import ai.chat2db.community.domain.api.model.async.ExportFileTarget;
 import ai.chat2db.community.domain.api.model.request.task.TaskFileImportRequest;
 import ai.chat2db.community.domain.api.model.request.task.TaskOtherFileExportRequest;
 import ai.chat2db.community.domain.api.model.request.task.TaskRecordCreateRequest;
+import ai.chat2db.community.domain.api.model.request.task.TaskRecordUpdateRequest;
 import ai.chat2db.community.domain.api.model.request.task.TaskSqlFileExportRequest;
 import ai.chat2db.community.domain.api.model.task.ExportAsyncContext;
 import ai.chat2db.community.domain.api.model.task.ImportAsyncContext;
@@ -56,22 +58,25 @@ public class TaskTransferServiceImpl implements ITaskTransferService {
         if (StringUtils.isBlank(request.getExportPath())) {
             request.setExportPath(taskFileService.defaultExportPath());
         }
-        Long taskId = createExportTask(request.getDatabaseName(), request.getSchemaName(), request.getTableNames());
-        ExportScopeTypeEnum scope = ExportScopeTypeEnum.valueOf(request.getScope());
+        ExportScopeTypeEnum scope = ExportScopeTypeEnum.from(request.getScope());
+        if (scope == null) {
+            throw new IllegalArgumentException("Unsupported export scope: " + request.getScope());
+        }
         switch (scope) {
             case ALL:
                 request.setContainData(Boolean.TRUE);
-                submitSqlExport(taskId, request);
                 break;
             case SCHEMA:
             case TABLE:
                 request.setContainData(Boolean.FALSE);
-                submitSqlExport(taskId, request);
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported export scope: " + request.getScope());
         }
-        return taskId;
+        ExportFileTarget exportFileTarget = taskFileService.prepareSqlExportTarget(request.getExportPath(),
+                request.getDatabaseName(), request.getSchemaName(), request.getTableNames(), request.getExportFileName(),
+                request.getOverwriteExistingFile());
+        return submitSqlExport(request, exportFileTarget);
     }
 
     @Override
@@ -79,17 +84,13 @@ public class TaskTransferServiceImpl implements ITaskTransferService {
         if (StringUtils.isBlank(request.getExportPath())) {
             request.setExportPath(taskFileService.defaultExportPath());
         }
-        Long taskId = createExportTask(request.getDatabaseName(), request.getSchemaName(), request.getTableNames());
         if (CollectionUtils.isEmpty(request.getTableNames())) {
             throw new IllegalArgumentException("Export table names must not be empty");
         }
-        ExportAsyncContext asyncContext = taskFileService.createOtherExportContext(taskId, request.getExportPath(),
+        ExportFileTarget exportFileTarget = taskFileService.prepareOtherExportTarget(request.getExportPath(),
                 request.getDatabaseName(), request.getSchemaName(), request.getTableNames(), request.getExportType(),
-                request.getContainsHeader(), taskSchedulerService.asyncCall(taskId), ContextUtils.queryContext());
-        taskSchedulerService.submit(taskId, asyncContext,
-                taskExecutionService.withCurrentConnectionContext(ContextUtils.queryContext(),
-                        () -> taskDataExportService.exportOtherFile(asyncContext)));
-        return taskId;
+                request.getExportFileName(), request.getOverwriteExistingFile());
+        return submitOtherExport(request, exportFileTarget);
     }
 
     @Override
@@ -112,13 +113,70 @@ public class TaskTransferServiceImpl implements ITaskTransferService {
         return taskId;
     }
 
-    private void submitSqlExport(Long taskId, TaskSqlFileExportRequest request) {
-        AsyncContext asyncContext = taskFileService.createSqlExportContext(taskId, request.getExportPath(),
-                request.getDatabaseName(), request.getSchemaName(), request.getTableNames(), request.isContainData(),
-                taskSchedulerService.asyncCall(taskId), ContextUtils.queryContext());
-        taskSchedulerService.submit(taskId, asyncContext,
-                taskExecutionService.withCurrentConnectionContext(ContextUtils.queryContext(),
-                        () -> taskExportService.exportSqlFile(request, asyncContext)));
+    private Long submitSqlExport(TaskSqlFileExportRequest request, ExportFileTarget exportFileTarget) {
+        Long taskId = null;
+        AsyncContext asyncContext = null;
+        try {
+            taskId = createExportTask(request.getDatabaseName(), request.getSchemaName(), request.getTableNames());
+            AsyncContext sqlAsyncContext = taskFileService.createSqlExportContext(taskId, request.getExportPath(),
+                    request.getDatabaseName(), request.getSchemaName(), request.getTableNames(), request.isContainData(),
+                    taskSchedulerService.asyncCall(taskId), ContextUtils.queryContext(), exportFileTarget);
+            asyncContext = sqlAsyncContext;
+            taskSchedulerService.submit(taskId, sqlAsyncContext,
+                    taskExecutionService.withCurrentConnectionContext(ContextUtils.queryContext(),
+                            () -> taskExportService.exportSqlFile(request, sqlAsyncContext)));
+            return taskId;
+        } catch (RuntimeException e) {
+            discardExportTarget(asyncContext, exportFileTarget);
+            markTaskAsError(taskId, e);
+            throw e;
+        }
+    }
+
+    private Long submitOtherExport(TaskOtherFileExportRequest request, ExportFileTarget exportFileTarget) {
+        Long taskId = null;
+        AsyncContext asyncContext = null;
+        try {
+            taskId = createExportTask(request.getDatabaseName(), request.getSchemaName(), request.getTableNames());
+            ExportAsyncContext exportAsyncContext = taskFileService.createOtherExportContext(taskId,
+                    request.getExportPath(), request.getDatabaseName(), request.getSchemaName(), request.getTableNames(),
+                    request.getExportType(), request.getContainsHeader(), taskSchedulerService.asyncCall(taskId),
+                    ContextUtils.queryContext(), exportFileTarget);
+            asyncContext = exportAsyncContext;
+            taskSchedulerService.submit(taskId, exportAsyncContext,
+                    taskExecutionService.withCurrentConnectionContext(ContextUtils.queryContext(),
+                            () -> taskDataExportService.exportOtherFile(exportAsyncContext)));
+            return taskId;
+        } catch (RuntimeException e) {
+            discardExportTarget(asyncContext, exportFileTarget);
+            markTaskAsError(taskId, e);
+            throw e;
+        }
+    }
+
+    private void discardExportTarget(AsyncContext asyncContext, ExportFileTarget exportFileTarget) {
+        if (asyncContext != null) {
+            asyncContext.stop();
+            asyncContext.finish();
+        } else if (exportFileTarget != null) {
+            exportFileTarget.discard();
+        }
+    }
+
+    private void markTaskAsError(Long taskId, RuntimeException exception) {
+        if (taskId == null) {
+            return;
+        }
+        try {
+            TaskRecordUpdateRequest request = new TaskRecordUpdateRequest();
+            request.setId(taskId);
+            request.setTaskStatus("ERROR");
+            request.setDownloadUrl("");
+            request.setErrorLog(exception.getMessage());
+            taskRecordService.updateTask(request);
+        } catch (RuntimeException ignored) {
+            // Preserve the original scheduling/context failure.
+        }
     }
 
     private ImportAsyncContext createImportContext(Long taskId, String importType, TaskFileImportRequest request) {

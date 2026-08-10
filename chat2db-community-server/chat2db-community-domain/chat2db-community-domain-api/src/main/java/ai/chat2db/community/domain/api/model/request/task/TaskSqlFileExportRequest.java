@@ -27,5 +27,9 @@ public class TaskSqlFileExportRequest {
 
     private String exportPath;
 
+    private String exportFileName;
+
+    private Boolean overwriteExistingFile;
+
     private boolean containData;
 }

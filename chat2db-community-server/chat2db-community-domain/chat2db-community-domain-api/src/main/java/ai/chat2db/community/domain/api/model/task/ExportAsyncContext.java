@@ -1,6 +1,7 @@
 package ai.chat2db.community.domain.api.model.task;
 
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
+import ai.chat2db.community.domain.api.model.async.ExportFileTarget;
 import ai.chat2db.community.domain.api.service.task.ITaskAsyncCall;
 import ai.chat2db.community.tools.model.Context;
 import lombok.Getter;
@@ -22,8 +23,17 @@ public class ExportAsyncContext extends AsyncContext {
     private Boolean containsHeader;
 
     public ExportAsyncContext(ITaskAsyncCall call, Context context, File writeFile, String exportType,
-                              List<String> tableNames, String sqyType, Boolean containsHeader) {
+                               List<String> tableNames, String sqyType, Boolean containsHeader) {
         super(call, context, writeFile, true);
+        this.exportType = exportType;
+        this.tableNames = tableNames;
+        this.sqyType = sqyType;
+        this.containsHeader = containsHeader;
+    }
+
+    public ExportAsyncContext(ITaskAsyncCall call, Context context, File writeFile, ExportFileTarget exportFileTarget,
+            String exportType, List<String> tableNames, String sqyType, Boolean containsHeader) {
+        super(call, context, writeFile, true, exportFileTarget);
         this.exportType = exportType;
         this.tableNames = tableNames;
         this.sqyType = sqyType;

@@ -5,7 +5,11 @@ import ai.chat2db.community.tools.model.Context;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Writer;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
 import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.sql.Statement;
@@ -185,6 +189,52 @@ class AsyncContextTest {
     }
 
     @Test
+    void cancellationDuringStagedFinishedCallbackDoesNotRollbackPublishedOutput() throws Exception {
+        CountDownLatch finishedUpdateStarted = new CountDownLatch(1);
+        CountDownLatch releaseFinishedUpdate = new CountDownLatch(1);
+        List<Map<String, Object>> updates = new CopyOnWriteArrayList<>();
+        ITaskAsyncCall call = update -> {
+            updates.add(new HashMap<>(update));
+            if ("FINISHED".equals(update.get("status"))) {
+                finishedUpdateStarted.countDown();
+                try {
+                    if (!releaseFinishedUpdate.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("timed out waiting to release FINISHED callback");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        Path output = tempDir.resolve("overwrite.sql");
+        Files.writeString(output, "original export");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("overwrite.sql");
+        ExportFileTarget outputTarget = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(call, null, stagingFile.toFile(), true, outputTarget);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            context.write("replacement export");
+            Future<?> finishFuture = executor.submit(context::finish);
+            assertTrue(finishedUpdateStarted.await(5, TimeUnit.SECONDS), "FINISHED callback did not start");
+            assertFalse(context.stop(), "published output is an irreversible export commit");
+            releaseFinishedUpdate.countDown();
+            finishFuture.get(5, TimeUnit.SECONDS);
+
+            assertEquals("replacement export\n", Files.readString(output));
+            assertFalse(Files.exists(stagingDirectory));
+            assertEquals(List.of("FINISHED"),
+                    updates.stream().map(update -> String.valueOf(update.get("status"))).toList());
+        } finally {
+            releaseFinishedUpdate.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void terminalCallbackRetriesWithoutLosingOrDuplicatingMessages() {
         AtomicInteger attempts = new AtomicInteger();
         List<Map<String, Object>> attemptedUpdates = new ArrayList<>();
@@ -202,6 +252,99 @@ class AsyncContextTest {
         assertEquals("FINISHED", attemptedUpdates.get(1).get("status"));
         assertEquals(attemptedUpdates.get(0).get("info"), attemptedUpdates.get(1).get("info"));
         assertTrue(String.valueOf(attemptedUpdates.get(1).get("info")).contains("before finish"));
+    }
+
+    @Test
+    void terminalCallbackRetryExhaustionCleansPrivateStagingWithoutRollingBackOutput() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        Path output = tempDir.resolve("overwrite.sql");
+        Files.writeString(output, "original export");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("overwrite.sql");
+        ExportFileTarget outputTarget = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(update -> {
+            attempts.incrementAndGet();
+            throw new IllegalStateException("terminal storage unavailable");
+        }, null, stagingFile.toFile(), true, outputTarget);
+
+        context.write("replacement export");
+        context.finish();
+
+        assertEquals(3, attempts.get());
+        assertEquals("replacement export\n", Files.readString(output));
+        assertFalse(Files.exists(stagingDirectory));
+        assertFalse(context.stop(), "a published export must not be rolled back after callback failure");
+    }
+
+    @Test
+    void publicationFailureIsReportedAsErrorWithoutADownloadUrl() throws Exception {
+        List<Map<String, Object>> updates = new ArrayList<>();
+        Path outputParent = tempDir.resolve("not-a-directory");
+        Files.writeString(outputParent, "not a directory");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget outputTarget = new ExportFileTarget(outputParent.resolve("orders.csv").toFile(),
+                stagingFile.toFile(), stagingDirectory.toFile(), true);
+        AsyncContext context = new AsyncContext(update -> updates.add(new HashMap<>(update)), null,
+                stagingFile.toFile(), true, outputTarget);
+
+        context.write("export data");
+        context.finish();
+
+        assertEquals(1, updates.size());
+        assertEquals("ERROR", updates.get(0).get("status"));
+        assertEquals("", updates.get(0).get("downloadUrl"));
+        assertTrue(String.valueOf(updates.get(0).get("error")).contains("Unable to publish export file"));
+        assertFalse(Files.exists(stagingDirectory));
+        assertFalse(context.stop(), "an ERROR terminal state must not be replaced by STOP");
+    }
+
+    @Test
+    void stagedExporterErrorIsReportedAsErrorWithoutPublishingPartialOutput() throws Exception {
+        List<Map<String, Object>> updates = new ArrayList<>();
+        Path output = tempDir.resolve("orders.csv");
+        Files.writeString(output, "original export");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget outputTarget = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(update -> updates.add(new HashMap<>(update)), null,
+                stagingFile.toFile(), true, outputTarget);
+
+        context.write("partial export");
+        context.error("exporter failed");
+        context.finish();
+
+        assertEquals("original export", Files.readString(output));
+        assertFalse(Files.exists(stagingDirectory));
+        assertEquals("ERROR", updates.get(0).get("status"));
+        assertEquals("", updates.get(0).get("downloadUrl"));
+        assertTrue(String.valueOf(updates.get(0).get("error")).contains("exporter failed"));
+    }
+
+    @Test
+    void failingPrintWriterPreventsStagedPublication() throws Exception {
+        List<Map<String, Object>> updates = new ArrayList<>();
+        Path output = tempDir.resolve("orders.csv");
+        Files.writeString(output, "original export");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget outputTarget = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(update -> updates.add(new HashMap<>(update)), null,
+                stagingFile.toFile(), true, outputTarget);
+        context.writer.close();
+        context.writer = failingPrintWriter();
+
+        context.write("partial export");
+        context.finish();
+
+        assertEquals("original export", Files.readString(output));
+        assertFalse(Files.exists(stagingDirectory));
+        assertEquals("ERROR", updates.get(0).get("status"));
+        assertEquals("", updates.get(0).get("downloadUrl"));
+        assertTrue(String.valueOf(updates.get(0).get("error")).contains("Unable to write export file"));
     }
 
     @Test
@@ -325,6 +468,25 @@ class AsyncContextTest {
                     }
                     return defaultValue(method.getReturnType());
                 });
+    }
+
+    private static PrintWriter failingPrintWriter() {
+        return new PrintWriter(new Writer() {
+            @Override
+            public void write(char[] characters, int offset, int length) throws IOException {
+                throw new IOException("disk full");
+            }
+
+            @Override
+            public void flush() throws IOException {
+                throw new IOException("disk full");
+            }
+
+            @Override
+            public void close() {
+                // PrintWriter.checkError() has already observed the failure.
+            }
+        });
     }
 
     private static Object defaultValue(Class<?> type) {

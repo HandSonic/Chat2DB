@@ -1,14 +1,19 @@
 package ai.chat2db.community.web.api.adapter.task;
 
 import ai.chat2db.community.domain.api.model.async.AsyncContext;
+import ai.chat2db.community.domain.api.model.async.ExportFileTarget;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,6 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskThreadPoolManagerTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     @SuppressWarnings("unchecked")
@@ -92,6 +100,152 @@ class TaskThreadPoolManagerTest {
         assertTrue(countAfterStop > 0, "test task did not execute any work");
         assertTrue(asyncContext.isStopped());
         assertEquals(countAfterStop, sideEffects.get(), "task produced side effects after STOP");
+    }
+
+    @Test
+    void cancelTaskLeavesAnErrorCallbackPendingForTaskRecordService() throws Exception {
+        Long taskId = 990005L;
+        CountDownLatch errorUpdateStarted = new CountDownLatch(1);
+        CountDownLatch releaseErrorUpdate = new CountDownLatch(1);
+        Path outputParent = tempDir.resolve("not-a-directory");
+        Files.writeString(outputParent, "not a directory");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget target = new ExportFileTarget(outputParent.resolve("orders.csv").toFile(),
+                stagingFile.toFile(), stagingDirectory.toFile(), true);
+        AsyncContext context = new AsyncContext(update -> {
+            if ("ERROR".equals(update.get("status"))) {
+                errorUpdateStarted.countDown();
+                await(releaseErrorUpdate);
+            }
+        }, null, stagingFile.toFile(), true, target);
+        TaskThread task = new TaskThread(null, context, taskId, () -> context.write("export data"));
+
+        try {
+            TaskThreadPoolManager.submitTask(taskId, task);
+            assertTrue(errorUpdateStarted.await(5, TimeUnit.SECONDS), "ERROR callback did not start");
+
+            assertFalse(TaskThreadPoolManager.cancelTask(taskId),
+                    "a terminal context must not report that STOP was accepted");
+            assertTrue(TaskThreadPoolManager.isTerminalUpdatePending(taskId));
+            assertFalse(context.isStopped());
+            assertTrue(task.isAlive(), "terminal callback must not be interrupted");
+        } finally {
+            releaseErrorUpdate.countDown();
+            task.join(5000);
+        }
+
+        assertFalse(task.isAlive());
+        assertFalse(taskMap().containsKey(taskId));
+    }
+
+    @Test
+    void cancelTaskLeavesAPublishedFinishedCallbackPendingForTaskRecordService() throws Exception {
+        Long taskId = 990006L;
+        CountDownLatch finishedUpdateStarted = new CountDownLatch(1);
+        CountDownLatch releaseFinishedUpdate = new CountDownLatch(1);
+        Path output = tempDir.resolve("orders.csv");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget target = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(update -> {
+            if ("FINISHED".equals(update.get("status"))) {
+                finishedUpdateStarted.countDown();
+                await(releaseFinishedUpdate);
+            }
+        }, null, stagingFile.toFile(), true, target);
+        TaskThread task = new TaskThread(null, context, taskId, () -> context.write("export data"));
+
+        try {
+            TaskThreadPoolManager.submitTask(taskId, task);
+            assertTrue(finishedUpdateStarted.await(5, TimeUnit.SECONDS), "FINISHED callback did not start");
+
+            assertFalse(TaskThreadPoolManager.cancelTask(taskId),
+                    "a published terminal context must not accept cancellation");
+            assertTrue(TaskThreadPoolManager.isTerminalUpdatePending(taskId));
+            assertFalse(context.isStopped());
+            assertTrue(task.isAlive(), "terminal callback must not be interrupted");
+            assertEquals("export data\n", Files.readString(output));
+        } finally {
+            releaseFinishedUpdate.countDown();
+            task.join(5000);
+        }
+
+        assertFalse(task.isAlive());
+        assertFalse(taskMap().containsKey(taskId));
+    }
+
+    @Test
+    void interruptedTaskDiscardsStagedPartialOutputAndPublishesStop() throws Exception {
+        Long taskId = 990007L;
+        AtomicReference<Map<String, Object>> update = new AtomicReference<>();
+        Path output = tempDir.resolve("orders.csv");
+        Files.writeString(output, "original export");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget target = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(update::set, null, stagingFile.toFile(), true, target);
+        TaskThread task = new TaskThread(null, context, taskId, () -> {
+            context.write("partial export");
+            Thread.currentThread().interrupt();
+            context.checkCancelled();
+        });
+
+        try {
+            TaskThreadPoolManager.submitTask(taskId, task);
+            task.join(5000);
+        } finally {
+            if (task.isAlive()) {
+                task.cancel();
+                task.join(5000);
+            }
+        }
+
+        assertFalse(task.isAlive());
+        assertTrue(context.isStopped());
+        assertEquals("original export", Files.readString(output));
+        assertFalse(Files.exists(stagingDirectory));
+        assertEquals("STOP", update.get().get("status"));
+        assertEquals("", update.get().get("downloadUrl"));
+    }
+
+    @Test
+    void cancellationExceptionDoesNotMaskAPriorExporterError() throws Exception {
+        Long taskId = 990008L;
+        AtomicReference<Map<String, Object>> update = new AtomicReference<>();
+        Path output = tempDir.resolve("orders.csv");
+        Files.writeString(output, "original export");
+        Path stagingDirectory = Files.createTempDirectory(tempDir, ".chat2db-export-");
+        Path stagingFile = stagingDirectory.resolve("orders.csv");
+        ExportFileTarget target = new ExportFileTarget(output.toFile(), stagingFile.toFile(),
+                stagingDirectory.toFile(), false);
+        AsyncContext context = new AsyncContext(update::set, null, stagingFile.toFile(), true, target);
+        TaskThread task = new TaskThread(null, context, taskId, () -> {
+            context.write("partial export");
+            context.error("exporter failed");
+            Thread.currentThread().interrupt();
+            context.checkCancelled();
+        });
+
+        try {
+            TaskThreadPoolManager.submitTask(taskId, task);
+            task.join(5000);
+        } finally {
+            if (task.isAlive()) {
+                task.cancel();
+                task.join(5000);
+            }
+        }
+
+        assertFalse(task.isAlive());
+        assertFalse(context.isStopped());
+        assertEquals("original export", Files.readString(output));
+        assertFalse(Files.exists(stagingDirectory));
+        assertEquals("ERROR", update.get().get("status"));
+        assertEquals("", update.get().get("downloadUrl"));
+        assertTrue(String.valueOf(update.get().get("error")).contains("exporter failed"));
     }
 
     @Test
