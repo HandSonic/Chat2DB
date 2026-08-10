@@ -4,9 +4,11 @@ import React, {
   useImperativeHandle,
   ForwardedRef,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useCallback,
+  useMemo,
 } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import i18n from '@/i18n';
@@ -14,8 +16,8 @@ import { useStyles } from './style';
 import { SearchComponent } from '@visactor/vtable-search';
 import { ITableInstance } from '@/blocks/CanvasTable/typings';
 import { hexToRgba } from '@/utils/color';
-import { debounce } from 'lodash';
 import { IconButton, SearchBar } from '@chat2db/ui';
+import { createSearchDebouncer } from './searchDebouncer';
 
 interface IProps {
   className?: string;
@@ -23,6 +25,8 @@ interface IProps {
   // closed callback
   onClose?: () => void;
   searchAreaId: string;
+  // Changes whenever ResultSet replaces the records in the existing table instance.
+  resultContentRevision: unknown;
 }
 
 export interface FESearchRef {
@@ -31,7 +35,7 @@ export interface FESearchRef {
 }
 
 const FESearch = forwardRef((props: IProps, ref: ForwardedRef<FESearchRef>) => {
-  const { className, tableInstance, searchAreaId, onClose } = props;
+  const { className, tableInstance, searchAreaId, onClose, resultContentRevision } = props;
   const { styles, cx } = useStyles();
   const searchRef = useRef<SearchComponent | null>(null);
   // The value of the last search
@@ -40,13 +44,55 @@ const FESearch = forwardRef((props: IProps, ref: ForwardedRef<FESearchRef>) => {
   const [lastSearchValue, setLastSearchValue] = useState('');
   const feSearchRef = useRef<HTMLDivElement>(null);
   const searchBarRef = useRef<HTMLDivElement>(null);
+  const handleSearchRef = useRef<(searchValue?: string) => void>(() => {});
+  const searchDebouncer = useMemo(
+    () => createSearchDebouncer((searchValue) => handleSearchRef.current(searchValue)),
+    [],
+  );
+
+  const cleanupSearch = useCallback(
+    (resetSearchState = true) => {
+      searchDebouncer.cancel();
+      searchRef.current?.clear();
+      if (resetSearchState) {
+        setLastSearchValue('');
+        setSearchResult(null);
+      }
+    },
+    [searchDebouncer],
+  );
+
+  const handleClearSearch = useCallback(() => {
+    cleanupSearch();
+  }, [cleanupSearch]);
+
+  const handleSearch = useCallback((_value?: string) => {
+    if (!value && !_value) {
+      handleClearSearch();
+      return;
+    }
+    const res = searchRef.current?.search(_value || value);
+    setSearchResult({
+      index: res?.index,
+      count: res?.results.length,
+    });
+    setLastSearchValue(_value || value);
+  }, [handleClearSearch, value]);
 
   useEffect(() => {
+    handleSearchRef.current = handleSearch;
+  }, [handleSearch]);
+
+  useLayoutEffect(() => {
+    cleanupSearch();
+  }, [cleanupSearch, resultContentRevision]);
+
+  useEffect(() => {
+    cleanupSearch();
     if (!tableInstance) return;
     const highlightCellStyleBgColor = hexToRgba('#ff0', 20);
     const focuseHighlightCellStyleBgColor = hexToRgba('#ff0', 60);
-
-    searchRef.current = new SearchComponent({
+    const search = new SearchComponent({
       table: tableInstance,
       autoJump: true,
       highlightCellStyle: {
@@ -56,19 +102,58 @@ const FESearch = forwardRef((props: IProps, ref: ForwardedRef<FESearchRef>) => {
         bgColor: focuseHighlightCellStyleBgColor,
       } as any,
     });
-  }, [tableInstance]);
+    searchRef.current = search;
 
-  useImperativeHandle(ref, () => ({
-    close: handleClose,
-    focus: () => {
-      searchBarRef.current?.focus?.();
-    },
-  }));
+    return () => {
+      cleanupSearch(false);
+      if (searchRef.current === search) {
+        searchRef.current = null;
+      }
+    };
+  }, [cleanupSearch, tableInstance]);
+
+  useEffect(() => {
+    return () => cleanupSearch(false);
+  }, [cleanupSearch]);
+
+  const handleJumpNext = () => {
+    if (!searchResult) return;
+    const res = searchRef.current?.next();
+    setSearchResult({
+      index: res?.index,
+      count: res?.results.length,
+    });
+  };
+
+  const handleJumpPrev = () => {
+    if (!searchResult) return;
+    const res = searchRef.current?.prev();
+    setSearchResult({
+      index: res?.index,
+      count: res?.results.length,
+    });
+  };
+
+  const handleClose = useCallback(() => {
+    cleanupSearch();
+    onClose?.();
+  }, [cleanupSearch, onClose]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      close: handleClose,
+      focus: () => {
+        searchBarRef.current?.focus?.();
+      },
+    }),
+    [handleClose],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // If you press esc, close
     if (e.key === 'Escape') {
-      onClose?.();
+      handleClose();
       return;
     }
     // If it is shift+enter, the previous
@@ -94,60 +179,10 @@ const FESearch = forwardRef((props: IProps, ref: ForwardedRef<FESearchRef>) => {
     }
   };
 
-  const handleSearch = (_value?: string) => {
-    if (!value && !_value) {
-      handleClearSearch();
-      return;
-    }
-    const res = searchRef.current?.search(_value || value);
-    setSearchResult({
-      index: res?.index,
-      count: res?.results.length,
-    });
-    setLastSearchValue(_value || value);
-  };
-
-  const handleClearSearch = () => {
-    searchRef.current?.clear();
-    setLastSearchValue('');
-    setSearchResult(null);
-  };
-
-  const handleJumpNext = () => {
-    if (!searchResult) return;
-    const res = searchRef.current?.next();
-    setSearchResult({
-      index: res?.index,
-      count: res?.results.length,
-    });
-  };
-
-  const handleJumpPrev = () => {
-    if (!searchResult) return;
-    const res = searchRef.current?.prev();
-    setSearchResult({
-      index: res?.index,
-      count: res?.results.length,
-    });
-  };
-
-  const handleClose = () => {
-    handleClearSearch();
-    onClose?.();
-  };
-
-  // Search for anti-shake
-  const debouncedSearch = useCallback(
-    debounce((_value) => {
-      handleSearch(_value);
-    }, 500),
-    [],
-  );
-
   // Search box value changes
   const handleChange = (e) => {
     setValue(e.target.value);
-    debouncedSearch(e.target.value);
+    searchDebouncer.schedule(e.target.value);
   };
 
   return (

@@ -831,6 +831,7 @@ export default memo<IProps>(
                 searchAreaId={searchAreaId}
                 onClose={handleCloseFESearch}
                 tableInstance={tableInstance}
+                resultContentRevision={resultData}
               />
             )}
             <div className={styles.resultSetContent}>

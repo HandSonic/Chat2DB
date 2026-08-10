@@ -10,6 +10,7 @@ import {
   getResultSearchVisibility,
   RESULT_SEARCH_VISIBLE_BY_DEFAULT,
 } from './resultSearchVisibility';
+import { createSearchDebouncer } from '../FESearch/searchDebouncer';
 import {
   canFreezeResultColumns,
   canHideResultColumn,
@@ -55,6 +56,10 @@ const rowDetailSource = readFileSync(
 );
 const resultSetSource = readFileSync(
   'src/blocks/SearchResult/components/ResultSet/index.tsx',
+  'utf8',
+);
+const feSearchSource = readFileSync(
+  'src/blocks/SearchResult/components/FESearch/index.tsx',
   'utf8',
 );
 
@@ -113,6 +118,36 @@ test('result search escape and close action use the same close lifecycle', () =>
   });
 
   assert.deepEqual(calls, ['close']);
+});
+
+test('FESearch cleanup cancels queued work and invalidates stale search callbacks', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const calls: string[] = [];
+  const searchDebouncer = createSearchDebouncer((value) => calls.push(value));
+
+  searchDebouncer.schedule('closed-search');
+  searchDebouncer.cancel();
+  t.mock.timers.tick(500);
+  assert.deepEqual(calls, []);
+
+  searchDebouncer.schedule('replacement-search');
+  t.mock.timers.tick(500);
+  assert.deepEqual(calls, ['replacement-search']);
+});
+
+test('FESearch routes Escape and lifecycle teardown through search cleanup', () => {
+  assert.match(feSearchSource, /if \(e\.key === 'Escape'\) \{\s*handleClose\(\);/);
+  assert.match(feSearchSource, /const handleClose = useCallback\(\(\) => \{\s*cleanupSearch\(\);/);
+  assert.match(feSearchSource, /return \(\) => \{\s*cleanupSearch\(false\);/);
+  assert.match(feSearchSource, /return \(\) => cleanupSearch\(false\);/);
+});
+
+test('FESearch invalidates queued searches when ResultSet replaces records on the same table', () => {
+  assert.match(resultSetSource, /<FESearch[\s\S]*?resultContentRevision=\{resultData\}/);
+  assert.match(
+    feSearchSource,
+    /useLayoutEffect\(\(\) => \{\s*cleanupSearch\(\);\s*\}, \[cleanupSearch, resultContentRevision\]\);/,
+  );
 });
 
 test('record field focus updates the cell used by the value inspector', () => {
