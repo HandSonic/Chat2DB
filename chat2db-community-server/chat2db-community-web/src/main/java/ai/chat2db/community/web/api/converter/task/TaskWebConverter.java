@@ -24,6 +24,8 @@ public class TaskWebConverter {
                 .tableNames(request.getTableNames())
                 .scope(scope == null ? null : scope.name())
                 .exportPath(request.getExportPath())
+                .exportFileName(request.getExportFileName())
+                .overwriteExistingFile(request.getOverwriteExistingFile())
                 .containData(request.isContainData())
                 .build();
     }
@@ -39,6 +41,8 @@ public class TaskWebConverter {
                 .exportType(request.getExportType())
                 .containsHeader(request.getContainsHeader())
                 .exportPath(request.getExportPath())
+                .exportFileName(request.getExportFileName())
+                .overwriteExistingFile(request.getOverwriteExistingFile())
                 .build();
     }
 

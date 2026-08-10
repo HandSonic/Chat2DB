@@ -52,6 +52,9 @@ public class TaskRecordServiceImpl implements ITaskRecordService {
     @Override
     public void stopTask(Long id) {
         if (!taskSchedulerService.cancel(id)) {
+            if (taskSchedulerService.isTerminalUpdatePending(id)) {
+                return;
+            }
             Task task = getTask(id);
             if (task == null || StringUtils.equalsAnyIgnoreCase(
                     task.getTaskStatus(), "FINISHED", STATUS_STOP, "ERROR")) {

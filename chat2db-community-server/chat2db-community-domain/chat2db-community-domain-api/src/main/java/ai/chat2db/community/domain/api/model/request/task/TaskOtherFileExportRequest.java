@@ -24,4 +24,8 @@ public class TaskOtherFileExportRequest {
     private Boolean containsHeader;
 
     private String exportPath;
+
+    private String exportFileName;
+
+    private Boolean overwriteExistingFile;
 }

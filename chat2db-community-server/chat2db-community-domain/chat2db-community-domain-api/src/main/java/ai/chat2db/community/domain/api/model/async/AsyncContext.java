@@ -25,10 +25,17 @@ public class AsyncContext implements ISqlExecutionStatementListener {
     private enum State {
         RUNNING,
         FINISHED,
+        ERROR,
         STOP
     }
 
-    private File writeFile;
+    private volatile File writeFile;
+
+    private final ExportFileTarget exportFileTarget;
+
+    private volatile boolean outputPublished;
+
+    private volatile boolean errorOccurred;
 
     protected PrintWriter writer;
 
@@ -55,17 +62,46 @@ public class AsyncContext implements ISqlExecutionStatementListener {
     private volatile StringBuffer error = new StringBuffer();
 
     public AsyncContext(ITaskAsyncCall call, Context context, File writeFile, boolean containsData) {
+        this(call, context, writeFile, containsData, null);
+    }
+
+    /**
+     * Creates an export context which writes to a staged file and publishes it
+     * only after the task completes successfully. The extra argument keeps the
+     * legacy four-argument constructor unambiguous for callers that pass null.
+     */
+    public AsyncContext(ITaskAsyncCall call, Context context, File writeFile, boolean containsData,
+            ExportFileTarget exportFileTarget) {
         this.call = call;
         this.writeFile = writeFile;
+        this.exportFileTarget = exportFileTarget;
+        this.outputPublished = exportFileTarget == null && writeFile != null;
         this.progress = 5;
         this.containsData = containsData;
-        createWriter();
+        try {
+            createWriter();
+        } catch (RuntimeException e) {
+            if (exportFileTarget != null) {
+                exportFileTarget.discard();
+            }
+            throw e;
+        }
         appendInfo(DateUtil.formatDateTime(new Date()) + ":start------");
         asyncCallBack(context);
     }
 
     public File getWriteFile() {
         return writeFile;
+    }
+
+    /**
+     * Returns the user-visible output path. For rename-mode exports before
+     * publication this is the requested initial candidate; after publication
+     * it is the uniquely selected final path. For legacy direct-output
+     * contexts this is the same file returned by {@link #getWriteFile()}.
+     */
+    public File getOutputFile() {
+        return exportFileTarget == null ? writeFile : exportFileTarget.getTargetFile();
     }
 
     public boolean isContainsData() {
@@ -92,15 +128,21 @@ public class AsyncContext implements ISqlExecutionStatementListener {
         if (isStopped()) {
             return;
         }
+        errorOccurred = true;
         synchronized (messageLock) {
             error.append(message).append("\n");
             info.append(message).append("\n");
         }
     }
 
+    public boolean hasError() {
+        return errorOccurred;
+    }
+
     public boolean stop() {
         synchronized (this) {
-            if (state == State.STOP || terminalUpdatePublished) {
+            if (state == State.STOP || state == State.ERROR || terminalUpdatePublished
+                    || (state == State.FINISHED && exportFileTarget != null && outputPublished)) {
                 return false;
             }
             state = State.STOP;
@@ -114,6 +156,17 @@ public class AsyncContext implements ISqlExecutionStatementListener {
         return state == State.STOP;
     }
 
+    /**
+     * Returns whether a terminal state has been selected but its callback has
+     * not yet been persisted. Callers use this to avoid overwriting an
+     * in-flight FINISHED, ERROR, or STOP update with a late cancellation.
+     */
+    public boolean isTerminalUpdatePending() {
+        synchronized (this) {
+            return state != State.RUNNING && !terminalUpdatePublished;
+        }
+    }
+
     public void checkCancelled() {
         if (isStopped() || Thread.currentThread().isInterrupted()) {
             throw new CancellationException("Task was cancelled");
@@ -123,24 +176,57 @@ public class AsyncContext implements ISqlExecutionStatementListener {
     public void finish() {
         synchronized (this) {
             finish = true;
+            if (closeWriter()) {
+                error("Unable to write export file");
+            }
+            boolean publicationFailed = finalizeExportFile();
             if (state == State.RUNNING) {
-                state = State.FINISHED;
+                boolean terminalError = publicationFailed || errorOccurred;
+                state = terminalError ? State.ERROR : State.FINISHED;
                 this.progress = 100;
-                String message = DateUtil.formatDateTime(new Date()) + " " + "finish. ";
-                if (writeFile != null) {
-                    message += "File path:" + writeFile.getAbsolutePath();
+                String message = DateUtil.formatDateTime(new Date()) + " "
+                        + (terminalError ? "export failed. " : "finish. ");
+                if (outputPublished && getOutputFile() != null) {
+                    message += "File path:" + getOutputFile().getAbsolutePath();
                 }
                 appendInfo(message);
             }
-            closeWriter();
         }
         publishTerminalUpdate();
     }
 
-    private void closeWriter() {
-        if (writer != null) {
-            writer.flush();
-            writer.close();
+    private boolean closeWriter() {
+        if (writer == null) {
+            return false;
+        }
+        PrintWriter closingWriter = writer;
+        writer = null;
+        closingWriter.flush();
+        boolean writerFailed = closingWriter.checkError();
+        closingWriter.close();
+        return writerFailed || closingWriter.checkError();
+    }
+
+    private boolean finalizeExportFile() {
+        if (exportFileTarget == null) {
+            return false;
+        }
+        if (isStopped() || errorOccurred) {
+            exportFileTarget.discard();
+            return false;
+        }
+        try {
+            exportFileTarget.publish();
+            writeFile = exportFileTarget.getTargetFile();
+            outputPublished = true;
+            if (call == null) {
+                exportFileTarget.release();
+            }
+            return false;
+        } catch (Exception e) {
+            exportFileTarget.discard();
+            error("Unable to publish export file: " + e.getMessage());
+            return true;
         }
     }
 
@@ -197,18 +283,28 @@ public class AsyncContext implements ISqlExecutionStatementListener {
 
     private void publishTerminalUpdate() {
         RuntimeException lastFailure = null;
-        for (int attempt = 1; attempt <= TERMINAL_UPDATE_MAX_ATTEMPTS; attempt++) {
-            try {
-                callUpdate();
-                return;
-            } catch (RuntimeException e) {
-                lastFailure = e;
-                log.warn("AsyncContext terminal callback failed, attempt {}/{}",
-                        attempt, TERMINAL_UPDATE_MAX_ATTEMPTS, e);
+        boolean terminalUpdateSucceeded = false;
+        try {
+            for (int attempt = 1; attempt <= TERMINAL_UPDATE_MAX_ATTEMPTS; attempt++) {
+                try {
+                    callUpdate();
+                    terminalUpdateSucceeded = true;
+                    return;
+                } catch (RuntimeException e) {
+                    lastFailure = e;
+                    log.warn("AsyncContext terminal callback failed, attempt {}/{}",
+                            attempt, TERMINAL_UPDATE_MAX_ATTEMPTS, e);
+                }
+            }
+            log.error("AsyncContext terminal callback failed after {} attempts",
+                    TERMINAL_UPDATE_MAX_ATTEMPTS, lastFailure);
+        } finally {
+            if (!terminalUpdateSucceeded && exportFileTarget != null) {
+                // The output may already be published, but staging is private
+                // and may always be discarded after callback retries exhaust.
+                exportFileTarget.release();
             }
         }
-        log.error("AsyncContext terminal callback failed after {} attempts",
-                TERMINAL_UPDATE_MAX_ATTEMPTS, lastFailure);
     }
 
     private void callUpdate() {
@@ -244,9 +340,10 @@ public class AsyncContext implements ISqlExecutionStatementListener {
                     map.put("error", errorMessage);
                 }
                 map.put("status", updateState.name());
-                if (updateState == State.FINISHED && updateProgress == 100 && writeFile != null) {
-                    map.put("downloadUrl", writeFile.getAbsolutePath());
-                } else if (updateState == State.STOP) {
+                if (updateState == State.FINISHED && updateProgress == 100 && outputPublished
+                        && getOutputFile() != null) {
+                    map.put("downloadUrl", getOutputFile().getAbsolutePath());
+                } else if (updateState == State.STOP || updateState == State.ERROR) {
                     map.put("downloadUrl", "");
                 }
                 try {
@@ -260,6 +357,9 @@ public class AsyncContext implements ISqlExecutionStatementListener {
                     if (state == updateState) {
                         if (updateState != State.RUNNING) {
                             terminalUpdatePublished = true;
+                            if (updateState == State.FINISHED && exportFileTarget != null && outputPublished) {
+                                exportFileTarget.release();
+                            }
                         }
                         return;
                     }

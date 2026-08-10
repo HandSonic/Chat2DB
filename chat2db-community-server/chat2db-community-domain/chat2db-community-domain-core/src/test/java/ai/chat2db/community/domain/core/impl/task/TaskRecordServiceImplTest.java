@@ -65,8 +65,25 @@ class TaskRecordServiceImplTest {
         assertEquals("", update.get().getDownloadUrl());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"FINISHED", "ERROR"})
+    void pendingTerminalUpdateDoesNotFallbackToStop(String terminalStatus) {
+        AtomicReference<TaskRecordUpdateRequest> update = new AtomicReference<>();
+        TaskRecordServiceImpl service = service(false, true, task("PROCESSING"), update);
+
+        service.stopTask(42L);
+
+        assertNull(update.get(), terminalStatus + " callback must not be overwritten by STOP");
+    }
+
     private static TaskRecordServiceImpl service(
             boolean cancellationAccepted, Task persistedTask,
+            AtomicReference<TaskRecordUpdateRequest> update) {
+        return service(cancellationAccepted, false, persistedTask, update);
+    }
+
+    private static TaskRecordServiceImpl service(
+            boolean cancellationAccepted, boolean terminalUpdatePending, Task persistedTask,
             AtomicReference<TaskRecordUpdateRequest> update) {
         IWorkspaceStorageFacade storageFacade = (IWorkspaceStorageFacade) Proxy.newProxyInstance(
                 TaskRecordServiceImplTest.class.getClassLoader(),
@@ -92,6 +109,11 @@ class TaskRecordServiceImplTest {
             @Override
             public boolean cancel(Long taskId) {
                 return cancellationAccepted;
+            }
+
+            @Override
+            public boolean isTerminalUpdatePending(Long taskId) {
+                return terminalUpdatePending;
             }
         };
         return new TaskRecordServiceImpl(storageFacade, schedulerService);

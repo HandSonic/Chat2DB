@@ -2,6 +2,7 @@ import createRequest from './base';
 import { IDatabaseBaseInfo } from '@/typings/database';
 import { IPageResponse } from '@/typings';
 import { ImportExportTaskDetails } from '@/typings/importExport';
+import { ImportExportFileType } from '@/constants/importExport';
 
 export interface ImportSqlFileParams extends IDatabaseBaseInfo {
   fileName: string;
@@ -16,7 +17,19 @@ export interface ImportOtherFileParams extends IDatabaseBaseInfo {
 export interface ExportSqlFileParams extends IDatabaseBaseInfo {
   exportPath: string;
   tableName?: string;
+  tableNames?: string[];
   scope?: 'ALL' | 'SCHEMA' | 'TABLE';
+  containsHeader?: boolean;
+  exportFileName?: string;
+  overwriteExistingFile?: boolean;
+}
+
+export interface ExportOtherFileParams extends IDatabaseBaseInfo {
+  exportPath: string;
+  exportFileName?: string;
+  overwriteExistingFile?: boolean;
+  tableNames: string[];
+  exportType: ImportExportFileType;
   containsHeader?: boolean;
 }
 
@@ -29,7 +42,7 @@ const importSqlFile = createRequest<ImportSqlFileParams, number>('/api/import/sq
 const importOtherFile = createRequest<ImportOtherFileParams, number>('/api/import/other_file', { method: 'post' });
 
 const exportSqlFile = createRequest<ExportSqlFileParams, number>('/api/export/sql_file', { method: 'post' });
-const exportOtherFile = createRequest<IDatabaseBaseInfo, number>('/api/export/other_file', { method: 'post' });
+const exportOtherFile = createRequest<ExportOtherFileParams, number>('/api/export/other_file', { method: 'post' });
 
 const getTaskList = createRequest<TaskListParams, IPageResponse<ImportExportTaskDetails>>('/api/task/list', {
   method: 'get',
