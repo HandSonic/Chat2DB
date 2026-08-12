@@ -72,7 +72,11 @@ public class MysqlGeometryProcessor extends DefaultValueProcessor {
 
     @Override
     public String convertJDBCValueStrByType(JDBCDataValue dataValue) {
-        return MysqlDmlValueTemplate.wrapGeometry(convertJDBCValueByType(dataValue));
+        String value = convertJDBCValueByType(dataValue);
+        if (value == null) {
+            return "NULL";
+        }
+        return MysqlDmlValueTemplate.wrapGeometry(value);
     }
 
 }
