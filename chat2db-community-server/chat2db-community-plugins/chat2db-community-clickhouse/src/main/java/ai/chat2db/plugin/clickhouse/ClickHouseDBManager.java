@@ -10,6 +10,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -116,7 +118,8 @@ public class ClickHouseDBManager extends DefaultDBManager implements IDbManager 
         if (pathStart < 0 || pathStart >= suffixStart) {
             pathStart = suffixStart;
         }
-        return url.substring(0, pathStart) + "/" + schemaName + url.substring(suffixStart);
+        String encodedSchemaName = URLEncoder.encode(schemaName, StandardCharsets.UTF_8).replace("+", "%20");
+        return url.substring(0, pathStart) + "/" + encodedSchemaName + url.substring(suffixStart);
     }
 
     @Override
