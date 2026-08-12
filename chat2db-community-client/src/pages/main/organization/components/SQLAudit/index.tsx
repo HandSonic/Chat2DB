@@ -1,31 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
-import historyService, { IHistoryRecord, OperationTypeEnum } from '@/service/history';
-import { Button } from 'antd';
-import i18n from '@/i18n';
-import { useStyles } from './style';
-import PageTitle from '@/components/PageTitle';
-import { IconfontSvg } from '@chat2db/ui';
 import AntdTable from '@/components/AntdTable';
-/**
- historyService
-      .getHistoryList({
-        // dataSourceId:props.curWorkspaceParams.dataSourceId,
-        pageNo: curPageRef.current++,
-        pageSize: 40,
-        operationType: OperationTypeEnum.SQL_EXECUTE,
-      })
- */
+import OperationLogFilters, {
+  OperationLogFilterValues,
+  useDebouncedOperationLogFilters,
+} from '@/components/OperationLogFilters';
+import { areOperationLogFiltersEqual, buildOperationLogListParams } from '@/components/OperationLogFilters/model';
+import PageTitle from '@/components/PageTitle';
+import i18n from '@/i18n';
+import historyService, { IHistoryRecord, OperationTypeEnum } from '@/service/history';
+import { IconfontSvg } from '@chat2db/ui';
+import { Button, TablePaginationConfig } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStyles } from './style';
 
-const initPagination = {
-  searchKey: '',
-  current: 1,
-  pageSize: 10,
-  total: 0,
-};
+interface QueryState {
+  current: number;
+  pageSize: number;
+  filters: OperationLogFilterValues;
+  refreshVersion: number;
+}
 
 const SQLAudit = () => {
   const [dataSource, setDataSource] = useState<IHistoryRecord[]>([]);
-  const [pagination, setPagination] = useState(initPagination);
+  const [filters, setFilters] = useState<OperationLogFilterValues>({});
+  const [query, setQuery] = useState<QueryState>({
+    current: 1,
+    pageSize: 10,
+    filters: {},
+    refreshVersion: 0,
+  });
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const appliedFilters = useDebouncedOperationLogFilters(filters);
+  const requestGenerationRef = useRef(0);
 
   const { styles } = useStyles();
 
@@ -53,62 +59,89 @@ const SQLAudit = () => {
   );
 
   useEffect(() => {
-    queryHistoryList();
-  }, [pagination.searchKey, pagination.current, pagination.pageSize]);
-
-  const queryHistoryList = async () => {
-    const res = await historyService.getHistoryList({
-      pageNo: pagination.current,
-      pageSize: pagination.pageSize,
-      searchKey: pagination.searchKey,
-      operationType: OperationTypeEnum.SQL_AUDIT,
+    setDataSource([]);
+    setTotal(0);
+    setQuery((previousQuery) => {
+      if (areOperationLogFiltersEqual(previousQuery.filters, appliedFilters)) {
+        return previousQuery;
+      }
+      return {
+        ...previousQuery,
+        current: 1,
+        filters: appliedFilters,
+      };
     });
+  }, [appliedFilters]);
 
-    if (res) {
-      setDataSource(res?.data ?? []);
-      setPagination({
-        ...pagination,
-        total: res.total,
-      });
-    }
-  };
+  useEffect(() => {
+    const generation = requestGenerationRef.current + 1;
+    requestGenerationRef.current = generation;
+    setLoading(true);
 
-  const handleTableChange = (p) => {
-    setPagination({
-      ...pagination,
-      ...p,
-    });
-  };
+    const queryHistoryList = async () => {
+      try {
+        const res = await historyService.getHistoryList(
+          buildOperationLogListParams(query.filters, query.current, query.pageSize, OperationTypeEnum.SQL_AUDIT),
+        );
+
+        if (generation !== requestGenerationRef.current) {
+          return;
+        }
+        setDataSource(res?.data ?? []);
+        setTotal(res?.total ?? 0);
+      } catch {
+        // Request errors are surfaced by the shared request layer.
+      } finally {
+        if (generation === requestGenerationRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void queryHistoryList();
+
+    return () => {
+      if (generation === requestGenerationRef.current) {
+        requestGenerationRef.current += 1;
+      }
+    };
+  }, [query]);
+
+  const handleTableChange = useCallback((pagination: TablePaginationConfig) => {
+    setQuery((previousQuery) => ({
+      ...previousQuery,
+      current: pagination.current ?? 1,
+      pageSize: pagination.pageSize ?? previousQuery.pageSize,
+    }));
+  }, []);
+
+  const refresh = useCallback(() => {
+    setQuery((previousQuery) => ({
+      ...previousQuery,
+      refreshVersion: previousQuery.refreshVersion + 1,
+    }));
+  }, []);
 
   return (
     <div className={styles.wrapper}>
       <PageTitle title={i18n('team.nav.sqlAudit')} />
       <div className={styles.tableTop}>
-        {/* <Input.Search
-          style={{ width: '320px' }}
-          placeholder={i18n('common.text.searchPlaceholder')}
-          onSearch={handleSearch}
-          enterButton={<SearchOutlined />}
-        /> */}
-
-        <div />
-
-        <Button
-          type="primary"
-          icon={<IconfontSvg code={'icon-refresh'} size="sm" />}
-          onClick={() => {
-            queryHistoryList();
-          }}
-        >
+        <OperationLogFilters className={styles.filters} value={filters} onChange={setFilters} />
+        <Button type="primary" icon={<IconfontSvg code="icon-refresh" size="sm" />} onClick={refresh}>
           {i18n('common.button.refresh')}
         </Button>
       </div>
       <AntdTable
         className={styles.antdTable}
-        rowKey={'id'}
+        rowKey="id"
         dataSource={dataSource}
         columns={columns}
-        pagination={pagination}
+        loading={loading}
+        pagination={{
+          current: query.current,
+          pageSize: query.pageSize,
+          total,
+        }}
         onChange={handleTableChange}
       />
     </div>

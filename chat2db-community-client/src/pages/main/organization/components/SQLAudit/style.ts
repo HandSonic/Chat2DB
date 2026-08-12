@@ -10,9 +10,12 @@ export const useStyles = createStyles(({ css }) => {
     `,
     tableTop: css`
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      gap: 12px;
       margin: 16px 0;
+    `,
+    filters: css`
+      min-width: 0;
     `,
     empty: css`
       display: flex;
