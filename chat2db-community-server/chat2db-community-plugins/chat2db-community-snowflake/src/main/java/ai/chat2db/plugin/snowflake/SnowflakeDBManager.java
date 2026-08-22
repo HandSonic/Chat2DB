@@ -48,14 +48,24 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
     }
 
     private static void replacePropertyIfConfigured(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
+        // Always drop the managed entry first so a reused ConnectInfo cannot keep a stale value after it is cleared.
+        removeProperty(extendInfo, propertyName);
         if (StringUtils.isNotBlank(propertyValue)) {
-            replaceProperty(extendInfo, propertyName, propertyValue);
+            addProperty(extendInfo, propertyName, propertyValue);
         }
     }
 
     private static void replaceProperty(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
+        removeProperty(extendInfo, propertyName);
+        addProperty(extendInfo, propertyName, propertyValue);
+    }
+
+    private static void removeProperty(List<KeyValue> extendInfo, String propertyName) {
         extendInfo.removeIf(keyValue -> keyValue != null
                 && StringUtils.equalsIgnoreCase(propertyName, keyValue.getKey()));
+    }
+
+    private static void addProperty(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
         KeyValue keyValue = new KeyValue();
         keyValue.setKey(propertyName);
         keyValue.setValue(propertyValue);

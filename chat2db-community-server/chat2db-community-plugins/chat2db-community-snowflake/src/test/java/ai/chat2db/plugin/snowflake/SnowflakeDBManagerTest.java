@@ -21,6 +21,7 @@ import java.util.UUID;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class SnowflakeDBManagerTest {
@@ -48,6 +49,48 @@ class SnowflakeDBManagerTest {
         assertProperties(connectInfo.getExtendInfo(),
                 List.of("role", "db", "schema", "JDBC_QUERY_RESULT_FORMAT"),
                 List.of("analyst", "analytics", "reporting", "JSON"));
+    }
+
+    @Test
+    void reconnectWithClearedDatabaseNameDropsStaleDatabaseProperty() {
+        ConnectInfo connectInfo = new ConnectInfo();
+        connectInfo.setDatabaseName("analytics");
+        connectInfo.setSchemaName("reporting");
+        connectInfo.setConnection(openConnectionStub());
+        connectInfo.setExtendInfo(List.of(keyValue("role", "analyst")));
+
+        assertSame(connectInfo.getConnection(), dbManager.getConnection(connectInfo));
+        assertProperties(connectInfo.getExtendInfo(),
+                List.of("role", "db", "schema", "JDBC_QUERY_RESULT_FORMAT"),
+                List.of("analyst", "analytics", "reporting", "JSON"));
+
+        connectInfo.setDatabaseName(null);
+        assertSame(connectInfo.getConnection(), dbManager.getConnection(connectInfo));
+        assertProperties(connectInfo.getExtendInfo(),
+                List.of("role", "schema", "JDBC_QUERY_RESULT_FORMAT"),
+                List.of("analyst", "reporting", "JSON"));
+        assertFalse(connectInfo.getExtendMap().containsKey("db"));
+    }
+
+    @Test
+    void reconnectWithClearedSchemaNameDropsStaleSchemaProperty() {
+        ConnectInfo connectInfo = new ConnectInfo();
+        connectInfo.setDatabaseName("analytics");
+        connectInfo.setSchemaName("reporting");
+        connectInfo.setConnection(openConnectionStub());
+        connectInfo.setExtendInfo(List.of(keyValue("role", "analyst")));
+
+        assertSame(connectInfo.getConnection(), dbManager.getConnection(connectInfo));
+        assertProperties(connectInfo.getExtendInfo(),
+                List.of("role", "db", "schema", "JDBC_QUERY_RESULT_FORMAT"),
+                List.of("analyst", "analytics", "reporting", "JSON"));
+
+        connectInfo.setSchemaName("");
+        assertSame(connectInfo.getConnection(), dbManager.getConnection(connectInfo));
+        assertProperties(connectInfo.getExtendInfo(),
+                List.of("role", "db", "JDBC_QUERY_RESULT_FORMAT"),
+                List.of("analyst", "analytics", "JSON"));
+        assertFalse(connectInfo.getExtendMap().containsKey("schema"));
     }
 
     @Test
