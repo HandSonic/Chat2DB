@@ -136,7 +136,6 @@ const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
       () =>
         getChildren({
           ...params,
-          needAiDataCollections: false,
           refresh: true,
         }),
       (res) => setDatabaseList(normalizeDatabaseOptions(normalizeTreeNodeLoadResult(res).children)),
@@ -158,7 +157,6 @@ const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
       () =>
         getChildren({
           ...params,
-          needAiDataCollections: false,
           refresh: true,
         }),
       (res) => setSchemaList(normalizeSchemaOptions(normalizeTreeNodeLoadResult(res).children)),
