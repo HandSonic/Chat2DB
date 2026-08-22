@@ -156,6 +156,49 @@ class LocalWorkspaceStoragePaginationTest {
     }
 
     @Test
+    void operationLogListSeparatesSqlExecuteAndSqlAuditStreamsBeforePagination() {
+        Long firstExecuteId = saveOperationLog(1L, "sales", "public", "select 1", "SQL_EXECUTE");
+        Long secondExecuteId = saveOperationLog(1L, "sales", "public", "select 2", "SQL_EXECUTE");
+        saveOperationLog(1L, "sales", "public", "select 3", "SQL_AUDIT");
+        saveOperationLog(1L, "sales", "public", "select 4", "SQL_AUDIT");
+
+        OpsOperationLogPageQueryRequest request = new OpsOperationLogPageQueryRequest();
+        request.setPageNo(1);
+        request.setPageSize(1);
+        request.setOperationType("SQL_EXECUTE");
+
+        PageResponse<OperationLog> executePage1 = workspaceStorage.operationLogList(request);
+        assertEquals(1, executePage1.getData().size());
+        assertEquals(secondExecuteId, executePage1.getData().get(0).getId());
+        assertEquals("SQL_EXECUTE", executePage1.getData().get(0).getOperationType());
+        assertEquals(2L, executePage1.getTotal());
+        assertTrue(executePage1.getHasNextPage());
+
+        request.setPageNo(2);
+        PageResponse<OperationLog> executePage2 = workspaceStorage.operationLogList(request);
+        assertEquals(1, executePage2.getData().size());
+        assertEquals(firstExecuteId, executePage2.getData().get(0).getId());
+        assertEquals("SQL_EXECUTE", executePage2.getData().get(0).getOperationType());
+        assertEquals(2L, executePage2.getTotal());
+        assertFalse(executePage2.getHasNextPage());
+
+        request.setPageNo(1);
+        request.setOperationType("SQL_AUDIT");
+        PageResponse<OperationLog> auditPage1 = workspaceStorage.operationLogList(request);
+        assertEquals(1, auditPage1.getData().size());
+        assertEquals("select 4", auditPage1.getData().get(0).getDdl());
+        assertEquals(2L, auditPage1.getTotal());
+        assertTrue(auditPage1.getHasNextPage());
+
+        request.setPageNo(2);
+        PageResponse<OperationLog> auditPage2 = workspaceStorage.operationLogList(request);
+        assertEquals(1, auditPage2.getData().size());
+        assertEquals("select 3", auditPage2.getData().get(0).getDdl());
+        assertEquals(2L, auditPage2.getTotal());
+        assertFalse(auditPage2.getHasNextPage());
+    }
+
+    @Test
     void listDataSourcesReturnsOnlyTheRequestedSlice() {
         for (int i = 0; i < 3; i++) {
             DataSourceStorage.INSTANCE.save(new DataSource());
@@ -251,11 +294,17 @@ class LocalWorkspaceStoragePaginationTest {
     }
 
     private static Long saveOperationLog(Long dataSourceId, String databaseName, String schemaName, String ddl) {
+        return saveOperationLog(dataSourceId, databaseName, schemaName, ddl, null);
+    }
+
+    private static Long saveOperationLog(Long dataSourceId, String databaseName, String schemaName, String ddl,
+            String operationType) {
         OperationLog log = new OperationLog();
         log.setDataSourceId(dataSourceId);
         log.setDatabaseName(databaseName);
         log.setSchemaName(schemaName);
         log.setDdl(ddl);
+        log.setOperationType(operationType);
         return OperationLogStorage.INSTANCE.save(log);
     }
 }

@@ -239,6 +239,10 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
                 && !Objects.equals(request.getSchemaName(), operationLog.getSchemaName())) {
             return false;
         }
+        if (StringUtils.isNotBlank(request.getOperationType())
+                && !Objects.equals(request.getOperationType(), operationLog.getOperationType())) {
+            return false;
+        }
         String searchKey = StringUtils.trimToNull(request.getSearchKey());
         return searchKey == null || StringUtils.containsIgnoreCase(operationLog.getDdl(), searchKey);
     }
