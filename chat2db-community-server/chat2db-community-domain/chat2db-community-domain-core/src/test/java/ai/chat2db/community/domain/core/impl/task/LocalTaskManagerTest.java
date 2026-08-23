@@ -313,13 +313,66 @@ class LocalTaskManagerTest {
         taskManager = manager(storage, (spec, context) -> {});
         taskManager.prepareForUserExit(null, null);
 
-        taskManager.abortUserExit();
+        taskManager.abortUserExit(null, null);
         Task submitted = taskManager.submit(newTask(), event(TaskEventCode.TASK_CREATED.name()),
                 spec(), null, null);
 
         assertNotNull(submitted);
         assertTrue(storage.awaitTerminal());
         assertEquals(TaskStatus.SUCCESS.name(), storage.get(submitted.getId()).orElseThrow().getStatus());
+    }
+
+    @Test
+    void userExitPreparationOnlyRejectsTasksOfTheExitingOwner() throws Exception {
+        TestTaskStorage storage = new TestTaskStorage();
+        taskManager = manager(storage, (spec, context) -> {});
+
+        taskManager.prepareForUserExit(1L, 10L);
+
+        assertThrows(RejectedExecutionException.class,
+                () -> taskManager.submit(newTask(1L, 10L), event(TaskEventCode.TASK_CREATED.name()),
+                        spec(), null, null));
+        Task otherOwnerTask = taskManager.submit(newTask(2L, 10L),
+                event(TaskEventCode.TASK_CREATED.name()), spec(), null, null);
+
+        assertNotNull(otherOwnerTask);
+        assertTrue(storage.awaitTerminal());
+        assertEquals(TaskStatus.SUCCESS.name(),
+                storage.get(otherOwnerTask.getId()).orElseThrow().getStatus());
+        assertTrue(storage.listNonTerminalTasks().isEmpty());
+    }
+
+    @Test
+    void abortUserExitUnblocksOnlyTheRequestingOwner() throws Exception {
+        TestTaskStorage storage = new TestTaskStorage();
+        taskManager = manager(storage, (spec, context) -> {});
+        taskManager.prepareForUserExit(1L, 10L);
+        taskManager.prepareForUserExit(2L, 10L);
+
+        taskManager.abortUserExit(1L, 10L);
+
+        Task firstOwnerTask = taskManager.submit(newTask(1L, 10L),
+                event(TaskEventCode.TASK_CREATED.name()), spec(), null, null);
+        assertNotNull(firstOwnerTask);
+        assertThrows(RejectedExecutionException.class,
+                () -> taskManager.submit(newTask(2L, 10L), event(TaskEventCode.TASK_CREATED.name()),
+                        spec(), null, null));
+    }
+
+    @Test
+    void applicationExitRejectsTasksOfAllOwners() {
+        TestTaskStorage storage = new TestTaskStorage();
+        taskManager = manager(storage, (spec, context) -> {});
+
+        taskManager.shutdown();
+
+        assertThrows(RejectedExecutionException.class,
+                () -> taskManager.submit(newTask(1L, 10L), event(TaskEventCode.TASK_CREATED.name()),
+                        spec(), null, null));
+        assertThrows(RejectedExecutionException.class,
+                () -> taskManager.submit(newTask(2L, 10L), event(TaskEventCode.TASK_CREATED.name()),
+                        spec(), null, null));
+        assertTrue(storage.listNonTerminalTasks().isEmpty());
     }
 
     @Test
@@ -558,10 +611,16 @@ class LocalTaskManagerTest {
     }
 
     private Task newTask() {
+        return newTask(null, null);
+    }
+
+    private Task newTask(Long userId, Long organizationId) {
         return Task.builder()
                 .type(TaskType.QUERY_RESULT_EXPORT.name())
                 .name("Export result")
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).build())
+                .userId(userId)
+                .organizationId(organizationId)
                 .build();
     }
 

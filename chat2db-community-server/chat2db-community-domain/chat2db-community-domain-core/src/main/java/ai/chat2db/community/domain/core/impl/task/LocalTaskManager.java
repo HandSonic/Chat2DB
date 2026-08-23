@@ -32,9 +32,11 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
@@ -65,7 +67,9 @@ public class LocalTaskManager {
 
     private final ReentrantLock lifecycleLock = new ReentrantLock();
 
-    private boolean preparingForExit;
+    private boolean applicationExiting;
+
+    private final Set<TaskOwner> exitingOwners = new HashSet<>();
 
     public LocalTaskManager(TaskStorage taskStorage, TaskExecutorRegistry taskExecutorRegistry,
             ArtifactService artifactService, ConnectionContextConverter connectionContextConverter,
@@ -102,7 +106,7 @@ public class LocalTaskManager {
             ConnectInfo connectInfo) {
         lifecycleLock.lock();
         try {
-            if (preparingForExit) {
+            if (applicationExiting || exitingOwners.contains(ownerOf(task))) {
                 throw new RejectedExecutionException("The application is preparing to exit");
             }
             Task persistedTask = taskStorage.create(task, createdEvent);
@@ -193,10 +197,10 @@ public class LocalTaskManager {
                 new TaskOwner(userId, organizationId));
     }
 
-    void abortUserExit() {
+    void abortUserExit(Long userId, Long organizationId) {
         lifecycleLock.lock();
         try {
-            preparingForExit = false;
+            exitingOwners.remove(new TaskOwner(userId, organizationId));
         } finally {
             lifecycleLock.unlock();
         }
@@ -213,10 +217,14 @@ public class LocalTaskManager {
     private void terminateActiveTasks(String errorCode, String eventCode, String message, TaskOwner owner) {
         lifecycleLock.lock();
         try {
-            if (preparingForExit && owner != null) {
+            if (applicationExiting && owner != null) {
                 return;
             }
-            preparingForExit = true;
+            if (owner == null) {
+                applicationExiting = true;
+            } else {
+                exitingOwners.add(owner);
+            }
             List<Task> activeTasks = taskStorage.listNonTerminalTasks();
             List<RunningTask> tasksToAwait = new ArrayList<>();
             List<Long> tasksToCleanup = new ArrayList<>();
@@ -343,6 +351,10 @@ public class LocalTaskManager {
     private boolean belongsTo(Task task, Long userId, Long organizationId) {
         return Objects.equals(task.getUserId(), userId)
                 && Objects.equals(task.getOrganizationId(), organizationId);
+    }
+
+    private TaskOwner ownerOf(Task task) {
+        return new TaskOwner(task.getUserId(), task.getOrganizationId());
     }
 
     private TaskSubmissionContext extensionContext(Task task, TaskSpec spec, ConnectInfo connectInfo) {
