@@ -162,7 +162,7 @@ export interface TreeAction {
   updateOriginalTitleByNodeId: (nodeKey: string, originalTitle: string) => void;
   // Get the child nodes under a certain node. If the child node is undefined, request the child node.
   getChildrenByNodeId: (nodeId: string) => TreeNodeData[];
-  initHiddenTreeNodeIds: () => void;
+  initHiddenTreeNodeIds: (force?: boolean) => void;
   addOrDeleteShowTreeNodeIds: (
     dataSourceId: number,
     changedKeys?: {
@@ -254,7 +254,7 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
         priority: refresh ? 1 : 0,
       },
       async (isCurrent): Promise<RootTreeLoadResult> => {
-        get().initHiddenTreeNodeIds();
+        get().initHiddenTreeNodeIds(refresh);
         const result = await loadNamespaceTree(() => connectionService.getNamespaceList({ refresh }));
         if (!isCurrent()) {
           return { committed: false };
@@ -803,7 +803,14 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
     const curNode = findNode(nodeId, newTreeData);
     return curNode?.children || [];
   },
-  initHiddenTreeNodeIds: () => {
+  initHiddenTreeNodeIds: (force = false) => {
+    if (force) {
+      // Another window may have changed the persisted hidden-node config;
+      // a manual refresh must re-read it instead of keeping this window's
+      // lifetime cache.
+      hiddenTreeNodeStateCoordinator.reset();
+      set({ hiddenTreeNodeIds: null });
+    }
     if (get().hiddenTreeNodeIds !== null) {
       return;
     }    void hiddenTreeNodeStateCoordinator
