@@ -47,6 +47,10 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
         return extendInfo;
     }
 
+    // `db` and `schema` are managed keys owned by the connection form's databaseName/schemaName:
+    // they are always dropped (including manually added entries) before the current value is
+    // written back, so clearing a field cannot keep stale context. Configure the Snowflake
+    // database/schema through the connection fields, not through extendInfo.
     private static void replacePropertyIfConfigured(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
         // Always drop the managed entry first so a reused ConnectInfo cannot keep a stale value after it is cleared.
         removeProperty(extendInfo, propertyName);
