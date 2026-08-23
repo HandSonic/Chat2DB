@@ -114,6 +114,9 @@ public class ClickHouseDBManager extends DefaultDBManager implements IDbManager 
             return url;
         }
 
+        // The path starts at the first '/' after the authority. A '/' inside userinfo is only
+        // expressible URL-encoded (%2F, RFC 3986); a raw one there is unparseable and must not
+        // be second-guessed, otherwise legal paths containing '@' would be misread as userinfo.
         int pathStart = url.indexOf('/', authorityStart + 3);
         if (pathStart < 0 || pathStart >= suffixStart) {
             pathStart = suffixStart;

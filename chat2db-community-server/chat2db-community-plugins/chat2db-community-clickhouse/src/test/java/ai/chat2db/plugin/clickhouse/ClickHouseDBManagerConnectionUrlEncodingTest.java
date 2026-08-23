@@ -43,6 +43,33 @@ class ClickHouseDBManagerConnectionUrlEncodingTest {
         );
     }
 
+    @Test
+    void rewritesPathBehindEncodedUserInfo() {
+        assertEquals(
+                "jdbc:clickhouse://user%2Fp:pass@host:8123/newdb",
+                ClickHouseDBManager.replaceDatabaseInJdbcUrl(
+                        "jdbc:clickhouse://user%2Fp:pass@host:8123/olddb", "newdb")
+        );
+    }
+
+    @Test
+    void rewritesPathSegmentContainingAtSign() {
+        assertEquals(
+                "jdbc:clickhouse://host:8123/newdb",
+                ClickHouseDBManager.replaceDatabaseInJdbcUrl(
+                        "jdbc:clickhouse://host:8123/db@x", "newdb")
+        );
+    }
+
+    @Test
+    void keepsStarLiteralAndEncodesTildeInDatabaseName() {
+        assertEquals(
+                "jdbc:clickhouse://host:8123/a*b%7Ec",
+                ClickHouseDBManager.replaceDatabaseInJdbcUrl(
+                        "jdbc:clickhouse://host:8123/olddb", "a*b~c")
+        );
+    }
+
     private static String rewriteDatabase(String databaseName) throws Exception {
         ConnectInfo connectInfo = new ConnectInfo();
         connectInfo.setUrl("jdbc:clickhouse://localhost:8123/default?ssl=true");
