@@ -26,7 +26,7 @@ import {
 import { DataSourceIdentityColorPatch, patchDataSourceIdentityTree } from './dataSourceIdentity';
 import { collectDataSourceNodes, pruneDataSourceRuntimeAvailability } from './dataSourceList';
 import { shouldReuseTreeNodeChildren } from './treeNodeLoadState';
-import { hydrateDataSourceAfterMutation } from './dataSourceMutationRefresh';
+import { runMutationRefreshQuietly } from './dataSourceMutationRefresh';
 import { applyHiddenTreeNodeChanges, HiddenTreeNodeStateCoordinator } from './hiddenTreeNodeState';
 import { LatestLoadCoordinator, loadNamespaceTree } from './loadNamespaceTree';
 import {
@@ -220,7 +220,7 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
       refreshRoot: () => get().getTreeData({ refresh: true }),
     }),
   refreshDataSourceAfterMutation: async (dataSourceId) => {
-    await hydrateDataSourceAfterMutation(dataSourceId, {
+    await runMutationRefreshQuietly(dataSourceId, {
       refreshTreeData: () => get().getTreeData({ refresh: true, throwOnError: true }),
       getDataSourceList: () => get().dataSourceList,
       setSelectedKeys: get().setSelectedKeys,
@@ -806,8 +806,7 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
   initHiddenTreeNodeIds: () => {
     if (get().hiddenTreeNodeIds !== null) {
       return;
-    }
-    void hiddenTreeNodeStateCoordinator
+    }    void hiddenTreeNodeStateCoordinator
       .initialize(
         () => dataSourceTreeService.getTreeHiddenTreeNodeIds(),
         (hiddenTreeNodeIds) => {
