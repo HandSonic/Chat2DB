@@ -94,6 +94,29 @@ class SnowflakeDBManagerTest {
     }
 
     @Test
+    void reconnectWithClearedDatabaseAndSchemaDropsStaleManagedProperties() {
+        ConnectInfo connectInfo = new ConnectInfo();
+        connectInfo.setDatabaseName("analytics");
+        connectInfo.setSchemaName("reporting");
+        connectInfo.setConnection(openConnectionStub());
+        connectInfo.setExtendInfo(List.of(keyValue("role", "analyst")));
+
+        assertSame(connectInfo.getConnection(), dbManager.getConnection(connectInfo));
+        assertProperties(connectInfo.getExtendInfo(),
+                List.of("role", "db", "schema", "JDBC_QUERY_RESULT_FORMAT"),
+                List.of("analyst", "analytics", "reporting", "JSON"));
+
+        connectInfo.setDatabaseName(" ");
+        connectInfo.setSchemaName("");
+        assertSame(connectInfo.getConnection(), dbManager.getConnection(connectInfo));
+        assertProperties(connectInfo.getExtendInfo(),
+                List.of("role", "JDBC_QUERY_RESULT_FORMAT"),
+                List.of("analyst", "JSON"));
+        assertFalse(connectInfo.getExtendMap().containsKey("db"));
+        assertFalse(connectInfo.getExtendMap().containsKey("schema"));
+    }
+
+    @Test
     void passesDriverConfigPropertiesToNewConnectionWhenExtendInfoIsMissing() throws Exception {
         assertDriverConfigFallbackIsPassedToNewConnection(null);
         assertDriverConfigFallbackIsPassedToNewConnection(List.of());

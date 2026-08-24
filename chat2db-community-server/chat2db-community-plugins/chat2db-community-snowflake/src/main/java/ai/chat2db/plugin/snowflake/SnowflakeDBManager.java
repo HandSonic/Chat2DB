@@ -41,8 +41,7 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
         List<KeyValue> extendInfo = configuredExtendInfo == null
                 ? new ArrayList<>()
                 : new ArrayList<>(configuredExtendInfo);
-        replacePropertyIfConfigured(extendInfo, DATABASE_PROPERTY, connectInfo.getDatabaseName());
-        replacePropertyIfConfigured(extendInfo, SCHEMA_PROPERTY, connectInfo.getSchemaName());
+        replaceManagedContextProperties(extendInfo, connectInfo);
         replaceProperty(extendInfo, QUERY_RESULT_FORMAT_PROPERTY, QUERY_RESULT_FORMAT_JSON);
         return extendInfo;
     }
@@ -51,9 +50,14 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
     // they are always dropped (including manually added entries) before the current value is
     // written back, so clearing a field cannot keep stale context. Configure the Snowflake
     // database/schema through the connection fields, not through extendInfo.
-    private static void replacePropertyIfConfigured(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
-        // Always drop the managed entry first so a reused ConnectInfo cannot keep a stale value after it is cleared.
-        removeProperty(extendInfo, propertyName);
+    private static void replaceManagedContextProperties(List<KeyValue> extendInfo, ConnectInfo connectInfo) {
+        removeProperty(extendInfo, DATABASE_PROPERTY);
+        removeProperty(extendInfo, SCHEMA_PROPERTY);
+        addPropertyIfConfigured(extendInfo, DATABASE_PROPERTY, connectInfo.getDatabaseName());
+        addPropertyIfConfigured(extendInfo, SCHEMA_PROPERTY, connectInfo.getSchemaName());
+    }
+
+    private static void addPropertyIfConfigured(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
         if (StringUtils.isNotBlank(propertyValue)) {
             addProperty(extendInfo, propertyName, propertyValue);
         }
