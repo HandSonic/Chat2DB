@@ -63,6 +63,7 @@ import {
 import { resolveResultInspectorActiveCell } from '../ResultSetTable/selectionState';
 import { areResultCellValuesEquivalent } from './inspectorState';
 import SqlExecutionLoading from '@/components/SqlExecutionLoading';
+import { getMatchingResultReplacement } from '../../resultTabPinning';
 
 interface IProps {
   resultData: IManageResultData;
@@ -255,7 +256,13 @@ export default memo<IProps>(
           void runResultPagingRequest(
             () => onResultPagingChange(resultData, executeSqlParams),
             {
-              onSuccess: () => setExecuteErrorMessage(null),
+              onSuccess: (completedResult) => {
+                setExecuteErrorMessage(null);
+                const replacementResult = getMatchingResultReplacement(completedResult, resultData);
+                if (replacementResult) {
+                  setResultData(replacementResult);
+                }
+              },
               onError: (message) => {
                 setExecuteErrorMessage(message);
                 setResultData((current) => ({ ...current }));

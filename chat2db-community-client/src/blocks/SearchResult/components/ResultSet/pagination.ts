@@ -45,16 +45,16 @@ export function getResultPagingErrorMessage(error: unknown) {
   return '';
 }
 
-export async function runResultPagingRequest(
-  request: () => Promise<unknown> | unknown,
+export async function runResultPagingRequest<T>(
+  request: () => Promise<T> | T,
   callbacks: {
-    onSuccess?: () => void;
+    onSuccess?: (result: T) => void;
     onError: (message: string) => void;
   },
 ) {
   try {
-    await request();
-    callbacks.onSuccess?.();
+    const result = await request();
+    callbacks.onSuccess?.(result);
   } catch (error) {
     callbacks.onError(getResultPagingErrorMessage(error));
   }

@@ -47,7 +47,11 @@ import {
 } from './tabSelection';
 import { ShortcutAction } from '@/constants/shortcut';
 import { useGlobalStore } from '@/store/global';
-import { retainPinnedResults } from './resultTabPinning';
+import {
+  getMatchingResultReplacement,
+  replaceRetainedResult,
+  retainPinnedResults,
+} from './resultTabPinning';
 import { useTreeStore } from '@/store/tree';
 import { resolveDataSourceIdentityColor } from '@/utils/dataSourceIdentity';
 import type { DataSourceExecutionTarget } from '@/service/dataSourceExecutionSnapshot';
@@ -255,6 +259,22 @@ const SearchResult = forwardRef((props: IProps, ref: ForwardedRef<ISearchResultR
     [consoleMode],
   );
 
+  const handleResultPagingChange = useCallback(
+    async (targetResult: IManageResultData, params: IExecuteSqlParams) => {
+      const completedResult = await props.onResultPagingChange?.(targetResult, params);
+      const replacementResult = getMatchingResultReplacement(completedResult, targetResult);
+      if (!replacementResult) {
+        return completedResult;
+      }
+      setResultDataList((current) =>
+        current ? replaceRetainedResult(current, targetResult, replacementResult) : current,
+      );
+      setHistoryResultDataList((current) => replaceRetainedResult(current, targetResult, replacementResult));
+      return replacementResult;
+    },
+    [props.onResultPagingChange],
+  );
+
   const tabsList = useMemo(() => {
     const visibleResultDataList = consoleMode
       ? orderedConsoleResultDataList
@@ -307,7 +327,7 @@ const SearchResult = forwardRef((props: IProps, ref: ForwardedRef<ISearchResultR
               active={activeTabId === queryResultData.uuid}
               viewTable={viewTable || queryResultData.canEdit}
               resultData={queryResultData}
-              onResultPagingChange={props.onResultPagingChange}
+              onResultPagingChange={props.onResultPagingChange ? handleResultPagingChange : undefined}
             />
           ),
         };
@@ -323,6 +343,7 @@ const SearchResult = forwardRef((props: IProps, ref: ForwardedRef<ISearchResultR
     orderedConsoleResultDataList,
     dataSourceList,
     props.showExecutionResultCoordinates,
+    handleResultPagingChange,
     props.onResultPagingChange,
     styles.resultTabIcon,
     viewTable,

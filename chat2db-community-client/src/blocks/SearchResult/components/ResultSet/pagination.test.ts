@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MAX_RESULT_PAGE_SIZE } from '@/constants/pagination';
 import { SqlExecutionBusyError } from '@/service/sqlExecutionRequestTracker';
+import { getMatchingResultReplacement } from '../../resultTabPinning';
 import {
   buildResultPageExecuteParams,
   resolveResultPaging,
   runResultPagingRequest,
 } from './pagination';
 import './viewTablePagingFlow.test';
+import '@/pages/main/workspace/components/SQLExecute/sqlResultPagingModel.test';
 
 test('matches the Java Integer transport boundary without restoring the old product cap', () => {
   assert.equal(MAX_RESULT_PAGE_SIZE, 2_147_483_647);
@@ -64,4 +66,26 @@ test('a rejected paging request is handled and restores the confirmed pagination
   assert.equal(errorMessage, 'SQL execution is already in progress');
   assert.deepEqual(visiblePaging, confirmedPaging);
   assert.deepEqual(unhandledRejections, []);
+});
+
+test('a cancelled SQL paging request restores the confirmed toolbar page', async () => {
+  const confirmedResult = { uuid: 'result-1', pageNo: 2, pageSize: 1000 };
+  let visiblePaging = { pageNo: 3, pageSize: 50_000 };
+
+  await runResultPagingRequest(
+    () => Promise.resolve({ ...confirmedResult }),
+    {
+      onSuccess: (completedResult) => {
+        const replacementResult = getMatchingResultReplacement(completedResult, confirmedResult);
+        assert.ok(replacementResult);
+        visiblePaging = {
+          pageNo: replacementResult.pageNo,
+          pageSize: replacementResult.pageSize,
+        };
+      },
+      onError: (message) => assert.fail(message),
+    },
+  );
+
+  assert.deepEqual(visiblePaging, { pageNo: 2, pageSize: 1000 });
 });

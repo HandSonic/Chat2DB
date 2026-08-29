@@ -2,6 +2,19 @@ interface PinnableResult {
   uuid?: string;
 }
 
+export function getMatchingResultReplacement<T extends PinnableResult>(value: unknown, targetResult: T) {
+  if (
+    !value ||
+    Array.isArray(value) ||
+    typeof value !== 'object' ||
+    !('uuid' in value) ||
+    value.uuid !== targetResult.uuid
+  ) {
+    return undefined;
+  }
+  return value as T;
+}
+
 export function retainPinnedResults<T extends PinnableResult>(
   incomingResults: T[],
   existingResults: T[],
@@ -24,4 +37,24 @@ export function retainPinnedResults<T extends PinnableResult>(
   });
 
   return [...retainedResults, ...incomingResults];
+}
+
+export function replaceRetainedResult<T extends PinnableResult>(
+  currentResults: T[],
+  targetResult: T,
+  replacementResult: T,
+) {
+  const targetKey = targetResult.uuid;
+  if (!targetKey) {
+    return currentResults;
+  }
+  let replaced = false;
+  const nextResults = currentResults.map((result) => {
+    if (replaced || result.uuid !== targetKey) {
+      return result;
+    }
+    replaced = true;
+    return replacementResult;
+  });
+  return replaced ? nextResults : currentResults;
 }

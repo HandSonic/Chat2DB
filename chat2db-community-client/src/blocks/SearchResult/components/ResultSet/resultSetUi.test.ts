@@ -4,7 +4,7 @@ import test from 'node:test';
 import { getHeaderMetadataRows } from '../ResultSetTable/headerMetadata';
 import { getResultColumnTitle } from '../ResultSetTable/utils/columnTitle';
 import { createResultHeaderCustomRender } from '../ResultSetTable/headerRender';
-import { retainPinnedResults } from '../../resultTabPinning';
+import { replaceRetainedResult, retainPinnedResults } from '../../resultTabPinning';
 import {
   applyResultSearchVisibilityAction,
   getResultSearchVisibility,
@@ -337,6 +337,28 @@ test('incoming result replaces a pinned result with the same key', () => {
   const updatedResult = { uuid: 'same', value: 'updated result' };
 
   assert.deepEqual(retainPinnedResults([updatedResult], [oldResult], new Set(['same'])), [updatedResult]);
+});
+
+test('paging updates a pinned result retained outside the parent result list', () => {
+  const pinnedResult = { uuid: 'pinned', value: 'page 1' };
+  const parentResult = { uuid: 'next', value: 'new execution' };
+  const parentResults = [parentResult];
+  const retainedResults = retainPinnedResults(
+    parentResults,
+    [pinnedResult],
+    new Set(['pinned']),
+  );
+  const pagedResult = { uuid: 'pinned', value: 'page 2' };
+
+  assert.equal(
+    parentResults.some((result) => result.uuid === pinnedResult.uuid),
+    false,
+    'the parent no longer owns the pinned tab',
+  );
+  assert.deepEqual(replaceRetainedResult(retainedResults, pinnedResult, pagedResult), [
+    pagedResult,
+    parentResult,
+  ]);
 });
 
 test('pinned result already moved into incoming history is not retained in current results', () => {

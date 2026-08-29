@@ -102,8 +102,19 @@ import {
   rethrowNonCancellationSqlExecutionError,
   SqlExecutionLogContext,
 } from '@/service/sqlExecutionLog';
+import { SqlExecutionBusyError } from '@/service/sqlExecutionRequestTracker';
 import { isDesktop } from '@/utils/env';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  buildSqlResultPagingExecuteParams,
+  createSqlResultPagingCancellationResult,
+  createSqlResultPagingState,
+  reduceSqlResultPagingEvent,
+  replaceSqlResultPage,
+  resolveSqlResultPagingCompletion,
+  type SqlResultPagingRequest,
+  type SqlResultPagingState,
+} from './sqlResultPagingModel';
 import { buildStreamResultExecuteSqlParams } from './streamResultExecutionParams';
 
 const SplitPaneAny = SplitPane as any;
@@ -134,6 +145,13 @@ interface IProps {
 interface DesktopExecutionCallbackState {
   databaseInfo: IDatabaseBaseInfo;
   data: IManageResultData[];
+}
+
+interface ActiveSqlResultPagingRequest extends SqlResultPagingRequest {
+  cancelled?: boolean;
+  completedResult?: IManageResultData;
+  failed?: boolean;
+  errorMessage?: string;
 }
 
 export interface SQLExecuteRef {
@@ -245,6 +263,8 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
   );
   const [resultDataList, setResultDataList] = useState<IManageResultData[]>([]);
   const resultPageSizeRef = useRef<number>();
+  const resultPagingRequestRef = useRef<ActiveSqlResultPagingRequest>();
+  const resultPagingStateRef = useRef<SqlResultPagingState>();
   const pendingRowsRef = useRef<PendingSqlExecutionRows>(new Map());
   const pendingRowsFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedSqlExecutionResultsRef = useRef<ClosedSqlExecutionResults>(new Map());
@@ -700,7 +720,12 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       restoreDataSourceRuntimeAvailability,
     ],
   );
-  const { executing, canExecuteSQL, executeSQL, stopExecuteSQL } = useSqlExecutor({
+  const {
+    executing: sqlExecuting,
+    canExecuteSQL,
+    executeSQL,
+    stopExecuteSQL,
+  } = useSqlExecutor({
     onExecutionRequestStart: handleSqlExecutionRequestStart,
     onExecutionRequestStartError: handleSqlExecutionRequestStartError,
     onExecutionEvent: handleSqlExecutionEvent,
@@ -708,6 +733,45 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       staticMessage.error(i18n('common.text.cancelRequestFailed'));
     },
   });
+  const handleResultPagingRequestStart = useCallback((requestSequence: number) => {
+    if (resultPagingRequestRef.current) {
+      resultPagingStateRef.current = createSqlResultPagingState(requestSequence, resultPagingRequestRef.current);
+    }
+  }, []);
+  const handleResultPagingExecutionEvent = useCallback((event: SqlExecutionEvent, requestSequence: number) => {
+    const activeRequest = resultPagingRequestRef.current;
+    if (!resultPagingStateRef.current || !activeRequest) {
+      return;
+    }
+    if (resultPagingStateRef.current.requestSequence !== requestSequence) {
+      return;
+    }
+    if (event.eventType === 'cancelled') {
+      activeRequest.cancelled = true;
+    }
+    const transition = reduceSqlResultPagingEvent(resultPagingStateRef.current, event, requestSequence);
+    resultPagingStateRef.current = transition.state;
+    if (transition.failed) {
+      activeRequest.failed = true;
+      activeRequest.errorMessage = transition.errorMessage || activeRequest.errorMessage;
+    }
+    if (transition.completedResult) {
+      activeRequest.completedResult = transition.completedResult;
+    }
+  }, []);
+  const {
+    executing: resultPagingExecuting,
+    canExecuteSQL: canExecuteResultPagingSQL,
+    executeSQL: executeResultPage,
+    stopExecuteSQL: stopResultPagingSQL,
+  } = useSqlExecutor({
+    onExecutionRequestStart: handleResultPagingRequestStart,
+    onExecutionEvent: handleResultPagingExecutionEvent,
+    onExecutionCancellationError: () => {
+      staticMessage.error(i18n('common.text.cancelRequestFailed'));
+    },
+  });
+  const executing = sqlExecuting || resultPagingExecuting;
 
   // Whether to show the split panel.
   const isSplitPane = useMemo(() => {
@@ -823,7 +887,7 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
       staticMessage.warning(i18n('workspace.dataSourceLifecycle.deleted'));
       return Promise.resolve();
     }
-    if (!canExecuteSQL()) {
+    if (!canExecuteSQL() || !canExecuteResultPagingSQL()) {
       staticMessage.warning(i18n('common.text.currentExecution'));
       return Promise.resolve();
     }
@@ -1022,13 +1086,45 @@ const SQLExecute = forwardRef((props: IProps, ref: ForwardedRef<SQLExecuteRef>) 
   const handleResultPagingChange = useCallback(
     (_resultData: IManageResultData, executeSqlParams: IExecuteSqlParams) => {
       resultPageSizeRef.current = executeSqlParams.pageSize;
-      return handleExecuteSQL(executeSqlParams);
+      if (!canExecuteSQL() || !canExecuteResultPagingSQL()) {
+        return Promise.reject(new SqlExecutionBusyError());
+      }
+      const request: ActiveSqlResultPagingRequest = {
+        targetResult: _resultData,
+        params: buildSqlResultPagingExecuteParams(_resultData, executeSqlParams),
+      };
+      resultPagingRequestRef.current = request;
+      return executeResultPage(request.params)
+        .then((results) => {
+          if (request.cancelled) {
+            const confirmedResult = createSqlResultPagingCancellationResult(request.targetResult);
+            setResultDataList((current) =>
+              replaceSqlResultPage(current, request.targetResult, confirmedResult),
+            );
+            return confirmedResult;
+          }
+          const completedResult = resolveSqlResultPagingCompletion(results, request, {
+            streamedResult: request.completedResult,
+            streamFailed: request.failed,
+            streamedErrorMessage: request.errorMessage,
+            fallbackErrorMessage: i18n('common.text.noData'),
+          });
+          setResultDataList((current) => replaceSqlResultPage(current, request.targetResult, completedResult));
+          return completedResult;
+        })
+        .finally(() => {
+          if (resultPagingRequestRef.current === request) {
+            resultPagingRequestRef.current = undefined;
+            resultPagingStateRef.current = undefined;
+          }
+        });
     },
-    [handleExecuteSQL],
+    [canExecuteResultPagingSQL, canExecuteSQL, executeResultPage],
   );
 
   const stopExecuteSql = () => {
     stopExecuteSQL();
+    stopResultPagingSQL();
   };
 
   useImperativeHandle(ref, () => ({
