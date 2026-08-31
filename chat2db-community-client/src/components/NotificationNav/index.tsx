@@ -9,6 +9,7 @@ import { openWebPage } from '@/utils/url';
 import { Empty, EmptyImage, IconButton, IconfontSvg, Modal } from '@chat2db/ui';
 import { RefreshCcw } from 'lucide-react';
 import { useStyles } from './styles';
+import { NotificationRefreshCoordinator } from './notificationRefreshCoordinator';
 
 interface NotificationButtonProps {
   /** Drawer mode is controlled by the parent and does not render an icon button. */
@@ -28,6 +29,7 @@ const NotificationButton = ({ drawerMode, open: externalOpen, onClose }: Notific
   const [popNoSData, setNoSPopData] = useState<NotificationVO | null>(null);
   const [modalSizeWidth, setModalSizeWidth] = useState<number>();
   const mountedRef = useRef(true);
+  const refreshCoordinatorRef = useRef(new NotificationRefreshCoordinator());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -36,6 +38,7 @@ const NotificationButton = ({ drawerMode, open: externalOpen, onClose }: Notific
     queryPopNotification();
     return () => {
       mountedRef.current = false;
+      refreshCoordinatorRef.current.invalidateAll();
     };
   }, []);
 
@@ -58,15 +61,17 @@ const NotificationButton = ({ drawerMode, open: externalOpen, onClose }: Notific
   }, [popSOpen]);
 
   const queryUnreadCount = () => {
+    const owner = refreshCoordinatorRef.current.begin('unread');
     notificationService.queryUnreadCount().then((res) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !refreshCoordinatorRef.current.isCurrent(owner)) return;
       setHasUnread(res > 0);
     });
   };
 
   const queryNotificationList = () => {
+    const owner = refreshCoordinatorRef.current.begin('list');
     notificationService.queryNotificationList({ pageNo: 1, pageSize: 50 }).then((res) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !refreshCoordinatorRef.current.isCurrent(owner)) return;
       setList(res.data);
     });
   };
