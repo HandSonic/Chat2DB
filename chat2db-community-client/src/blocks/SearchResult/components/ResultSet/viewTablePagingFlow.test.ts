@@ -155,16 +155,18 @@ test('table browse flows from the initial response through filtered 50000-row st
 
   const replacedResults = replaceViewTableResult([initialResult], transition.completedResult!);
   assert.equal(replacedResults[0].uuid, initialUuid, 'completion preserves the mounted result identity');
+  assert.equal(replacedResults[0].originalSql, BASE_SQL, 'completion preserves the original table query');
+  const nextSortedSql = composeResultQuery({
+    databaseType: DatabaseTypeCode.MYSQL,
+    orderByValue: 'status ASC',
+    originalSql: replacedResults[0].originalSql,
+  });
   assert.equal(
-    composeResultQuery({
-      databaseType: DatabaseTypeCode.MYSQL,
-      filterValue: "status = 'ACTIVE'",
-      orderByValue: 'id DESC',
-      originalSql: initialResult.originalSql,
-    }),
-    filteredSql,
-    'later searches continue composing from the stable base query instead of nesting prior filters',
+    nextSortedSql,
+    `${BASE_SQL} ORDER BY status ASC`,
+    'later searches compose from the stable base query instead of nesting the previous sort',
   );
+  assert.equal(nextSortedSql.match(/\bORDER\s+BY\b/gi)?.length, 1, 'consecutive grid sorts emit one ORDER BY clause');
 });
 
 test('table browse SQL normalization follows originalSql, sql, then request SQL', () => {
@@ -206,11 +208,46 @@ test('web table browse retains execution params across consecutive page requests
   assert.equal(secondPage.executeSqlParams?.pageSize, 5000);
 });
 
-test('a cancelled table browse never publishes its buffered partial rows', () => {
-  const params = { sql: BASE_SQL, dataSourceId: 42, pageNo: 1, pageSize: 50_000 };
+test('a failed table browse page preserves the confirmed result and reports the backend error', () => {
+  const confirmedResult = result({
+    uuid: 'confirmed-result',
+    dataList: [[{ value: 'confirmed-row' }]] as any,
+    pageNo: 1,
+  });
+  const params = { sql: BASE_SQL, dataSourceId: 42, pageNo: 2, pageSize: 1000 };
   const requestSequence = 8;
+
+  const transition = reduceViewTablePagingEvent(
+    createViewTablePagingState(requestSequence, params, confirmedResult),
+    event(
+      'resultFinished',
+      result({
+        success: false,
+        message: 'Unknown column status',
+        dataList: [],
+        pageNo: 2,
+      }),
+    ),
+    requestSequence,
+  );
+
+  assert.equal(transition.completedResult, undefined, 'a failed page must not replace confirmed rows');
+  assert.equal(transition.errorMessage, 'Unknown column status');
+  assert.equal(transition.state.errorMessage, 'Unknown column status');
+  assert.deepEqual(confirmedResult.dataList, [[{ value: 'confirmed-row' }]]);
+});
+
+test('a cancelled table browse republishes the confirmed page without buffered partial rows', () => {
+  const params = { sql: BASE_SQL, dataSourceId: 42, pageNo: 2, pageSize: 50_000 };
+  const confirmedResult = result({
+    uuid: 'confirmed-result',
+    dataList: [[{ value: 'confirmed-row' }]] as any,
+    pageNo: 1,
+    pageSize: 1000,
+  });
+  const requestSequence = 9;
   let transition = reduceViewTablePagingEvent(
-    createViewTablePagingState(requestSequence, params),
+    createViewTablePagingState(requestSequence, params, confirmedResult),
     event('rows', result({ dataList: [[{ value: 'partial' }]] as any })),
     requestSequence,
   );
@@ -221,7 +258,10 @@ test('a cancelled table browse never publishes its buffered partial rows', () =>
     event('cancelled', result()),
     requestSequence,
   );
-  assert.equal(transition.completedResult, undefined, 'cancellation leaves the visible completed result untouched');
+  assert.notEqual(transition.completedResult, confirmedResult, 'rollback must publish a new object');
+  assert.equal(transition.completedResult?.pageNo, 1);
+  assert.equal(transition.completedResult?.pageSize, 1000);
+  assert.deepEqual(transition.completedResult?.dataList, [[{ value: 'confirmed-row' }]]);
 });
 
 test('table browse cancellation targets the active JCEF execution and releases the request', async () => {
