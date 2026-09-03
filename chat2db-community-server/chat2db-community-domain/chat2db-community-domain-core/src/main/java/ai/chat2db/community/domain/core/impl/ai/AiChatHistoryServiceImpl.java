@@ -76,6 +76,11 @@ public class AiChatHistoryServiceImpl implements IAiChatHistoryService {
         return listSessionsLocal(userId);
     }
 
+    @Override
+    public void renameSession(String sessionId, Long userId, String title) {
+        renameSessionLocal(sessionId, userId, title);
+    }
+
 
     @Override
     public List<AiChatMessage> getMessages(String sessionId, Long userId) {
@@ -152,6 +157,17 @@ public class AiChatHistoryServiceImpl implements IAiChatHistoryService {
                 .collect(Collectors.toList());
     }
 
+    private synchronized void renameSessionLocal(String sessionId, Long userId, String title) {
+        List<AiChatSession> sessions = loadSessions(userId);
+        AiChatSession session = sessions.stream()
+                .filter(item -> Objects.equals(item.getId(), sessionId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(
+                        "ai.chat.history.sessionNotOwned", new Object[]{sessionId}));
+        session.setTitle(title.trim());
+        persistSessions(userId, sessions);
+    }
+
     private synchronized List<AiChatMessage> getMessagesLocal(String sessionId, Long userId) {
         if (!ownsSession(userId, sessionId)) {
             return new ArrayList<>();
@@ -176,17 +192,25 @@ public class AiChatHistoryServiceImpl implements IAiChatHistoryService {
         List<AiChatSession> sessions = loadSessions(userId);
         // Only delete the message file when the session was actually owned by
         // this user; otherwise a caller could delete another user's file by id.
-        boolean removed = sessions.removeIf(s -> Objects.equals(s.getId(), sessionId));
-        persistSessions(userId, sessions);
+        List<AiChatSession> remainingSessions = new ArrayList<>(sessions);
+        boolean removed = remainingSessions.removeIf(s -> Objects.equals(s.getId(), sessionId));
         if (!removed) {
             return;
         }
+        persistSessions(userId, remainingSessions);
 
         Path msgFile = messagesPath(sessionId);
         try {
             Files.deleteIfExists(msgFile);
         } catch (IOException e) {
-            throw new BusinessException("ai.chat.history.deleteMessagesFailed", new Object[]{msgFile, e.getMessage()}, e);
+            BusinessException failure = new BusinessException("ai.chat.history.deleteMessagesFailed",
+                    new Object[]{msgFile, e.getMessage()}, e);
+            try {
+                persistSessions(userId, sessions);
+            } catch (RuntimeException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
         }
     }
 
