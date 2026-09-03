@@ -51,11 +51,13 @@ function restoreGlobal<T extends keyof typeof globalObject>(key: T, value: (type
 }
 
 async function run() {
-  const [{ createHotUpdateAction }, { default: jcefApi }, { UpdatedStatus }] = await Promise.all([
+  const [{ createHotUpdateAction }, { default: jcefApi }, { UpdatedStatus }, { clientRuntime }] = await Promise.all([
     import('./action'),
     import('@/jcef'),
     import('@/constants/settings'),
+    import('@client-runtime'),
   ]);
+  const originalAutoUpdate = clientRuntime.enableAutoUpdate;
   const originalApi = {
     appCheckUpdate: jcefApi.appCheckUpdate,
     triggerInstallation: jcefApi.triggerInstallation,
@@ -111,8 +113,39 @@ async function run() {
     await state.updateHotUpdateConfig('remindMe', false);
     assert.equal(state.hotUpdateConfig.remindMe, false);
 
+    clientRuntime.enableAutoUpdate = true;
+    state.updateDetail = { status: UpdatedStatus.Updated };
+    let resolveInstallation: ((accepted: boolean) => void) | undefined;
+    let installationCalls = 0;
+    let restartCalls = 0;
+    jcefApi.triggerInstallation = () => {
+      installationCalls += 1;
+      return new Promise<boolean>((resolve) => {
+        resolveInstallation = resolve;
+      });
+    };
+    jcefApi.restartApp = async () => {
+      restartCalls += 1;
+      return true;
+    };
+
+    const firstRestart = state.updateAndRestartApp();
+    await Promise.resolve();
+    const joinedRestart = state.updateAndRestartApp();
+    await Promise.resolve();
+
+    assert.equal(joinedRestart, firstRestart, 'concurrent callers must receive the same in-flight operation');
+    assert.equal(installationCalls, 1, 'concurrent restart requests must share one installation');
+    assert.equal(restartCalls, 0, 'the app must not restart before installation is accepted');
+
+    assert.ok(resolveInstallation);
+    resolveInstallation(true);
+    await Promise.all([firstRestart, joinedRestart]);
+    assert.equal(restartCalls, 1, 'joined callers must share one restart');
+
     console.log('Community hot update boundary tests passed');
   } finally {
+    clientRuntime.enableAutoUpdate = originalAutoUpdate;
     Object.assign(jcefApi, originalApi);
   }
 }
