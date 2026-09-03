@@ -1,12 +1,9 @@
 import * as monaco from 'monaco-editor';
 import keywordObj, { IFunctionParameter, IKeyword } from '../helper/keywords';
-import { DatabaseTypeCode } from '@/constants';
-import { quoteSqlCompletionIdentifier } from '@/utils/databaseJudgments';
+import { DatabaseCapability, DatabaseTypeCode } from '@/constants';
+import { isDatabaseCapabilitySupported, quoteSqlCompletionIdentifier } from '@/utils/databaseJudgments';
 import SQLParserService from '@/service/sqlParser';
-import {
-  isBackendCompletionDatabaseType,
-  isBackendCompletionModel,
-} from './sqlCompletionModelMode';
+import { isBackendCompletionModel } from './sqlCompletionModelMode';
 import {
   getBackendCompletionItemEffectiveFilterText,
   getBackendCompletionItemInsertText,
@@ -201,7 +198,10 @@ class CompletionProviderManager {
 
     const { dataSourceId, databaseType, databaseName, schemaName } = dbInfo;
     const completionContextId = getSqlCompletionContextId(dbInfo);
-    const backendCompletionMode = isBackendCompletionDatabaseType(databaseType);
+    const backendCompletionMode = isDatabaseCapabilitySupported(
+      databaseType,
+      DatabaseCapability.BACKEND_COMPLETION,
+    );
     if (databaseType && !backendCompletionMode) {
       this.registerBuiltInKeywordsProvider();
       this.registerBuiltInFunctionsProvider();
@@ -244,6 +244,7 @@ class CompletionProviderManager {
 
   public onParserChange = (sqlStatementList: SqlStatement[], curStatement?: SqlStatement) => {
     this.sqlStatementList = sqlStatementList;
+    this.originColumnList = [];
     if (curStatement) {
       const { tableColumns } = curStatement;
       const columns = (tableColumns || []).reduce((acc: ISimpleColumnVO[], cur) => {
@@ -254,10 +255,7 @@ class CompletionProviderManager {
         return;
       }
 
-      setTimeout(() => {
-        // this.registerParserColumnProvider(columns);
-        this.originColumnList = columns ?? [];
-      }, 1000);
+      this.originColumnList = columns;
     }
   };
 
