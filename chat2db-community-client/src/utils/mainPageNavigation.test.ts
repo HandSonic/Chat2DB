@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import '../components/NotificationNav/notificationRefreshCoordinator.test';
 import {
   createMainRootRoute,
   DEFAULT_MAIN_PAGE_ACTIVE_TAB,
