@@ -7,12 +7,16 @@ import { setFocusedContent, getFocusedContent } from '@/store/common/copyFocused
 import { switchIcon, treeConfig } from '../../treeConfig';
 import LoadingGracile from '@/components/Loading/LoadingGracile';
 import { type ThemeAppearance } from 'antd-style';
-import { ChevronRight, User, Users } from 'lucide-react';
+import { Activity, ChevronRight, SquareActivity, User, Users } from 'lucide-react';
 import { ContextMenuRef } from '@/components/ContextMenu';
 import Filtration from '../Filtration';
 import { splitSearchHighlight } from './highlightSearchText';
 import { resolveTreeSwitcherAction } from './switcherAction';
 import { resolveTreeNodeSelection } from '../../utils/treeNodePath';
+import {
+  mergeWorkspaceTreeSearchExpandedKeys,
+  resolveWorkspaceTreeExpandedKeys,
+} from '@/pages/main/workspace/components/WorkspaceTreeSearch/lifecycle';
 
 interface IProps {
   className?: string;
@@ -33,10 +37,12 @@ const TitleRender = (props: IProps) => {
     setEditingTreeNode,
     setTreeData,
     handleLoadData,
-    expandedKeys,
+    persistentExpandedKeys,
+    searchRequiredExpandedKeys,
+    invalidatedTreeNodeKeys,
     selectedKeys,
     setSelectedKeys,
-    setExpandedKeys,
+    setSearchRequiredExpandedKeys,
     setCurrentTreeNode,
     searchBarValue,
     regularSearchBarValue,
@@ -49,10 +55,12 @@ const TitleRender = (props: IProps) => {
     setEditingTreeNode: state.setEditingTreeNode,
     setTreeData: state.setTreeData,
     handleLoadData: state.handleLoadData,
-    expandedKeys: state.expandedKeys,
+    persistentExpandedKeys: state.expandedKeys,
+    searchRequiredExpandedKeys: state.searchRequiredExpandedKeys,
+    invalidatedTreeNodeKeys: state.invalidatedTreeNodeKeys,
     setSelectedKeys: state.setSelectedKeys,
     selectedKeys: state.selectedKeys,
-    setExpandedKeys: state.setExpandedKeys,
+    setSearchRequiredExpandedKeys: state.setSearchRequiredExpandedKeys,
     setCurrentTreeNode: state.setCurrentTreeNode,
     searchBarValue: state.searchBarValue,
     regularSearchBarValue: state.regularSearchBarValue,
@@ -61,6 +69,15 @@ const TitleRender = (props: IProps) => {
     treeData: state.treeData,
     userConfigTree: state.userConfigTree,
   }));
+  const expandedKeys = useMemo(
+    () =>
+      resolveWorkspaceTreeExpandedKeys(
+        persistentExpandedKeys,
+        searchRequiredExpandedKeys,
+        invalidatedTreeNodeKeys,
+      ),
+    [persistentExpandedKeys, searchRequiredExpandedKeys, invalidatedTreeNodeKeys],
+  );
 
   const isExpanded = useMemo(() => expandedKeys.includes(nodeData.key), [expandedKeys, nodeData.key]);
 
@@ -75,7 +92,9 @@ const TitleRender = (props: IProps) => {
     if (searchBarValue && selection.ancestors.length) {
       // Search renders a filtered copy. Keep the search session active while
       // rebinding selection to the source node and its stable ancestor path.
-      setExpandedKeys(Array.from(new Set([...expandedKeys, ...selection.ancestors])));
+      setSearchRequiredExpandedKeys(
+        mergeWorkspaceTreeSearchExpandedKeys(searchRequiredExpandedKeys, selection.ancestors),
+      );
     }
 
     setCurrentTreeNode(selectedNode);
@@ -93,7 +112,7 @@ const TitleRender = (props: IProps) => {
     }
     // Expanded node, collapse
     if (expandedKeys.includes(nodeData.key)) {
-      setExpandedKeys(expandedKeys.filter((key) => key !== nodeData.key));
+      toggleExpandedKeys(nodeData.key);
       return;
     }
     setIsLoading(true);
@@ -158,6 +177,14 @@ const TitleRender = (props: IProps) => {
 
     if (nodeData.treeNodeType === TreeNodeType.DATABASE_ACCOUNT) {
       return <User className={cx(styles.customizeIconIsLeaf, styles.customizeIcon)} size={19} />;
+    }
+
+    if (nodeData.treeNodeType === TreeNodeType.MONITOR) {
+      return <SquareActivity className={styles.customizeIcon} size={19} />;
+    }
+
+    if (nodeData.treeNodeType === TreeNodeType.ACTIVE_TRANSACTIONS) {
+      return <Activity className={cx(styles.customizeIconIsLeaf, styles.customizeIcon)} size={19} />;
     }
 
     if (isExpanded && switchIcon[nodeData.treeNodeType]!.unfoldIcon) {
