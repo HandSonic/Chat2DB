@@ -1,5 +1,7 @@
 package ai.chat2db.spi;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.sql.Connection;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -15,6 +17,7 @@ import ai.chat2db.community.domain.api.enums.parser.DatabaseTypeEnum;
 import ai.chat2db.community.domain.api.model.account.*;
 import ai.chat2db.community.domain.api.config.*;
 import ai.chat2db.community.domain.api.model.task.TaskEventCode;
+import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
 import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
@@ -276,7 +279,25 @@ public class DefaultDBManager implements IDbManager {
         }
         List<Table> tables = Chat2DBContext.getDbMetaData().tables(connection, new TablesRequest(databaseName, schemaName, null));
         for (Table table : tables) {
-            exportTable(connection, databaseName, schemaName, table.getName(), containData, context);
+            String tableName = table.getName();
+            try (TableExportContext tableContext = new TableExportContext(context)) {
+                try {
+                    exportTable(connection, databaseName, schemaName, tableName, containData, tableContext);
+                } catch (TaskCancelledException | UncheckedIOException failure) {
+                    throw failure;
+                } catch (Exception failure) {
+                    tableContext.rethrowWriteFailure();
+                    context.checkCancelled();
+                    log.warn("Skip table '{}' during database export: {}", tableName, failure.getMessage());
+                    context.logWarn(TaskEventCode.OBJECT_SKIPPED.name(),
+                            String.format("Skipped table '%s' during database export: %s", tableName, failure.getMessage()),
+                            Map.of(TaskConstants.TABLE_NAME_DETAIL_KEY, tableName));
+                    continue;
+                }
+                tableContext.publish();
+            } catch (IOException failure) {
+                throw new UncheckedIOException("Could not stage table export", failure);
+            }
         }
         if (foreignKeyChecks) {
             context.write(SQL_SET_FOREIGN_KEY_CHECKS_ENABLED);
@@ -300,11 +321,14 @@ public class DefaultDBManager implements IDbManager {
 
     @Override
     public String truncateTable(Connection connection, String databaseName, String schemaName, String tableName) throws SQLException {
-        return String.format(SQL_TRUNCATE_TABLE, tableName);
+        return String.format(SQL_TRUNCATE_TABLE, Chat2DBContext.getDbMetaData().getMetaDataName(tableName));
     }
 
     @Override
     public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
+        IDbMetaData metaData = Chat2DBContext.getDbMetaData();
+        tableName = metaData.getMetaDataName(tableName);
+        newTableName = metaData.getMetaDataName(newTableName);
         String sql;
         if (copyData) {
             sql = String.format(SQL_COPY_TABLE_DATA, newTableName, tableName);

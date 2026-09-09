@@ -104,8 +104,7 @@ public abstract class BaseExporter implements IExportStrategy {
                 if (StringUtils.isEmpty(tableName)) {
                     throw new IllegalArgumentException("tableName should not be null or empty");
                 }
-                String safeTableName = new File(tableName).getName();
-                File file = new File(temporaryDirectory, safeTableName + suffix);
+                File file = uniqueTableFile(temporaryDirectory, tableName);
                 intermediateFiles.add(file);
                 logTableEvent(context, TaskEventCode.TABLE_EXPORT_STARTED.name(),
                         tableProgressMessage("Exporting table", tableName, i, n), tableName, i, n);
@@ -147,6 +146,16 @@ public abstract class BaseExporter implements IExportStrategy {
                 }
             }
         }
+    }
+
+    private File uniqueTableFile(File directory, String tableName) {
+        String baseName = new File(tableName).getName();
+        File file = new File(directory, baseName + suffix);
+        // Previous tables have finished writing, so this also detects filesystem aliases.
+        for (int sequence = 2; file.exists(); sequence++) {
+            file = new File(directory, baseName + "-" + sequence + suffix);
+        }
+        return file;
     }
 
     protected String getQuerySql(ExportTaskSpec spec, String tableName) {
