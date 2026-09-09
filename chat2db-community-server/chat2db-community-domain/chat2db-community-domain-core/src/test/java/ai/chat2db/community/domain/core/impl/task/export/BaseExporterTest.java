@@ -99,6 +99,43 @@ class BaseExporterTest {
         }
     }
 
+    @Test
+    void generatedSuffixDoesNotOverwriteCaseAliasedTableFile() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("case-probe"), "probe");
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                Files.exists(temporaryDirectory.resolve("CASE-PROBE")),
+                "This regression concerns case-insensitive output filesystems");
+        BaseExporter exporter = new BaseExporter(new ExportCellProcessorChain(List.of()),
+                new SqlExecutionPolicyManager(List.of())) {
+            {
+                suffix = ".sql";
+            }
+
+            @Override
+            protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
+                    File file) throws Exception {
+                Files.writeString(file.toPath(), tableName);
+            }
+
+            @Override
+            public String type() {
+                return "sql";
+            }
+        };
+        ExportTaskSpec spec = ExportTaskSpec.builder()
+                .tableNames(List.of("db1/users", "db2/users", "USERS-2"))
+                .build();
+        File output = temporaryDirectory.resolve("case-collision.zip").toFile();
+
+        exporter.run(spec, new NoopContext(), output);
+
+        try (ZipFile zip = new ZipFile(output)) {
+            assertEquals("db1/users", zipEntryContent(zip, "users.sql"));
+            assertEquals("db2/users", zipEntryContent(zip, "users-2.sql"));
+            assertEquals("USERS-2", zipEntryContent(zip, "USERS-2-2.sql"));
+        }
+    }
+
     private static String zipEntryContent(ZipFile zip, String entryName) throws IOException {
         ZipEntry entry = zip.getEntry(entryName);
         assertNotNull(entry, "missing zip entry: " + entryName);

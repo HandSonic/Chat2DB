@@ -2,9 +2,12 @@ package ai.chat2db.spi;
 
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import ai.chat2db.community.domain.api.config.DBConfig;
 import ai.chat2db.community.domain.api.config.DriverConfig;
@@ -84,6 +87,93 @@ class DefaultDBManagerDatabaseExportToleranceTest {
                 () -> new DefaultDBManager().exportDatabase(null, "app", null, false, context.proxy())));
     }
 
+    @Test
+    void skippedTableDoesNotLeaveDestructivePartialOutput() throws Exception {
+        installPlugin((connection, request) -> "CREATE TABLE " + request.getTableName() + " (id INT)");
+        RecordingContext context = new RecordingContext();
+        DefaultDBManager manager = new DefaultDBManager() {
+            @Override
+            public void exportTableData(Connection connection, String databaseName, String schemaName,
+                    String tableName, TaskExecutionContext executionContext) {
+                executionContext.write("INSERT INTO " + tableName + " VALUES (1);");
+                if ("bad_table".equals(tableName)) {
+                    throw new IllegalStateException("Database read failed after the first exported row");
+                }
+            }
+        };
+
+        manager.exportDatabase(null, "app", null, true, context.proxy());
+
+        assertEquals(1, context.warnEvents.size());
+        assertTrue(context.writes.stream().anyMatch(write -> write.contains("good_table")));
+        assertFalse(context.writes.stream().anyMatch(write -> write.contains("bad_table")),
+                "Skipped table remains in a successful export:\n" + String.join("\n", context.writes));
+    }
+
+    @Test
+    void publishingFailureAbortsDatabaseExport() {
+        installPlugin((connection, request) -> "CREATE TABLE " + request.getTableName() + " (id INT)");
+        RecordingContext context = new RecordingContext();
+        IllegalStateException failure = new IllegalStateException("Could not write task artifact");
+        context.writer = content -> {
+            if (content.contains("CREATE TABLE")) {
+                throw failure;
+            }
+            context.writes.add(content);
+        };
+
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> new DefaultDBManager().exportDatabase(null, "app", null, false, context.proxy())));
+        assertTrue(context.warnEvents.isEmpty());
+        assertFalse(context.writes.stream().anyMatch(write -> write.contains("good_table")));
+    }
+
+    @Test
+    void wrappedStagingIoFailureIsNotTreatedAsASkippedTable() {
+        installPlugin((connection, request) -> "CREATE TABLE " + request.getTableName() + " (id INT)");
+        RecordingContext context = new RecordingContext();
+        DefaultDBManager manager = new DefaultDBManager() {
+            @Override
+            public void exportTableData(Connection connection, String databaseName, String schemaName,
+                    String tableName, TaskExecutionContext executionContext) {
+                try {
+                    ((TableExportContext) executionContext).close();
+                    executionContext.write("x".repeat(16384));
+                } catch (IOException failure) {
+                    throw new AssertionError(failure);
+                } catch (UncheckedIOException failure) {
+                    // The JDBC streaming executor wraps consumer failures in RuntimeException.
+                    throw new RuntimeException(failure);
+                }
+            }
+        };
+
+        assertThrows(UncheckedIOException.class,
+                () -> manager.exportDatabase(null, "app", null, true, context.proxy()));
+        assertTrue(context.warnEvents.isEmpty());
+    }
+
+    @Test
+    void successfulTablePreservesLargeUnicodeAndNewlineContent() throws Exception {
+        installPlugin((connection, request) -> "CREATE TABLE " + request.getTableName() + " (value TEXT)");
+        String content = "INSERT INTO test VALUES ('" + "中文😀\r\nsecond line\n".repeat(5000) + "');";
+        RecordingContext context = new RecordingContext();
+        DefaultDBManager manager = new DefaultDBManager() {
+            @Override
+            public void exportTableData(Connection connection, String databaseName, String schemaName,
+                    String tableName, TaskExecutionContext executionContext) {
+                executionContext.write(content);
+                executionContext.write("");
+            }
+        };
+
+        manager.exportDatabase(null, "app", null, true, context.proxy());
+
+        assertEquals(2, context.writes.stream().filter(content::equals).count());
+        assertEquals(2, context.writes.stream().filter(String::isEmpty).count());
+        assertTrue(context.warnEvents.isEmpty());
+    }
+
     private interface TableDdlBehavior {
         String tableDDL(Connection connection, TableMetadataRequest request);
     }
@@ -125,6 +215,7 @@ class DefaultDBManagerDatabaseExportToleranceTest {
     private static final class RecordingContext {
         private final List<WarnEvent> warnEvents = new ArrayList<>();
         private final List<String> writes = new ArrayList<>();
+        private Consumer<String> writer = writes::add;
 
         private TaskExecutionContext proxy() {
             return (TaskExecutionContext) Proxy.newProxyInstance(
@@ -138,7 +229,7 @@ class DefaultDBManagerDatabaseExportToleranceTest {
                                         ? (Map<String, Object>) args[2] : Map.of();
                                 warnEvents.add(new WarnEvent((String) args[0], (String) args[1], details));
                             }
-                            case "write" -> writes.add((String) args[0]);
+                            case "write" -> writer.accept((String) args[0]);
                             default -> {
                             }
                         }

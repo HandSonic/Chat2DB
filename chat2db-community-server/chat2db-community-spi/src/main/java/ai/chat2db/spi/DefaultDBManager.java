@@ -1,5 +1,7 @@
 package ai.chat2db.spi;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.sql.Connection;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -278,15 +280,23 @@ public class DefaultDBManager implements IDbManager {
         List<Table> tables = Chat2DBContext.getDbMetaData().tables(connection, new TablesRequest(databaseName, schemaName, null));
         for (Table table : tables) {
             String tableName = table.getName();
-            try {
-                exportTable(connection, databaseName, schemaName, tableName, containData, context);
-            } catch (TaskCancelledException cancellation) {
-                throw cancellation;
-            } catch (Exception failure) {
-                log.warn("Skip table '{}' during database export: {}", tableName, failure.getMessage());
-                context.logWarn(TaskEventCode.OBJECT_SKIPPED.name(),
-                        String.format("Skipped table '%s' during database export: %s", tableName, failure.getMessage()),
-                        Map.of(TaskConstants.TABLE_NAME_DETAIL_KEY, tableName));
+            try (TableExportContext tableContext = new TableExportContext(context)) {
+                try {
+                    exportTable(connection, databaseName, schemaName, tableName, containData, tableContext);
+                } catch (TaskCancelledException | UncheckedIOException failure) {
+                    throw failure;
+                } catch (Exception failure) {
+                    tableContext.rethrowWriteFailure();
+                    context.checkCancelled();
+                    log.warn("Skip table '{}' during database export: {}", tableName, failure.getMessage());
+                    context.logWarn(TaskEventCode.OBJECT_SKIPPED.name(),
+                            String.format("Skipped table '%s' during database export: %s", tableName, failure.getMessage()),
+                            Map.of(TaskConstants.TABLE_NAME_DETAIL_KEY, tableName));
+                    continue;
+                }
+                tableContext.publish();
+            } catch (IOException failure) {
+                throw new UncheckedIOException("Could not stage table export", failure);
             }
         }
         if (foreignKeyChecks) {

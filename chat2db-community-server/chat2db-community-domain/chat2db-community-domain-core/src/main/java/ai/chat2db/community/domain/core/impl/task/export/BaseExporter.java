@@ -28,8 +28,6 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashSet;
-import java.util.Set;
 import java.nio.file.Files;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -99,7 +97,6 @@ public abstract class BaseExporter implements IExportStrategy {
         File temporaryDirectory = Files.createTempDirectory(parent.toPath(), ".task-export-").toFile();
         int n = spec.getTableNames().size();
         List<File> intermediateFiles = new ArrayList<>(n);
-        Set<String> usedFileBaseNames = new HashSet<>();
         try {
             for (int i = 0; i < n; i++) {
                 context.checkCancelled();
@@ -107,8 +104,7 @@ public abstract class BaseExporter implements IExportStrategy {
                 if (StringUtils.isEmpty(tableName)) {
                     throw new IllegalArgumentException("tableName should not be null or empty");
                 }
-                String safeTableName = uniqueFileBaseName(new File(tableName).getName(), usedFileBaseNames);
-                File file = new File(temporaryDirectory, safeTableName + suffix);
+                File file = uniqueTableFile(temporaryDirectory, tableName);
                 intermediateFiles.add(file);
                 logTableEvent(context, TaskEventCode.TABLE_EXPORT_STARTED.name(),
                         tableProgressMessage("Exporting table", tableName, i, n), tableName, i, n);
@@ -152,20 +148,14 @@ public abstract class BaseExporter implements IExportStrategy {
         }
     }
 
-    /**
-     * Distinct table names can sanitize to the same path-safe base name (for
-     * example "db1/users" and "db2/users" both become "users"), which would
-     * make every intermediate file overwrite the previous one and collapse
-     * the zip into duplicate entries. Append a sequence suffix on collision.
-     */
-    private static String uniqueFileBaseName(String baseName, Set<String> usedBaseNames) {
-        String candidate = baseName;
-        int sequence = 2;
-        while (!usedBaseNames.add(candidate)) {
-            candidate = baseName + "-" + sequence;
-            sequence++;
+    private File uniqueTableFile(File directory, String tableName) {
+        String baseName = new File(tableName).getName();
+        File file = new File(directory, baseName + suffix);
+        // Previous tables have finished writing, so this also detects filesystem aliases.
+        for (int sequence = 2; file.exists(); sequence++) {
+            file = new File(directory, baseName + "-" + sequence + suffix);
         }
-        return candidate;
+        return file;
     }
 
     protected String getQuerySql(ExportTaskSpec spec, String tableName) {
