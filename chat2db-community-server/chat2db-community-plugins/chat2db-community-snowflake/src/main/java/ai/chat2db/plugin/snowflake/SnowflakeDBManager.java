@@ -34,46 +34,24 @@ public class SnowflakeDBManager extends DefaultDBManager implements IDbManager {
 
     static List<KeyValue> prepareExtendInfo(ConnectInfo connectInfo) {
         List<KeyValue> configuredExtendInfo = connectInfo.getExtendInfo();
-        // Preserve the same DriverConfig fallback that ConnectInfo.getExtendMap() uses before adding Snowflake values.
         if ((configuredExtendInfo == null || configuredExtendInfo.isEmpty()) && connectInfo.getDriverConfig() != null) {
             configuredExtendInfo = connectInfo.getDriverConfig().getExtendInfo();
         }
         List<KeyValue> extendInfo = configuredExtendInfo == null
                 ? new ArrayList<>()
                 : new ArrayList<>(configuredExtendInfo);
-        replaceManagedContextProperties(extendInfo, connectInfo);
+        replaceProperty(extendInfo, DATABASE_PROPERTY, connectInfo.getDatabaseName());
+        replaceProperty(extendInfo, SCHEMA_PROPERTY, connectInfo.getSchemaName());
         replaceProperty(extendInfo, QUERY_RESULT_FORMAT_PROPERTY, QUERY_RESULT_FORMAT_JSON);
         return extendInfo;
     }
 
-    // `db` and `schema` are managed keys owned by the connection form's databaseName/schemaName:
-    // they are always dropped (including manually added entries) before the current value is
-    // written back, so clearing a field cannot keep stale context. Configure the Snowflake
-    // database/schema through the connection fields, not through extendInfo.
-    private static void replaceManagedContextProperties(List<KeyValue> extendInfo, ConnectInfo connectInfo) {
-        removeProperty(extendInfo, DATABASE_PROPERTY);
-        removeProperty(extendInfo, SCHEMA_PROPERTY);
-        addPropertyIfConfigured(extendInfo, DATABASE_PROPERTY, connectInfo.getDatabaseName());
-        addPropertyIfConfigured(extendInfo, SCHEMA_PROPERTY, connectInfo.getSchemaName());
-    }
-
-    private static void addPropertyIfConfigured(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
-        if (StringUtils.isNotBlank(propertyValue)) {
-            addProperty(extendInfo, propertyName, propertyValue);
-        }
-    }
-
     private static void replaceProperty(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
-        removeProperty(extendInfo, propertyName);
-        addProperty(extendInfo, propertyName, propertyValue);
-    }
-
-    private static void removeProperty(List<KeyValue> extendInfo, String propertyName) {
         extendInfo.removeIf(keyValue -> keyValue != null
                 && StringUtils.equalsIgnoreCase(propertyName, keyValue.getKey()));
-    }
-
-    private static void addProperty(List<KeyValue> extendInfo, String propertyName, String propertyValue) {
+        if (StringUtils.isBlank(propertyValue)) {
+            return;
+        }
         KeyValue keyValue = new KeyValue();
         keyValue.setKey(propertyName);
         keyValue.setValue(propertyValue);
