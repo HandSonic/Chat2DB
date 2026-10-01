@@ -27,6 +27,7 @@ public class SysEnvironmentServiceImpl implements ISysEnvironmentService {
             .id(3L)
             .name("DEV")
             .shortName("Development Environment")
+            .color("BLUE")
             .build();
 
     @Override
