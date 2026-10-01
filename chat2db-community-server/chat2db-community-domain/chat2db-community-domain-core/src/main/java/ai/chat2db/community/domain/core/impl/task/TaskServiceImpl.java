@@ -135,7 +135,8 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     public void abortUserExit() {
-        localTaskManager.abortUserExit();
+        TaskOwner owner = currentOwner();
+        localTaskManager.abortUserExit(owner.userId(), owner.organizationId());
     }
 
     @Override
