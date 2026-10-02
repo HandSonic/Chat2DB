@@ -4,7 +4,6 @@ import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.community.domain.api.model.metadata.DataType;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
-import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskEventCode;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
 import ai.chat2db.community.domain.api.model.task.TaskStage;
@@ -35,6 +34,7 @@ public abstract class BaseImporter implements IImportStrategy {
                             spec.getTarget().getTableName()));
             context.checkCancelled();
             context.reportProgress(20, TaskStage.READING.name(), "Target table metadata loaded");
+            context.logInfo(TaskEventCode.TARGET_METADATA_LOADED.name(), "Target table metadata loaded");
             context.logInfo(TaskEventCode.FILE_READ_STARTED.name(), "Reading import file");
             doImportData(spec, context, tableColumns);
             context.logInfo(TaskEventCode.FILE_READ_COMPLETED.name(), "Import file read completed");
@@ -42,8 +42,7 @@ public abstract class BaseImporter implements IImportStrategy {
             throw e;
         } catch (Exception e) {
             log.error("Could not import data file", e);
-            throw new TaskExecutionException(TaskErrorCode.IMPORT_FAILED.name(),
-                    "Could not import data file", e);
+            throw ImportTaskErrors.from(e, "import.file.failed");
         }
     }
 
