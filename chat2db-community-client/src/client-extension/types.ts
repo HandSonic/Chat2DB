@@ -58,31 +58,6 @@ export interface ResourceOperationRequest {
 
 export type ResourceOperationCapabilities = Readonly<Record<ResourceOperation, boolean>>;
 
-export interface KnowledgeMentionCandidate {
-  id: number;
-  type: 'KNOWLEDGE_TERM' | 'BUSINESS_LOGIC' | 'SQL_TEMPLATE';
-  key: string;
-  value: string;
-}
-
-export interface KnowledgeMentionRequest {
-  searchKey?: string;
-  inputText?: string;
-  dataSourceId?: number;
-  databaseName?: string;
-  schemaName?: string;
-  pageNo?: number;
-  pageSize?: number;
-}
-
-export interface KnowledgeMentionPage {
-  data: readonly KnowledgeMentionCandidate[];
-  pageNo: number;
-  pageSize: number;
-  total: number;
-  hasNextPage: boolean;
-}
-
 export interface TableMetadataSearchRequest {
   dataSourceId: number;
   searchKey: string;
@@ -124,13 +99,17 @@ export interface ClientExtension {
   mainPage: ClientMainPageExtension;
   settings?: {
     items?: (context: ClientSettingContext) => readonly SettingMenuItem[];
+    /**
+     * React hook used by a product layer to drop settings entries that do not apply to the current
+     * context, the way `useNavigationItems` filters the navigation.
+     */
+    useItems?: (items: readonly SettingMenuItem[]) => readonly SettingMenuItem[];
     about?: ReactNode;
   };
   navigationItems?: readonly ClientNavigationContribution[];
   resourceOperations?: (
     request: ResourceOperationRequest,
   ) => Promise<ResourceOperationCapabilities>;
-  knowledgeMentions?: (request: KnowledgeMentionRequest) => Promise<KnowledgeMentionPage>;
   tableMetadataSearch?: (request: TableMetadataSearchRequest) => Promise<readonly TableMetadataSearchResult[]>;
   dashboardActions?: (context: DashboardActionContext) => ReactNode;
   openPermissionApplication?: (request: PermissionApplicationRequest) => void;

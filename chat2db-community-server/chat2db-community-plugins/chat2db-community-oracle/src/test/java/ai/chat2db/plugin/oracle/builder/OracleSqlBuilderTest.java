@@ -11,6 +11,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OracleSqlBuilderTest {
 
     @Test
+    void shouldWrapPlainStatementWithExplainPlan() {
+        assertEquals("EXPLAIN PLAN FOR SELECT * FROM EMPLOYEE",
+                new OracleSqlBuilder().buildExplain("SELECT * FROM EMPLOYEE"));
+    }
+
+    @Test
+    void shouldNotWrapStatementThatAlreadyExplains() {
+        assertEquals("EXPLAIN PLAN FOR SELECT * FROM EMPLOYEE",
+                new OracleSqlBuilder().buildExplain("EXPLAIN PLAN FOR SELECT * FROM EMPLOYEE"));
+    }
+
+    @Test
     void shouldLimitFirstPageWithoutExposingSyntheticRowId() {
         OracleSqlBuilder builder = new OracleSqlBuilder();
 
@@ -39,6 +51,23 @@ class OracleSqlBuilderTest {
         assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM CAHT2DB_AUTO_ROW_ID FROM ( \n"
                         + "SELECT ID, NAME FROM EMPLOYEE\n"
                         + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE CAHT2DB_AUTO_ROW_ID > 10",
+                sql);
+    }
+
+    @Test
+    void shouldKeepPaginationEndBeyondIntegerRange() {
+        OracleSqlBuilder builder = new OracleSqlBuilder();
+
+        String sql = builder.buildPageLimit(PageLimitRequest.builder()
+                .sql("SELECT ID, NAME FROM EMPLOYEE")
+                .offset(2_147_483_600)
+                .pageNo(2)
+                .pageSize(100)
+                .build());
+
+        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM CAHT2DB_AUTO_ROW_ID FROM ( \n"
+                        + "SELECT ID, NAME FROM EMPLOYEE\n"
+                        + " ) TMP_PAGE WHERE ROWNUM <= 2147483700 ) WHERE CAHT2DB_AUTO_ROW_ID > 2147483600",
                 sql);
     }
 

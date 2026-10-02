@@ -4,6 +4,7 @@ import ai.chat2db.spi.constant.SQLConstants;
 
 import ai.chat2db.plugin.oracle.OracleSqlGuards;
 import ai.chat2db.plugin.oracle.identifier.OracleIdentifierProcessor;
+import ai.chat2db.plugin.oracle.parser.OracleExplainParser;
 import ai.chat2db.plugin.oracle.enums.type.OracleColumnTypeEnum;
 import ai.chat2db.plugin.oracle.enums.type.OracleIndexTypeEnum;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
@@ -229,7 +230,7 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         int offset = request.getOffset();
         int pageSize = request.getPageSize();
         int startRow = offset;
-        int endRow = offset + pageSize;
+        long endRow = (long) offset + pageSize;
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
         sqlBuilder.append(SQL_SELECT);
         if (startRow > 0) {
@@ -384,6 +385,8 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
 
     @Override
     public String buildExplain(String sql) {
-        return SQL_EXPLAIN_PLAN_FOR + sql;
+        // The statement is already an explain command when the editor holds one
+        // and its plan is requested again.
+        return OracleExplainParser.isExplainPlan(sql) ? sql : SQL_EXPLAIN_PLAN_FOR + sql;
     }
 }
