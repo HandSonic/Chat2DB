@@ -1,9 +1,23 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
 import { normalizeTreeNodeLoadResult, treeConfig } from '@/blocks/NewTree/treeConfig';
-import { DatabaseTypeCode } from '@/constants';
+import { DatabaseTypeCode, TreeNodeType } from '@/constants';
 import { databaseMap } from '@/constants/database';
+import { useTreeStore } from '@/store/tree';
 import { getDatabaseSupport } from '@/utils/database';
-import { createSelectDatabaseRequestCoordinator } from './selectDatabaseRequest';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  activateSelectDatabaseRequests,
+  createSelectDatabaseRequestLifecycle,
+  disposeSelectDatabaseRequests,
+  hasApplicableDatabaseNameChange,
+  invalidateDatabaseOptionRequests,
+  invalidateDataSourceOptionRequests,
+  normalizeDataSourceOptions,
+  normalizeDatabaseOptions,
+  normalizeSchemaOptions,
+  runDatabaseOptionRequest,
+  runSchemaOptionRequest,
+  SelectDatabaseOption,
+} from './selectDatabaseRequestLifecycle';
 
 export type ISelectDatabase = {
   dataSourceId?: number;
@@ -27,37 +41,26 @@ interface IUseSelectDatabaseProps {
 
 const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
   const { astrictDatabaseType } = props;
-  const [dataSourceList, setDataSourceList] = useState<
-    | {
-        value: number;
-        label: string;
-        databaseType: DatabaseTypeCode;
-      }[]
-    | null
-  >([]);
-
-  const [databaseList, setDatabaseList] = useState<
-    | {
-        value: string;
-        label: string;
-      }[]
-    | null
-  >([]);
-
-  const [schemaList, setSchemaList] = useState<
-    | {
-        value: string;
-        label: string;
-      }[]
-    | null
-  >([]);
-
+  const treeDataSourceList = useTreeStore((state) => state.dataSourceList);
+  const dataSourceList = useMemo(
+    () => (treeDataSourceList === null ? null : normalizeDataSourceOptions(treeDataSourceList)),
+    [treeDataSourceList],
+  );
+  const [databaseList, setDatabaseList] = useState<SelectDatabaseOption[] | null>([]);
+  const [schemaList, setSchemaList] = useState<SelectDatabaseOption[] | null>([]);
   const [selectDatabase, setSelectDatabase] = useState<ISelectDatabase>();
-  const requestCoordinatorRef = useRef(createSelectDatabaseRequestCoordinator());
+  const requestLifecycleRef = useRef(createSelectDatabaseRequestLifecycle());
+  const requestLifecycle = requestLifecycleRef.current;
 
   useEffect(() => {
-    requestCoordinatorRef.current.invalidate('database');
-    requestCoordinatorRef.current.invalidate('schema');
+    activateSelectDatabaseRequests(requestLifecycle);
+    return () => {
+      disposeSelectDatabaseRequests(requestLifecycle);
+    };
+  }, [requestLifecycle]);
+
+  useEffect(() => {
+    invalidateDataSourceOptionRequests(requestLifecycle);
     setDatabaseList([]);
     setSchemaList([]);
 
@@ -74,7 +77,7 @@ const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
       return;
     }
     setSelectDatabase(null);
-  }, [astrictDatabaseType]);
+  }, [astrictDatabaseType, requestLifecycle]);
 
   const astrictDataSourceList = useMemo(() => {
     if (astrictDatabaseType) {
@@ -83,125 +86,99 @@ const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
     return dataSourceList;
   }, [dataSourceList, astrictDatabaseType]);
 
-  useEffect(() => {
-    getDataSourceList();
-    return () => {
-      requestCoordinatorRef.current.invalidateAll();
-    };
-  }, []);
-
-  const getDataSourceList = () => {
-    requestCoordinatorRef.current.invalidate('database');
-    requestCoordinatorRef.current.invalidate('schema');
-    setDataSourceList(null);
-    setDatabaseList([]);
-    setSchemaList([]);
-    void requestCoordinatorRef.current.run(
-      'dataSource',
-      () =>
-        treeConfig['dataSources'].getChildren!({
-          refresh: true,
-        }),
-      (res) => {
-        const _dataSourceList = normalizeTreeNodeLoadResult(res).children.map((item) => {
-          return {
-            value: item.extraParams.dataSourceId!,
-            label: item.originalTitle,
-            databaseType: item.extraParams.databaseType!,
-          };
-        });
-        setDataSourceList(_dataSourceList);
-      },
-      () => setDataSourceList([]),
-    );
-  };
-
   const getDatabaseList = (params: { dataSourceId: number; databaseType: DatabaseTypeCode }) => {
+    invalidateDatabaseOptionRequests(requestLifecycle);
     setDatabaseList(null);
     setSchemaList([]);
-    void requestCoordinatorRef.current.run(
-      'database',
+
+    const getChildren = treeConfig[TreeNodeType.DATA_SOURCE].getChildren;
+    if (!getChildren) {
+      setDatabaseList([]);
+      return;
+    }
+
+    void runDatabaseOptionRequest(
+      requestLifecycle,
       () =>
-        treeConfig['dataSource'].getChildren!({
+        getChildren({
           ...params,
           refresh: true,
         }),
-      (res) => {
-        const _databaseList = normalizeTreeNodeLoadResult(res).children.map((item) => {
-          return {
-            value: item.extraParams.databaseName!,
-            label: item.originalTitle,
-          };
-        });
-        setDatabaseList(_databaseList);
-      },
+      (res) => setDatabaseList(normalizeDatabaseOptions(normalizeTreeNodeLoadResult(res).children)),
       () => setDatabaseList([]),
     );
   };
 
-  const getSchemaList = (params) => {
+  const getSchemaList = (params: NonNullable<ISelectDatabase>) => {
     setSchemaList(null);
-    void requestCoordinatorRef.current.run(
-      'schema',
+
+    const getChildren = treeConfig[TreeNodeType.DATABASE].getChildren;
+    if (!getChildren) {
+      setSchemaList([]);
+      return;
+    }
+
+    void runSchemaOptionRequest(
+      requestLifecycle,
       () =>
-        treeConfig['database'].getChildren!({
+        getChildren({
           ...params,
           refresh: true,
         }),
-      (res) => {
-        const _schemaList = normalizeTreeNodeLoadResult(res).children.map((item) => {
-          return {
-            value: item.extraParams.schemaName!,
-            label: item.originalTitle,
-          };
-        });
-
-        setSchemaList(_schemaList);
-      },
+      (res) => setSchemaList(normalizeSchemaOptions(normalizeTreeNodeLoadResult(res).children)),
       () => setSchemaList([]),
     );
   };
 
   const isSelectDone = (params: ISelectDatabase) => {
-    let flag = true;
-    if (params?.supportDatabase) {
-      if (!params.databaseName) {
-        flag = false;
-      }
+    if (params?.supportDatabase && !params.databaseName) {
+      return false;
     }
-
-    if (params?.supportSchema) {
-      if (!params.schemaName) {
-        flag = false;
-      }
+    if (params?.supportSchema && !params.schemaName) {
+      return false;
     }
+    return true;
+  };
 
-    return flag;
+  const resetSelectDatabase = (): ISelectDatabase => {
+    if (!astrictDatabaseType) {
+      return null;
+    }
+    const { supportSchema, supportDatabase } = databaseMap[astrictDatabaseType];
+    return {
+      databaseType: undefined,
+      supportSchema,
+      supportDatabase,
+      selectDone: false,
+    };
   };
 
   const onChangeSelectDatabase = (changedValues: IChangedValues) => {
-    let newSelectDatabase: any = {
+    let newSelectDatabase: ISelectDatabase = {
       ...selectDatabase,
     };
 
     if ('dataSourceId' in changedValues) {
-      requestCoordinatorRef.current.invalidate('database');
-      requestCoordinatorRef.current.invalidate('schema');
-      const dataSource = astrictDataSourceList?.find((item) => item.value === changedValues?.dataSourceId);
+      invalidateDataSourceOptionRequests(requestLifecycle);
+      setDatabaseList([]);
+      setSchemaList([]);
+      const dataSource = astrictDataSourceList?.find((item) => item.value === changedValues.dataSourceId);
 
       if (!dataSource) {
+        if (changedValues.dataSourceId !== undefined) {
+          return;
+        }
+        setSelectDatabase(resetSelectDatabase());
         return;
       }
 
       const databaseType = dataSource.databaseType;
-
       const { supportSchema, supportDatabase } = getDatabaseSupport(databaseType);
-
       newSelectDatabase = {
         dataSourceId: dataSource.value,
         databaseName: undefined,
         schemaName: undefined,
-        selectDone: false,
+        selectDone: !supportDatabase && !supportSchema,
         databaseType,
         supportSchema,
         supportDatabase,
@@ -210,27 +187,25 @@ const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
       if (supportDatabase) {
         getDatabaseList({
           dataSourceId: dataSource.value,
-          databaseType: dataSource.databaseType,
+          databaseType,
         });
-      } else {
-        getSchemaList({
-          dataSourceId: dataSource.value,
-          databaseType: dataSource.databaseType,
-        });
+      } else if (supportSchema) {
+        getSchemaList(newSelectDatabase);
       }
     }
 
-    if ('databaseName' in changedValues) {
+    if (hasApplicableDatabaseNameChange(changedValues, newSelectDatabase?.supportDatabase)) {
+      invalidateDatabaseOptionRequests(requestLifecycle);
+      setSchemaList([]);
       newSelectDatabase = {
         ...newSelectDatabase,
         schemaName: undefined,
         databaseName: changedValues.databaseName,
       };
-      // Do you choose to complete
-      if (isSelectDone(newSelectDatabase)) {
-        newSelectDatabase.selectDone = true;
+      newSelectDatabase.selectDone = isSelectDone(newSelectDatabase);
+      if (changedValues.databaseName && newSelectDatabase.supportSchema) {
+        getSchemaList(newSelectDatabase);
       }
-      getSchemaList(newSelectDatabase);
     }
 
     if ('schemaName' in changedValues) {
@@ -238,15 +213,18 @@ const useSelectDatabase = (props: IUseSelectDatabaseProps) => {
         ...newSelectDatabase,
         schemaName: changedValues.schemaName,
       };
-      // Do you choose to complete
-      if (isSelectDone(newSelectDatabase)) {
-        newSelectDatabase.selectDone = true;
-      }
+      newSelectDatabase.selectDone = isSelectDone(newSelectDatabase);
     }
     setSelectDatabase(newSelectDatabase);
   };
 
-  return { dataSourceList: astrictDataSourceList, databaseList, schemaList, selectDatabase, onChangeSelectDatabase };
+  return {
+    dataSourceList: astrictDataSourceList,
+    databaseList,
+    schemaList,
+    selectDatabase,
+    onChangeSelectDatabase,
+  };
 };
 
 export default useSelectDatabase;
