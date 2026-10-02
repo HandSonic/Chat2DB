@@ -10,6 +10,7 @@ import {
   rejectTrackedCommandLineRequest,
   settleTrackedCommandLineResponse,
 } from './requestSettlement';
+import { redactForLog } from './redactForLog';
 
 export interface ICommandLineRequest {
   requestUrl: string;
@@ -88,7 +89,7 @@ export const commandLineRequest = <R>(data: ICommandLineRequest, options: IOptio
       }),
     );
     if (__PRINT_LOGS__ || window._PRINT_LOGS) {
-      console.log('%cCHAT2DB_IPC_REQUEST', 'color: #00008B', JSON.stringify(res));
+      console.log('%cCHAT2DB_IPC_REQUEST', 'color: #00008B', redactForLog(res));
     }
     // Prepare for a cancellation request
     options?.restParams?.signal?.({ id, reject });
@@ -145,7 +146,7 @@ export const commandLineRequest = <R>(data: ICommandLineRequest, options: IOptio
 export const pushMessageFlow = (_data) => {
   const data = JSON.parse(_data);
   if (__PRINT_LOGS__ || window._PRINT_LOGS) {
-    console.log('%cCHAT2DB_IPC_RESPONSE', 'color: #B8860B', new Date().toISOString(), data);
+    console.log('%cCHAT2DB_IPC_RESPONSE', 'color: #B8860B', new Date().toISOString(), redactForLog(data));
   }
   const { setServiceStatus } = useGlobalStore.getState();
 
