@@ -84,6 +84,7 @@ import java.util.*;
 import java.util.List;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -107,6 +108,7 @@ public class MainJFrame extends JFrame {
     private Component browserUI_;
     private JCefAppConfig jcefAppConfig_;
     private volatile boolean windowFullScreen = false;
+    private volatile boolean showWindowOnStartup = true;
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<Pair<String, String>, IJcefActionHandler> actionHandlers = new HashMap<>();
     private static final String appName;
@@ -165,23 +167,24 @@ public class MainJFrame extends JFrame {
             }
         }
     }
-    private static void handleNewUri(String uriString) {
-        SwingUtilities.invokeLater(() -> {
-            if (JcefContext.getInstance().getFrame_() != null) {
-                if (uriString != null) {
-                    JcefContext.getInstance().getFrame_().processUri(UriUtil.processInput(uriString));
-                    JcefContext.getInstance().getFrame_().toFront();
-                    JcefContext.getInstance().getFrame_().requestFocus();
-                }
-            } else {
-                log.error("Error: application is not initialized; cannot process URI: {}", uriString);
+    public void handleLaunchRequest(String argument) {
+        if (StringUtils.isNotEmpty(argument)) {
+            try {
+                processUri(UriUtil.processInput(argument));
+            } catch (RuntimeException exception) {
+                log.error("Cannot handle desktop launch argument", exception);
             }
-        });
+        }
+        setVisible(true);
+        setExtendedState(getExtendedState() & ~Frame.ICONIFIED);
+        toFront();
+        requestFocus();
     }
     public void start(String[] args) {
-        if (!OS.isMacintosh() && !SingleInstanceUtil.registerInstance(args, MainJFrame::handleNewUri)) {
-            System.exit(0);
-        }
+        start(args, true);
+    }
+    public void start(String[] args, boolean showWindowOnStartup) {
+        this.showWindowOnStartup = showWindowOnStartup;
         UrlProtocolRegistrarUtil.register();
         initPreProcessor();
         initializeCefApp(args);
@@ -660,7 +663,7 @@ public class MainJFrame extends JFrame {
                                    boolean persistent, CefQueryCallback callback) {
                 CancellableCefQueryCallback guardedCallback = new CancellableCefQueryCallback(callback);
                 activeQueryCallbacks.put(queryId, guardedCallback);
-                executor.submit(() -> {
+                FutureTask<Void> worker = new FutureTask<>(() -> {
                     String action = "unKnow Action";
                     ConsoleMessage wsMessage = new ConsoleMessage();
                     ConsoleResult wsResult;
@@ -706,7 +709,15 @@ public class MainJFrame extends JFrame {
                     } finally {
                         activeQueryCallbacks.remove(queryId, guardedCallback);
                     }
-                });
+                }, null);
+                guardedCallback.attachWorker(worker);
+                try {
+                    executor.execute(worker);
+                } catch (RuntimeException exception) {
+                    activeQueryCallbacks.remove(queryId, guardedCallback);
+                    guardedCallback.cancel();
+                    throw exception;
+                }
                 return true;
             }
             @Override
@@ -797,17 +808,27 @@ public class MainJFrame extends JFrame {
         } else {
             this.splitPane.setBackground(ThemeUtil.getThemeColor());
         }
-        this.splitPane.addMouseMotionListener(new MouseAdapter() {
-            @Override
-            public void mouseMoved(MouseEvent e) {
-                if (Math.abs(e.getX() - splitPane.getDividerLocation()) < 3) {
-                    splitPane.setCursor(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR));
-                } else {
-                    splitPane.setCursor(Cursor.getDefaultCursor());
+        if (CursorHandler.isNativeCursorOverrideEnabled()) {
+            this.splitPane.addMouseMotionListener(new MouseAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    if (Math.abs(e.getX() - splitPane.getDividerLocation()) < 3) {
+                        splitPane.setCursor(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR));
+                    } else {
+                        splitPane.setCursor(Cursor.getDefaultCursor());
+                    }
                 }
-            }
-        });
+            });
+        }
+        createBrowserImmediatelyForHiddenStartup(browser_, showWindowOnStartup);
         log.info("4. CefBrowser and UI component creation completed.");
+    }
+
+    static void createBrowserImmediatelyForHiddenStartup(CefBrowser browser, boolean showWindowOnStartup) {
+        if (!showWindowOnStartup) {
+            // Windowed JCEF normally creates the browser when Swing makes its component displayable.
+            browser.createImmediately();
+        }
     }
 
     private static String resolveWebFrontendUrl() {
@@ -847,7 +868,9 @@ public class MainJFrame extends JFrame {
             public void windowLostFocus(WindowEvent e) {
             }
         });
-        this.setVisible(true);
+        if (showWindowOnStartup) {
+            this.setVisible(true);
+        }
         writeDesktopReadyMarker();
         log.info("5. JFrame initialization completed.");
     }
