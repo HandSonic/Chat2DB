@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import { DashboardStore } from '../../store';
 import { CommonState } from './initialState';
+import { runDashboardRefresh } from './refreshCurrentDashboard';
 import {
   createDashboard,
   deleteDashboard,
@@ -12,12 +13,15 @@ import {
 import i18n from '@/i18n';
 import { staticMessage } from '@chat2db/ui';
 import { filterSchemaByChartIds } from '@/utils/dashboard';
+import { DashboardDetailRequestOwner } from './dashboardDetailRequest';
+
+const dashboardDetailRequestOwner = new DashboardDetailRequestOwner();
 
 export interface CommonAction {
   /** Set up Dashboard list */
   setDashboardList: (dashboardList: CommonState['dashboardList']) => void;
   /** Request Dashboard list */
-  queryDashboardList: (dashboardId?: number) => void;
+  queryDashboardList: (dashboardId?: number) => Promise<void>;
   /** Set the current Dashboard */
   setCurrentDashboard: (dashboard: CommonState['currentDashboard']) => void;
   /** Update current Dashboard */
@@ -59,21 +63,27 @@ export const createCommonAction: StateCreator<DashboardStore, [['zustand/devtool
     }
   },
   queryDashboardList: async (dashboardId) => {
-    const pageParams = get().dashboardListParams;
-    const res = await getDashboardList(pageParams);
-    if (res.data) {
+    const { dashboardListParams: pageParams, dashboardListStatus } = get();
+    if (dashboardListStatus === 'loading' || !pageParams.hasNextPage) return;
+    set({ dashboardListStatus: 'loading' });
+    try {
+      const res = await getDashboardList(pageParams);
       set({
         dashboardList: [...get().dashboardList, ...res.data],
         dashboardListParams: { ...pageParams, pageNo: pageParams.pageNo + 1, hasNextPage: !!res.hasNextPage },
+        dashboardListStatus: 'success',
       });
 
       const { currentDashboard } = get();
       if (!currentDashboard && !dashboardId && res.data?.[0]?.id) {
         get().getDashboardById(res.data?.[0]?.id);
       }
+    } catch {
+      set({ dashboardListStatus: 'error' });
     }
   },
   setCurrentDashboard: async (dashboard) => {
+    dashboardDetailRequestOwner.invalidate();
     set({ currentDashboard: dashboard });
   },
   updateDashboard: (dashboard) => {
@@ -127,22 +137,13 @@ export const createCommonAction: StateCreator<DashboardStore, [['zustand/devtool
     //   history.pushState(null, '', `/dashboard/${id}`);
     // }
     // set({ currentDashboard: null });
-    return getDashboardById({ id }).then((res) => {
-      set({ currentDashboard: res });
-    });
+    return dashboardDetailRequestOwner.run(
+      () => getDashboardById({ id }),
+      (dashboard) => set({ currentDashboard: dashboard }),
+    );
   },
   refreshCurrentDashboard: () => {
     const currentDashboardId = get().currentDashboard?.id;
-    return new Promise((resolve) => {
-      if (!currentDashboardId) {
-        resolve(false);
-        return;
-      }
-      get()
-        .getDashboardById(currentDashboardId)
-        .then(() => {
-          resolve(true);
-        });
-    });
+    return runDashboardRefresh(currentDashboardId, (dashboardId) => get().getDashboardById(dashboardId));
   },
 });
