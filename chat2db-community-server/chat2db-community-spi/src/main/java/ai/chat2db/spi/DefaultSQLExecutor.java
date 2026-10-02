@@ -1316,6 +1316,31 @@ public class DefaultSQLExecutor implements ICommandExecutor {
         return executeResult;
     }
 
+    /**
+     * Publishes an already-materialized query result on the streaming path.
+     * Sends an empty {@code dataList} with {@code resultStarted}, then the real
+     * rows via {@code rows}, matching {@link #streamQueryExecuteResponse}.
+     * The caller ({@link #executeStreaming}) remains responsible for a single
+     * {@code resultFinished}.
+     */
+    protected void publishMaterializedQueryResult(ExecuteResponse response,
+                                                  ISqlExecutionResultConsumer consumer,
+                                                  AtomicInteger streamResultSequence,
+                                                  int statementSequence,
+                                                  int pageNo,
+                                                  int pageSize) {
+        response.setStatementSequence(statementSequence);
+        setStreamResultId(response, streamResultSequence.incrementAndGet());
+        addRowNumber(response, pageNo, pageSize);
+        List<List<ResultCell>> numberedRows = response.getDataList() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(response.getDataList());
+        response.setDataList(new ArrayList<>());
+        consumer.resultStarted(response);
+        consumer.rows(response, numberedRows);
+        response.setDataList(numberedRows);
+    }
+
     private void setStreamResultId(ExecuteResponse executeResult, int streamResultId) {
         Map<String, Object> extra = executeResult.getExtra();
         if (extra == null) {
@@ -1784,6 +1809,35 @@ public class DefaultSQLExecutor implements ICommandExecutor {
         try (ResultSet resultSet = connection.getMetaData().getPrimaryKeys(databaseName, schemaName, tableName)) {
             return ResultSetUtils.toObjectList(resultSet, PrimaryKey.class);
         } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Executes a JDBC batch using the connection's existing transaction settings. */
+    public void executeJdbcBatchInsert(Connection connection, List<String> sqls,
+                                      ISqlExecutionStatementListener statementListener,
+                                      Runnable cancellationChecker) {
+        if (sqls == null || sqls.isEmpty()) {
+            return;
+        }
+        checkTaskCancellation(cancellationChecker);
+        try {
+            Statement statement = connection.createStatement();
+            try {
+                try (statement) {
+                    notifyStatementCreated(statementListener, statement);
+                    checkTaskCancellation(cancellationChecker);
+                    for (String sql : sqls) {
+                        statement.addBatch(sql);
+                    }
+                    statement.executeBatch();
+                    checkTaskCancellation(cancellationChecker);
+                }
+            } finally {
+                notifyStatementClosed(statementListener, statement);
+            }
+        } catch (SQLException e) {
+            checkTaskCancellation(cancellationChecker);
             throw new RuntimeException(e);
         }
     }

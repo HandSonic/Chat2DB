@@ -9,7 +9,7 @@ import { EditorSetValueType, EditorType, SQLOptType } from '../../type';
 import { staticMessage } from '@chat2db/ui';
 import { Modal } from 'antd';
 import { IConsoleReturnExecuteSql, IBoundInfo, TreeNodeData } from '@/typings';
-import { saveFileToDesktop, updateFileContent } from '@/utils/file';
+import { saveFileToDesktop, saveLocalFileContent, waitForLocalFileSave } from '@/utils/file';
 import i18n from '@/i18n';
 import { useSaveEditorData } from '@/components/SQLEditor/hooks/useSaveEditorData';
 import { formatSql } from '../../helper/utils';
@@ -20,10 +20,11 @@ import { ChatSourceType, QuestionType } from '@/constants/chat';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useAIStore } from '@/store/ai';
 import sqlService, { type IRoutineMigrationParams } from '@/service/sql';
-import { isRoutineOperationSupportedDatabaseType, OperationColumn, TreeNodeType, WorkspaceTabType } from '@/constants';
+import { DatabaseCapability, OperationColumn, TreeNodeType, WorkspaceTabType } from '@/constants';
 import { EditorTableIdentifier } from '../../helper/tableIdentifier';
 import { useTreeStore } from '@/store/tree';
 import { isTemporaryId } from '@/utils';
+import { isDatabaseCapabilitySupported } from '@/utils/databaseJudgments';
 import { readClipboard } from '@/utils/clipboard';
 import executeSql from '@/service/executeSql';
 import { parseClipboardTextToSqlInTokens } from '@/utils/sqlInClipboard';
@@ -55,6 +56,11 @@ import {
   createDataSourceExecutionSnapshot,
   type DataSourceExecutionSnapshot,
 } from '@/service/dataSourceExecutionSnapshot';
+import { runAfterCommittedSqlParserWithSnapshot } from '../../core/sqlParserRequestCoordinator';
+import {
+  createSqlExecutionTargetSnapshot,
+  resolveSqlExecutionTarget,
+} from '../../core/sqlExecutionTargetSnapshot';
 
 export interface SQLExecutionInvocation extends IConsoleReturnExecuteSql {
   executionTarget: DataSourceExecutionSnapshot;
@@ -70,7 +76,7 @@ interface ISQLEditorWithOperationProps {
   active: boolean;
   defaultSQL?: string;
   dbInfo: IBoundInfo;
-  setDBInfo: (dbInfo: IBoundInfo) => void;
+  setDBInfo: (dbInfo: Partial<IBoundInfo>) => void;
 
   sqlFileName?: string;
   workspaceTabsTitle?: string;
@@ -139,9 +145,9 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
   } = props;
   const isReadOnly = !!dbInfo.readOnly;
   const isSupportedRoutineEditor =
-    isRoutineOperationSupportedDatabaseType(dbInfo.databaseType) &&
+    isDatabaseCapabilitySupported(dbInfo.databaseType, DatabaseCapability.ROUTINE_OPERATION) &&
     [WorkspaceTabType.FUNCTION, WorkspaceTabType.PROCEDURE].includes(type as WorkspaceTabType);
-  const { styles } = useStyles();
+  const { styles, theme } = useStyles();
   const [modal, modalContextHolder] = Modal.useModal();
   const [contextMenuInfo, setContextMenuInfo] = useState<IContextMenuInfo>(contextMenuDefaultConfig);
   const [contextTableIdentifier, setContextTableIdentifier] = useState<EditorTableIdentifier | null>(null);
@@ -200,14 +206,19 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
     },
     getSelectedContent: () => sqlEditorRef.current?.getSelectedContent() ?? '',
     getCursorSQL: () => sqlEditorRef.current?.getCursorSQL() ?? '',
-    getCursorCurLineNearestSQL: () => sqlEditorRef.current?.getCursorCurLineNearestSQL() ?? '',
-    handleSQLParser: (sql: string, _dbInfo: IBoundInfo) => sqlEditorRef.current?.handleSQLParser(sql, _dbInfo),
+    getCursorCurLineNearestSQL: (position) => sqlEditorRef.current?.getCursorCurLineNearestSQL(position) ?? '',
+    handleSQLParser: (sql: string, _dbInfo: IBoundInfo) =>
+      sqlEditorRef.current?.handleSQLParser(sql, _dbInfo) ?? Promise.resolve('stale'),
     handleQuickSQLParser: (sql: string, _dbInfo: IBoundInfo) =>
-      sqlEditorRef.current?.handleQuickSQLParser(sql, _dbInfo),
+      sqlEditorRef.current?.handleQuickSQLParser(sql, _dbInfo) ?? Promise.resolve('stale'),
     getTableIdentifierAtPosition: (position) => sqlEditorRef.current?.getTableIdentifierAtPosition(position) ?? null,
     executeSQL: handleExecuteSQL,
     hasUnsavedChangesBeforeClose,
     saveBeforeClose,
+    waitForPendingSave:
+      type === WorkspaceTabType.LocalSQLFile && dbInfo.filePath
+        ? () => waitForLocalFileSave(dbInfo.filePath!)
+        : undefined,
     persistBeforeApplicationExit: type === WorkspaceTabType.CONSOLE ? flushAutoSave : undefined,
   }));
 
@@ -374,10 +385,10 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
         handleRevertRoutineDDL();
         break;
       case SQLOptType.EXECUTE_SINGLE_SQL:
-        handleExecuteSingleSQL();
+        void handleExecuteSingleSQL(typeof params === 'string' ? params : undefined);
         break;
       case SQLOptType.EXECUTE_SHORTCUT_SQL:
-        handleShortCutExecuteSQL();
+        void handleShortCutExecuteSQL();
         break;
       case SQLOptType.EXECUTE_TABLE:
         break;
@@ -863,62 +874,101 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
   /**
    * Execute one SQL statement.
    */
-  const handleExecuteSingleSQL = () => {
-    const selectSQL = sqlEditorRef.current?.getSelectedContent() || '';
-    const cursorSQL = sqlEditorRef.current?.getCursorCurLineNearestSQL() || '';
-    const sql = selectSQL || cursorSQL;
-    if (!sql) {
-      staticMessage.warning(i18n('common.placeholder.select', 'SQL'));
+  const handleExecuteSingleSQL = async (committedSql?: string) => {
+    const editor = sqlEditorRef.current;
+    if (!editor) {
+      return;
+    }
+    const executionBoundInfo = createDataSourceExecutionBoundInfo(dbInfo);
+    const executionTarget = createDataSourceExecutionSnapshot(executionBoundInfo);
+    const executionDataSourceState = dataSourceState;
+    const sqlSnapshot = editor.getValue();
+    const execute = (sql: string) => {
+      if (!sql) {
+        staticMessage.warning(i18n('common.placeholder.select', 'SQL'));
+        return;
+      }
+
+      return props
+        .onExecuteSQL({
+          sql,
+          single: true,
+          executionTarget,
+          dataSourceState: executionDataSourceState,
+        })
+        .then(() => {
+          setErrorMessage(null);
+        })
+        .catch((error) => {
+          setErrorMessage(error.errorMessage || '');
+        });
+    };
+
+    if (committedSql !== undefined) {
+      await execute(committedSql);
       return;
     }
 
-    const executeSqlParams = {
-      sql,
-      single: true,
-    };
-
-    props
-      ?.onExecuteSQL(createExecutionInvocation(executeSqlParams))
-      .then(() => {
-        setErrorMessage(null);
-      })
-      .catch((error) => {
-        setErrorMessage(error.errorMessage || '');
-      });
+    await runAfterCommittedSqlParserWithSnapshot(
+      () =>
+        createSqlExecutionTargetSnapshot(
+          editor.getSelectedContent(),
+          editor.getInstance()?.getPosition(),
+        ),
+      () => editor.handleQuickSQLParser(sqlSnapshot, executionBoundInfo),
+      (targetSnapshot) => {
+        const target = resolveSqlExecutionTarget(targetSnapshot, (position) =>
+          editor.getCursorCurLineNearestSQL(position),
+        );
+        return execute(target.sql);
+      },
+    );
   };
 
   /**
    * Execute SQL via shortcut.
    */
   const handleShortCutExecuteSQL = useCallback(async () => {
+    const editor = sqlEditorRef.current;
+    if (!editor) {
+      return;
+    }
     const executionBoundInfo = createDataSourceExecutionBoundInfo(dbInfo);
     const executionTarget = createDataSourceExecutionSnapshot(executionBoundInfo);
     const executionDataSourceState = dataSourceState;
-    await sqlEditorRef.current?.handleQuickSQLParser(sqlEditorRef.current?.getValue() || '', executionBoundInfo);
-    // await sqlEditorRef.current?.handleSQLParser(sqlEditorRef.current?.getValue() || '', dbInfo);
+    const sqlSnapshot = editor.getValue();
 
-    const selectSQL = sqlEditorRef.current?.getSelectedContent() || '';
-    const cursorSQL = sqlEditorRef.current?.getCursorCurLineNearestSQL() || '';
-    const isSingle = selectSQL ? false : true;
-    const sql = selectSQL || cursorSQL;
-    if (!sql) {
-      staticMessage.warning(i18n('common.placeholder.select', 'SQL'));
-      return;
-    }
+    await runAfterCommittedSqlParserWithSnapshot(
+      () =>
+        createSqlExecutionTargetSnapshot(
+          editor.getSelectedContent(),
+          editor.getInstance()?.getPosition(),
+        ),
+      () => editor.handleQuickSQLParser(sqlSnapshot, executionBoundInfo),
+      (targetSnapshot) => {
+        const target = resolveSqlExecutionTarget(targetSnapshot, (position) =>
+          editor.getCursorCurLineNearestSQL(position),
+        );
+        if (!target.sql) {
+          staticMessage.warning(i18n('common.placeholder.select', 'SQL'));
+          return;
+        }
 
-    props
-      ?.onExecuteSQL({
-        sql,
-        single: isSingle,
-        executionTarget,
-        dataSourceState: executionDataSourceState,
-      })
-      .then(() => {
-        setErrorMessage(null);
-      })
-      .catch((error) => {
-        setErrorMessage(error.errorMessage || '');
-      });
+        return props
+          ?.onExecuteSQL({
+            sql: target.sql,
+            single: target.single,
+            executionTarget,
+            dataSourceState: executionDataSourceState,
+          })
+          .then(() => {
+            setErrorMessage(null);
+          })
+          .catch((error) => {
+            setErrorMessage(error.errorMessage || '');
+          });
+      },
+    );
   }, [props?.onExecuteSQL, dbInfo, dataSourceState]);
 
   /** Save current editor data. */
@@ -940,7 +990,10 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
       }
       return;
     }
-    void saveConsole(getValue(), { mode: 'manual' });
+    void saveConsole(getValue(), { mode: 'manual' }).catch((error) => {
+      console.error('save saved-console error', error);
+      staticMessage.error(i18n('common.text.failure'));
+    });
   }, [
     dbInfo.consoleId,
     dbInfo.databaseName,
@@ -983,8 +1036,9 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
 
   const handleSaveFile = async () => {
     const fileContent = sqlEditorRef.current?.getValue() ?? '';
+    let result: Awaited<ReturnType<typeof saveLocalFileContent>>;
     try {
-      await updateFileContent({
+      result = await saveLocalFileContent({
         filePath: dbInfo.filePath!,
         fileContent,
         charset: dbInfo.fileCharset,
@@ -996,10 +1050,11 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
       return false;
     }
     try {
-      sqlEditorRef.current?.resetContentDiffBaseline(fileContent);
+      sqlEditorRef.current?.resetContentDiffBaseline(result.fileContent);
     } catch {
       // Content diff is only a hint and must not affect file saving.
     }
+    setDBInfo({ ddl: result.fileContent });
     staticMessage.success(i18n('workspace.text.changeFileSuccess'));
     return true;
   };
@@ -1028,7 +1083,9 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
       try {
         await saveConsole(getValue(), { mode: 'manual' });
         return true;
-      } catch {
+      } catch (error) {
+        console.error('save saved-console before close error', error);
+        staticMessage.error(i18n('common.text.failure'));
         return false;
       }
     }
@@ -1152,7 +1209,7 @@ const SQLEditorWithOperation = forwardRef<ISQLEditorWithOperationRef, ISQLEditor
     isConsole && type === WorkspaceTabType.CONSOLE && dbInfo.dataSourceId
       ? getDataSourceWatermarkContent(dbInfo, dataSourceState)
       : undefined;
-  const watermarkColor = identityColor ? withIdentityColorAlpha(identityColor, 0.4) : undefined;
+  const watermarkColor = withIdentityColorAlpha(identityColor || theme.colorPrimary, 0.4);
   const watermarkLayout = getDataSourceWatermarkLayout(editorViewportSize?.width, editorViewportSize?.height);
 
   return (
