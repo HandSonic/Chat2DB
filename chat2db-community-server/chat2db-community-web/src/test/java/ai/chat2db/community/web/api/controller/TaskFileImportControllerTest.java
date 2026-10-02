@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -50,6 +51,7 @@ class TaskFileImportControllerTest {
         TaskFileImportController controller = controller(taskService, stagedSource);
         TaskImportRequest request = request();
         request.setSourceFile("C:\\browser-fake-path\\people.csv");
+        request.setFileId("unrelated-preview-input");
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         MockMultipartFile requestPart = new MockMultipartFile("request", "request.json",
                 MediaType.APPLICATION_JSON_VALUE, new ObjectMapper().writeValueAsBytes(request));
@@ -60,6 +62,7 @@ class TaskFileImportControllerTest {
 
         ImportTaskSpec spec = submittedSpec.get();
         assertTrue(spec.isTemporarySourceFile());
+        assertNull(spec.getImportFileId());
         assertEquals("cleanup-token", spec.getTemporarySourceToken());
         assertEquals("people.csv", spec.getDisplayFileName());
         assertNotEquals(request.getSourceFile(), spec.getSourceFile());

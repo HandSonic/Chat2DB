@@ -1,7 +1,7 @@
 import createRequest from './base';
 import { IDatabaseBaseInfo } from '@/typings/database';
 import { IPageResponse } from '@/typings';
-import { ImportExportTaskDetails, ImportExportTaskEvent } from '@/typings/importExport';
+import type { IExcelOptions, IJsonOptions, ISqlImportOptions, ICsvOptions, ImportExportTaskDetails, ImportExportTaskEvent } from '@/typings/importExport';
 import { ImportExportFileType, ImportExportTaskType } from '@/constants/importExport';
 import { isDesktop } from '@/utils/env';
 import { resolveImportTaskTransport } from './importTaskTransport';
@@ -61,11 +61,17 @@ export interface ImportTaskParams extends IDatabaseBaseInfo {
   taskType: ImportTaskType;
   taskName?: string;
   tableName?: string;
-  sourceFile: string;
+  sourceFile?: string;
+  fileId?: string;
   displayFileName?: string;
   file?: File;
   format: ImportExportFileType;
   dataTimeFormat?: string;
+  csvOptions?: ICsvOptions;
+  excelOptions?: IExcelOptions;
+  jsonOptions?: IJsonOptions;
+  sqlImportOptions?: ISqlImportOptions;
+  mode?: 'FAST' | 'STANDARD';
 }
 
 const submitExport = createRequest<ExportTaskParams, TaskSubmissionResponse>('/api/tasks/export', { method: 'post' });
