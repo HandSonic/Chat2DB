@@ -2,7 +2,7 @@ package ai.chat2db.community.jcef.utils;
 
 import ai.chat2db.community.jcef.context.JcefContext;
 import ai.chat2db.community.jcef.enums.ActionTypeEnum;
-import ai.chat2db.community.jcef.update.Updater;
+import ai.chat2db.community.jcef.update.DesktopRestartSupport;
 import ai.chat2db.community.tools.console.ConsoleResult;
 import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
@@ -33,8 +33,7 @@ public final class ApplicationExitCoordinator {
 
     public enum ExitAction {
         CLOSE,
-        RESTART,
-        INSTALL_UPDATE
+        RESTART
     }
 
     private static final AtomicReference<PendingExit> PENDING_EXIT = new AtomicReference<>();
@@ -44,10 +43,7 @@ public final class ApplicationExitCoordinator {
     }
 
     public static boolean request(String action) {
-        return request(action, UUID.randomUUID().toString(), () -> {
-            execute(action);
-            return true;
-        });
+        return request(action, UUID.randomUUID().toString(), () -> execute(action));
     }
 
     public static boolean request(String action, String operationId, BooleanSupplier confirmedAction) {
@@ -59,6 +55,7 @@ public final class ApplicationExitCoordinator {
         ExitAction validatedAction = requireAction(action);
         String validatedOperationId = requireOperationId(operationId);
         Objects.requireNonNull(confirmedAction, "Confirmed exit action is required");
+        confirmedAction = SingleInstanceUtil.guardExit(confirmedAction);
         if (!FRONTEND_READY.get()) {
             return confirmedAction.getAsBoolean();
         }
@@ -149,18 +146,24 @@ public final class ApplicationExitCoordinator {
         }
     }
 
-    private static void execute(String action) {
-        switch (requireAction(action)) {
-            case CLOSE -> OSOperateUtil.closeWindows(JcefContext.getInstance().getFrame_());
+    private static boolean execute(String action) {
+        return switch (requireAction(action)) {
+            case CLOSE -> {
+                OSOperateUtil.closeWindows(JcefContext.getInstance().getFrame_());
+                yield true;
+            }
             case RESTART -> {
                 try {
-                    Updater.getInstance().restartAppNow();
+                    if (!DesktopRestartSupport.prepareRestart()) {
+                        yield false;
+                    }
+                    DesktopRestartSupport.exitCurrentProcessAfterResponse();
+                    yield true;
                 } catch (IOException e) {
                     throw new IllegalStateException("Could not restart the application", e);
                 }
             }
-            case INSTALL_UPDATE -> Updater.getInstance().triggerInstallationWithAuxiliaryProcessNow();
-        }
+        };
     }
 
     private static ExitAction requireAction(String action) {
