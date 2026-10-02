@@ -1,10 +1,17 @@
 import i18n from '@/i18n';
 import { Form } from 'antd';
-import { SquarePen } from 'lucide-react';
+import { Copy, SquarePen } from 'lucide-react';
 import { type ReactNode, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 
-import { ConsoleOpenedStatus, OperationColumn, TreeNodeType, WorkspaceTabType, databaseTypeList } from '@/constants';
+import {
+  ConsoleOpenedStatus,
+  DatabaseCapability,
+  OperationColumn,
+  TreeNodeType,
+  WorkspaceTabType,
+  databaseTypeList,
+} from '@/constants';
 import { ImportExportType } from '@/constants/importExport';
 import { ShortcutAction } from '@/constants/shortcut';
 import { TreeNodeData } from '@/typings';
@@ -25,6 +32,7 @@ import sqlService from '@/service/sql';
 import { copyToClipboard, getParentNode } from '@/utils';
 import { staticMessage, staticModal } from '@chat2db/ui';
 import { deleteTable } from '../functions/deleteTable';
+import { openCopyTableModal } from '../functions/copyTable';
 import { generateJavaClass } from '../functions/generateJavaClass';
 import { neatenMoveToGroup } from '../functions/moveToGroup';
 import { editView, openFunction, openProcedure, openTrigger, openView } from '../functions/openAsyncSql';
@@ -34,15 +42,7 @@ import { viewDDL } from '../functions/viewDDL';
 
 // ----- utils -----
 import { compatibleDataBaseName, getDatabaseSupport } from '@/utils/database';
-import {
-  canDeleteDatabase,
-  canDeleteSchema,
-  canExportData,
-  canExportSqlFile,
-  canGenerateJavaClass,
-  canImportData,
-  canRunSqlFile,
-} from '@/utils/databaseJudgments';
+import { isDatabaseCapabilitySupported } from '@/utils/databaseJudgments';
 import { dropMenuConfig } from '../menuConfig';
 
 import { handleExportSqlFile } from '@/blocks/ImportAndExport/functions/exportSqlFile';
@@ -54,7 +54,6 @@ import { resolveDataSourceAuthorization } from '@/utils/dataSourceAuthorization'
 import accountAdminService, { AccountActionType, formatAccountExecuteMessage } from '@/service/accountAdmin';
 import CreateAccountContent, { CreateAccountValues } from '../components/CreateAccountContent';
 import DeleteDatabaseSchemaConfirmContent from '../components/DeleteDatabaseSchemaConfirmContent';
-import { emitSavedConsoleUpdated } from '@/utils/savedConsoleEvents';
 import { buildWorkspaceObjectTabTitle } from '@/utils/workspaceObjectTabTitle';
 import { allowsResourceOperations } from '@/client-extension/resourceOperationCapabilities';
 import type { ResourceOperation, ResourceOperationCapabilities } from '@/client-extension/types';
@@ -63,6 +62,7 @@ import { DataSourceIdentityColorRequestRegistry } from '../dataSourceIdentityCol
 import DataSourceColorMenuItem from '../components/DataSourceColorMenuItem';
 import { withDataSourceColorMenuOption } from '../dataSourceColorMenu';
 import { isDangerousTreeOperation } from '../treeMenuDanger';
+import { createActiveTransactionsWorkspaceTabId } from '../monitorTree';
 
 export interface MenuLabelRenderContext {
   closeMenu: () => void;
@@ -126,6 +126,7 @@ export const canBeDoubleClicked = [
   TreeNodeType.TRIGGER,
   TreeNodeType.ALL_DATA,
   TreeNodeType.DATABASE_ACCOUNT,
+  TreeNodeType.ACTIVE_TRANSACTIONS,
   TreeNodeType.SAVE_CONSOLE,
 ];
 
@@ -271,6 +272,16 @@ export const useCreateRightClickMenu = () => {
       });
     };
 
+    const handleCopyTable = (copyData: boolean) => {
+      void openCopyTableModal(
+        { dataSourceId: dataSourceId!, databaseName: databaseName!, schemaName, tableName: tableName!, copyData },
+        () => {
+          const parentNode = getParentNode(treeNodeData.key, treeData);
+          if (parentNode) handleLoadData(parentNode, { refresh: true });
+        },
+      ).catch(() => {});
+    };
+
     const renderDeleteInputConfirmLabel = (labelKey: string, confirmName: string) => {
       return (
         <>
@@ -355,7 +366,11 @@ export const useCreateRightClickMenu = () => {
       // copyName
       [OperationColumn.CopyName]: {
         text: i18n('common.button.copyName'),
-        icon: <span aria-hidden="true" style={{ display: 'inline-block', width: 20, height: 20 }} />,
+        icon: (
+          <span style={{ alignItems: 'center', display: 'inline-flex', height: 20, justifyContent: 'center', width: 20 }}>
+            <Copy size={18} strokeWidth={1.75} />
+          </span>
+        ),
         handle: () => {
           copyToClipboard(treeNodeData.originalTitle);
         },
@@ -363,7 +378,7 @@ export const useCreateRightClickMenu = () => {
 
       // applies for permission
       [OperationColumn.ApplyPermission]: {
-        text: i18n('team.permission.modal.OkText'),
+        text: i18n('common.button.confirm'),
         icon: 'icon-key1',
         handle: () => {
           const props = {
@@ -404,6 +419,26 @@ export const useCreateRightClickMenu = () => {
             },
           });
         },
+      },
+
+      [OperationColumn.ActiveTransactions]: {
+        text: i18n('workspace.ops.activeTransactions'),
+        icon: 'icon-file-text',
+        doubleClickTrigger: true,
+        handle: () => {
+          addWorkspaceTab({
+            id: createActiveTransactionsWorkspaceTabId(dataSourceId),
+            type: WorkspaceTabType.ActiveTransactions,
+            title: i18n('workspace.ops.activeTransactions'),
+            uniqueData: {
+              ...extraParams,
+            },
+          });
+        },
+        discard:
+          !hasPermission ||
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.ACTIVE_TRANSACTION_INSPECTION),
+        requiredOperations: ['SELECT'],
       },
 
       [OperationColumn.CreateAccount]: {
@@ -745,7 +780,7 @@ export const useCreateRightClickMenu = () => {
           treeNodeType !== TreeNodeType.DATABASE ||
           !hasPermission ||
           !supportDatabase ||
-          !canDeleteDatabase(databaseType),
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.DATABASE_DELETE),
         requiredOperations: ['DROP'],
       },
 
@@ -754,7 +789,10 @@ export const useCreateRightClickMenu = () => {
         icon: 'icon-trash',
         handle: openDeleteSchemaModal,
         discard:
-          treeNodeType !== TreeNodeType.SCHEMA || !hasPermission || !supportSchema || !canDeleteSchema(databaseType),
+          treeNodeType !== TreeNodeType.SCHEMA ||
+          !hasPermission ||
+          !supportSchema ||
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.SCHEMA_DELETE),
         requiredOperations: ['DROP'],
       },
 
@@ -989,8 +1027,13 @@ export const useCreateRightClickMenu = () => {
         text: i18n('workspace.menu.removeConsole'),
         icon: 'icon-trash',
         handle: () => {
-          removeSavedConsole(treeNodeData.id!).then(() => {
-            emitSavedConsoleUpdated(extraParams);
+          openUnifiedConfirmationModal({
+            title: i18n('common.text.deleteConfirmTitle'),
+            content: i18n('common.text.deleteConfirmTip', treeNodeData.originalTitle),
+            onOk: async () => {
+              await removeSavedConsole(treeNodeData.id!);
+              await refreshAfterDelete();
+            },
           });
         },
       },
@@ -1007,7 +1050,10 @@ export const useCreateRightClickMenu = () => {
             schemaName,
           });
         },
-        discard: !canImportExport || !canRunSqlFile(databaseType) || !hasPermission,
+        discard:
+          !canImportExport ||
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.IMPORT_EXPORT) ||
+          !hasPermission,
       },
 
       [OperationColumn.CopyMcpConfig]: {
@@ -1084,7 +1130,7 @@ export const useCreateRightClickMenu = () => {
         discard:
           (treeNodeType === TreeNodeType.DATABASE && supportSchema) ||
           !canImportExport ||
-          !canExportSqlFile(databaseType),
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.IMPORT_EXPORT),
       },
 
       // Export data.
@@ -1102,7 +1148,9 @@ export const useCreateRightClickMenu = () => {
           });
         },
         discard:
-          (treeNodeType === TreeNodeType.DATABASE && supportSchema) || !canImportExport || !canExportData(databaseType),
+          (treeNodeType === TreeNodeType.DATABASE && supportSchema) ||
+          !canImportExport ||
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.IMPORT_EXPORT),
       },
 
       // Import data.
@@ -1120,7 +1168,9 @@ export const useCreateRightClickMenu = () => {
           });
         },
         discard:
-          (treeNodeType === TreeNodeType.DATABASE && supportSchema) || !canImportExport || !canImportData(databaseType),
+          (treeNodeType === TreeNodeType.DATABASE && supportSchema) ||
+          !canImportExport ||
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.IMPORT_EXPORT),
         requiredOperations: ['INSERT'],
       },
 
@@ -1136,7 +1186,9 @@ export const useCreateRightClickMenu = () => {
             tableName: tableName!,
           });
         },
-        discard: !canImportExport || !canGenerateJavaClass(databaseType),
+        discard:
+          !canImportExport ||
+          !isDatabaseCapabilitySupported(databaseType, DatabaseCapability.JAVA_CLASS_GENERATION),
       },
 
       // Truncate the table.
@@ -1170,46 +1222,12 @@ export const useCreateRightClickMenu = () => {
           {
             text: i18n('workspace.menu.copyStructure'),
             requiredOperations: ['CREATE'],
-            handle: () => {
-              sqlService
-                .copyTable({
-                  dataSourceId: dataSourceId!,
-                  databaseName: databaseName!,
-                  schemaName,
-                  tableName: tableName!,
-                  copyData: false,
-                })
-                .then(() => {
-                  const parentNode = getParentNode(treeNodeData.key, treeData);
-                  if (parentNode) {
-                    handleLoadData(parentNode, {
-                      refresh: true,
-                    });
-                  }
-                });
-            },
+            handle: () => handleCopyTable(false),
           },
           {
             text: i18n('workspace.menu.copyStructureData'),
             requiredOperations: ['CREATE', 'SELECT', 'INSERT'],
-            handle: () => {
-              sqlService
-                .copyTable({
-                  dataSourceId: dataSourceId!,
-                  databaseName: databaseName!,
-                  schemaName,
-                  tableName: tableName!,
-                  copyData: true,
-                })
-                .then(() => {
-                  const parentNode = getParentNode(treeNodeData.key, treeData);
-                  if (parentNode) {
-                    handleLoadData(parentNode, {
-                      refresh: true,
-                    });
-                  }
-                });
-            },
+            handle: () => handleCopyTable(true),
           },
         ],
         requiredOperations: ['CREATE'],
