@@ -1,5 +1,6 @@
 import { WorkspaceTabType } from '@/constants/workspace';
 import { IWorkspaceTab } from '@/typings/workspace';
+import type { StateStorage } from 'zustand/middleware';
 import { initConfigState, type ConfigState } from '../slices/config/initialState';
 
 /**
@@ -13,6 +14,17 @@ const MAX_PERSISTED_TABS = 100;
 
 function capPersistedTabs(tabs: IWorkspaceTab[]): IWorkspaceTab[] {
   return tabs.length > MAX_PERSISTED_TABS ? tabs.slice(-MAX_PERSISTED_TABS) : tabs;
+}
+
+function stripLocalFileContent(tab: IWorkspaceTab): IWorkspaceTab {
+  if (tab.type !== WorkspaceTabType.LocalSQLFile || !tab.uniqueData) {
+    return tab;
+  }
+  const { ddl: _ddl, ...uniqueData } = tab.uniqueData;
+  return {
+    ...tab,
+    uniqueData,
+  };
 }
 
 function createPersistenceReplacer() {
@@ -44,6 +56,12 @@ export function getPersistableWorkspaceLayout(layout: ConfigState['layout']): Co
       ? Math.max(0, layout.panelLeftWidth)
       : initConfigState.layout.panelLeftWidth;
   const panelLeftWidth = layout.panelLeft === false ? 0 : normalizedPanelLeftWidth;
+  const rememberedPanelLeftWidth =
+    typeof layout.lastPanelLeftWidth === 'number' && Number.isFinite(layout.lastPanelLeftWidth) && layout.lastPanelLeftWidth > 0
+      ? layout.lastPanelLeftWidth
+      : normalizedPanelLeftWidth > 0
+        ? normalizedPanelLeftWidth
+        : initConfigState.layout.panelLeftWidth;
   const panelRightWidth =
     typeof layout.panelRightWidth === 'number' && Number.isFinite(layout.panelRightWidth)
       ? Math.max(0, layout.panelRightWidth)
@@ -52,6 +70,7 @@ export function getPersistableWorkspaceLayout(layout: ConfigState['layout']): Co
   return {
     panelLeft: panelLeftWidth > 0,
     panelLeftWidth,
+    lastPanelLeftWidth: rememberedPanelLeftWidth,
     panelRight: typeof layout.panelRight === 'boolean' ? layout.panelRight : false,
     panelRightWidth,
   };
@@ -76,9 +95,9 @@ export function getPersistableWorkspaceTabList(workspaceTabList?: IWorkspaceTab[
     return workspaceTabList || null;
   }
 
-  const persistableTabs = workspaceTabList.filter(
-    (tab) => tab.type !== WorkspaceTabType.Terminal && !tab.uniqueData?.filePreviewMimeType,
-  );
+  const persistableTabs = workspaceTabList
+    .filter((tab) => tab.type !== WorkspaceTabType.Terminal && !tab.uniqueData?.filePreviewMimeType)
+    .map(stripLocalFileContent);
   const cappedTabs = capPersistedTabs(persistableTabs);
 
   try {
@@ -90,6 +109,23 @@ export function getPersistableWorkspaceTabList(workspaceTabList?: IWorkspaceTab[
       title: tab.title,
     }));
   }
+}
+
+export function createSafeWorkspaceStorage(
+  storage: StateStorage,
+  onWriteError: (error: unknown) => void = (error) => console.error('Failed to persist workspace state', error),
+): StateStorage {
+  return {
+    getItem: (name) => storage.getItem(name),
+    setItem: (name, value) => {
+      try {
+        return storage.setItem(name, value);
+      } catch (error) {
+        onWriteError(error);
+      }
+    },
+    removeItem: (name) => storage.removeItem(name),
+  };
 }
 
 export function getPersistableActiveConsoleId(params: {
@@ -104,4 +140,23 @@ export function getPersistableActiveConsoleId(params: {
     return activeConsoleId || null;
   }
   return workspaceTabList[0].id;
+}
+
+export interface PersistedWorkspaceTabsState {
+  workspaceTabList?: IWorkspaceTab[] | null;
+  activeConsoleId?: string | number | null;
+  recentlyClosedWorkspaceTabs?: IWorkspaceTab[] | null;
+}
+
+export function sanitizePersistedWorkspaceTabsState<T extends PersistedWorkspaceTabsState>(state: T) {
+  const workspaceTabList = getPersistableWorkspaceTabList(state.workspaceTabList);
+  return {
+    ...state,
+    workspaceTabList,
+    activeConsoleId: getPersistableActiveConsoleId({
+      activeConsoleId: state.activeConsoleId,
+      workspaceTabList,
+    }),
+    recentlyClosedWorkspaceTabs: getPersistableWorkspaceTabList(state.recentlyClosedWorkspaceTabs) || [],
+  };
 }
