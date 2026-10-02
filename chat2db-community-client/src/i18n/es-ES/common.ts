@@ -115,6 +115,10 @@ export default {
   'common.menu.visitWebsite': 'Visitar sitio web',
   'common.menu.viewDocs': 'Ver documentación',
   'common.menu.viewChangelog': 'Ver registro de cambios',
+  'common.window.minimize': 'Minimizar',
+  'common.window.maximize': 'Maximizar',
+  'common.window.restore': 'Restaurar',
+  'common.window.close': 'Cerrar',
   'common.text.saveConsole': 'Guardar consola',
   'common.text.textToSQL': 'Lenguaje natural a SQL',
   'common.text.editorRightClick': 'Clic con el botón derecho',
@@ -303,4 +307,6 @@ export default {
   'common.text.resultReleased': 'Resultado liberado',
   'common.text.executionCancelled': 'Ejecución cancelada',
   'common.text.executionCompleted': 'Ejecución completada',
+  'common.button.retry': 'Reintentar',
+  'common.text.tableDataNotLoaded': 'No se cargaron los datos de la tabla',
 };

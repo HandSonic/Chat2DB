@@ -21,7 +21,9 @@ export interface ClientRuntime {
   showUpgradeEntry: boolean;
   showDownloadEntry: boolean;
   enableAutoUpdate: boolean;
+  supportsBetaUpdates?: boolean;
   showMcpSetting: boolean;
+  showSqlxSetting: boolean;
   showNetworkProxySetting: boolean;
   showLicenseSetting: boolean;
   showDashboard: boolean;
@@ -77,8 +79,12 @@ export const clientRuntime: ClientRuntime = {
   showAccountCenter: false,
   showUpgradeEntry: false,
   showDownloadEntry: false,
-  enableAutoUpdate: false,
+  enableAutoUpdate: isDesktop,
+  supportsBetaUpdates: true,
   showMcpSetting: isDesktop,
+  // The SQLX entry installs and runs a local command line through the desktop bridge, so the browser
+  // builds of the community edition do not offer it.
+  showSqlxSetting: isDesktop,
   showNetworkProxySetting: isDesktop,
   showLicenseSetting: false,
   showDashboard: true,

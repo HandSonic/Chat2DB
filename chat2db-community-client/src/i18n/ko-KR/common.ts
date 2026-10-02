@@ -114,6 +114,10 @@ export default {
   'common.menu.visitWebsite': '웹사이트 방문',
   'common.menu.viewDocs': '문서 보기',
   'common.menu.viewChangelog': '변경 로그 보기',
+  'common.window.minimize': '최소화',
+  'common.window.maximize': '최대화',
+  'common.window.restore': '이전 크기로 복원',
+  'common.window.close': '닫기',
   'common.text.saveConsole': '콘솔 저장',
   'common.text.textToSQL': '자연어를 SQL로 변환',
   'common.text.editorRightClick': '마우스 오른쪽 클릭',
@@ -303,4 +307,6 @@ export default {
   'common.text.resultReleased': '결과가 해제됨',
   'common.text.executionCancelled': '실행이 취소됨',
   'common.text.executionCompleted': '실행 완료',
+  'common.button.retry': '다시 시도',
+  'common.text.tableDataNotLoaded': '테이블 데이터를 불러오지 못했습니다',
 };

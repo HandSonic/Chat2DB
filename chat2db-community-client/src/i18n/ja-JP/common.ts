@@ -115,6 +115,10 @@ export default {
   'common.menu.visitWebsite': '公式サイトを開く',
   'common.menu.viewDocs': 'ドキュメントを表示',
   'common.menu.viewChangelog': '変更履歴を表示',
+  'common.window.minimize': '最小化',
+  'common.window.maximize': '最大化',
+  'common.window.restore': '元に戻す',
+  'common.window.close': '閉じる',
   'common.text.saveConsole': 'コンソールを保存',
   'common.text.textToSQL': 'プレーンテキストをSQLに変換',
   'common.text.editorRightClick': 'マウスの右ボタン',
@@ -304,4 +308,6 @@ export default {
   'common.text.creator': '作成者',
   'common.text.singleUploadFileSize': 'ファイルサイズは{1}Mを超えてはいけません',
   'common.text.limitFileSize': 'ファイルサイズは{1}Mを超えてはいけません',
+  'common.button.retry': '再試行',
+  'common.text.tableDataNotLoaded': 'テーブルデータが読み込まれていません',
 };

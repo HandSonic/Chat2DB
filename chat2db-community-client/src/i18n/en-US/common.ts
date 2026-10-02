@@ -115,6 +115,10 @@ export default {
   'common.menu.visitWebsite': 'Visit website',
   'common.menu.viewDocs': 'View documentation',
   'common.menu.viewChangelog': 'View changelog',
+  'common.window.minimize': 'Minimize',
+  'common.window.maximize': 'Maximize',
+  'common.window.restore': 'Restore',
+  'common.window.close': 'Close',
   'common.text.saveConsole': 'Save console',
   'common.text.textToSQL': 'Natural Language to SQL',
   'common.text.editorRightClick': 'Right-Click of mouse',
@@ -303,4 +307,6 @@ export default {
   'common.text.creator': 'Creator',
   'common.text.singleUploadFileSize': 'The file size cannot exceed {1}M',
   'common.text.limitFileSize': 'Limit file size {1}M',
+  'common.button.retry': 'Retry',
+  'common.text.tableDataNotLoaded': 'Table data was not loaded',
 };
