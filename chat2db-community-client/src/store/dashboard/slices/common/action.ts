@@ -1,6 +1,13 @@
+import {
+  captureDashboardChartDeleteMutation,
+  isDashboardMutationCurrent,
+  resolveDashboardChartDeleteTarget,
+  resolveDashboardMutationState,
+} from './dashboardMutation';
 import { StateCreator } from 'zustand';
 import { DashboardStore } from '../../store';
 import { CommonState } from './initialState';
+import { runDashboardRefresh } from './refreshCurrentDashboard';
 import {
   createDashboard,
   deleteDashboard,
@@ -17,7 +24,7 @@ export interface CommonAction {
   /** Set up Dashboard list */
   setDashboardList: (dashboardList: CommonState['dashboardList']) => void;
   /** Request Dashboard list */
-  queryDashboardList: (dashboardId?: number) => void;
+  queryDashboardList: (dashboardId?: number) => Promise<void>;
   /** Set the current Dashboard */
   setCurrentDashboard: (dashboard: CommonState['currentDashboard']) => void;
   /** Update current Dashboard */
@@ -59,18 +66,23 @@ export const createCommonAction: StateCreator<DashboardStore, [['zustand/devtool
     }
   },
   queryDashboardList: async (dashboardId) => {
-    const pageParams = get().dashboardListParams;
-    const res = await getDashboardList(pageParams);
-    if (res.data) {
+    const { dashboardListParams: pageParams, dashboardListStatus } = get();
+    if (dashboardListStatus === 'loading' || !pageParams.hasNextPage) return;
+    set({ dashboardListStatus: 'loading' });
+    try {
+      const res = await getDashboardList(pageParams);
       set({
         dashboardList: [...get().dashboardList, ...res.data],
         dashboardListParams: { ...pageParams, pageNo: pageParams.pageNo + 1, hasNextPage: !!res.hasNextPage },
+        dashboardListStatus: 'success',
       });
 
       const { currentDashboard } = get();
       if (!currentDashboard && !dashboardId && res.data?.[0]?.id) {
         get().getDashboardById(res.data?.[0]?.id);
       }
+    } catch {
+      set({ dashboardListStatus: 'error' });
     }
   },
   setCurrentDashboard: async (dashboard) => {
@@ -79,14 +91,11 @@ export const createCommonAction: StateCreator<DashboardStore, [['zustand/devtool
   updateDashboard: (dashboard) => {
     if (!dashboard) return;
     updateDashboard(dashboard).then(() => {
-      set({
-        currentDashboard: {
-          ...(get().currentDashboard || {}),
-          ...dashboard,
-        },
-        dashboardList: get().dashboardList.map((item) => (item.id === dashboard.id ? dashboard : item)),
-      });
-      get().setSettingDashboard(undefined);
+      const currentDashboard = get().currentDashboard;
+      set(resolveDashboardMutationState(currentDashboard, get().dashboardList, dashboard));
+      if (isDashboardMutationCurrent(currentDashboard, dashboard)) {
+        get().setSettingDashboard(undefined);
+      }
     });
   },
   deleteDashboard: async (id) => {
@@ -109,16 +118,16 @@ export const createCommonAction: StateCreator<DashboardStore, [['zustand/devtool
     get().updateDashboard({ ...currentDashboard, schema: JSON.stringify(layout) });
   },
   deleteChart: (id) => {
+    const mutation = captureDashboardChartDeleteMutation(get().currentDashboard, id);
     return deleteChart({ id }).then(() => {
-      if (!get().currentDashboard?.id) return;
-      const newChartIds = get().currentDashboard?.chartIds?.filter((t) => t !== id);
-      const newDashboardDetail: any = {
-        ...get().currentDashboard,
-        chartIds: newChartIds,
-        schema: filterSchemaByChartIds(newChartIds, get().currentDashboard?.schema),
-      };
-      set({ currentDashboard: newDashboardDetail });
-      get().updateDashboard(newDashboardDetail);
+      const updatedDashboard = resolveDashboardChartDeleteTarget(
+        mutation,
+        get().currentDashboard,
+        filterSchemaByChartIds,
+      );
+      if (!updatedDashboard) return;
+      set(resolveDashboardMutationState(get().currentDashboard, get().dashboardList, updatedDashboard));
+      get().updateDashboard(updatedDashboard);
     });
   },
   getDashboardById: (id) => {
@@ -133,16 +142,6 @@ export const createCommonAction: StateCreator<DashboardStore, [['zustand/devtool
   },
   refreshCurrentDashboard: () => {
     const currentDashboardId = get().currentDashboard?.id;
-    return new Promise((resolve) => {
-      if (!currentDashboardId) {
-        resolve(false);
-        return;
-      }
-      get()
-        .getDashboardById(currentDashboardId)
-        .then(() => {
-          resolve(true);
-        });
-    });
+    return runDashboardRefresh(currentDashboardId, (dashboardId) => get().getDashboardById(dashboardId));
   },
 });
