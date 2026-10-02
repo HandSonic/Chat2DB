@@ -2,9 +2,12 @@ import createJcefApi from './base';
 import {
   IUpdateDetail,
   IUpdatePreferences,
-  IUpdateRecoveryStatus,
+  UpdateCheckTrigger,
   McpRestartResult,
   McpStatus,
+  SqlxDatasourceState,
+  SqlxImportSummary,
+  SqlxStatus,
 } from '@/typings/settings';
 import { LangType } from '@/constants/settings';
 import type { LocalFileReadResult } from '@/utils/localFileEncoding';
@@ -163,8 +166,8 @@ const jcefApi = {
     return createJcefApi<boolean>('is-window-full-screen');
   },
   // Check for updates
-  appCheckUpdate: () => {
-    return createJcefApi<IUpdateDetail>('app-check-update');
+  appCheckUpdate: (data?: { trigger?: UpdateCheckTrigger; offlineActivation?: boolean }) => {
+    return createJcefApi<IUpdateDetail>('app-check-update', data);
   },
   // Start downloading hot updates
   triggerDownload: () => {
@@ -176,12 +179,6 @@ const jcefApi = {
   },
   updatePreferences: (data?: { receiveBeta: boolean }) => {
     return createJcefApi<IUpdatePreferences>('update-preferences', data);
-  },
-  getUpdateRecoveryStatus: () => {
-    return createJcefApi<IUpdateRecoveryStatus>('update-recovery-status');
-  },
-  openUpdateRecoveryLog: () => {
-    return createJcefApi<boolean>('open-update-recovery-log');
   },
   // Restart app
   restartApp: (data?: { operationId?: string }) => {
@@ -239,6 +236,31 @@ const jcefApi = {
   },
   setMcpEnabled: (data: { operationId: string; enabled: boolean }) => {
     return createJcefApi<McpStatus>('set-mcp-enabled', data);
+  },
+  // SQLX command line integration
+  getSqlxStatus: (data?: { operationId?: string }) => {
+    return createJcefApi<SqlxStatus>('get-sqlx-status', data);
+  },
+  installSqlx: (data: { operationId: string; version?: string }) => {
+    return createJcefApi<SqlxStatus>('install-sqlx', data);
+  },
+  updateSqlx: (data: { operationId: string }) => {
+    return createJcefApi<SqlxStatus>('update-sqlx', data);
+  },
+  checkSqlxUpdate: (data: { operationId: string }) => {
+    return createJcefApi<SqlxStatus>('check-sqlx-update', data);
+  },
+  cancelSqlxOperation: (data: { operationId: string }) => {
+    return createJcefApi<SqlxStatus>('cancel-sqlx-operation', data);
+  },
+  setSqlxBinary: (data: { path: string }) => {
+    return createJcefApi<SqlxStatus>('set-sqlx-binary', data);
+  },
+  importSqlxDatasources: (data: { ids: number[] }) => {
+    return createJcefApi<SqlxImportSummary>('import-sqlx-datasources', data);
+  },
+  getSqlxDatasourceStates: (data: { ids: number[] }) => {
+    return createJcefApi<SqlxDatasourceState[]>('get-sqlx-datasource-states', data);
   },
 };
 
