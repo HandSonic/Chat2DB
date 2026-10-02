@@ -1,20 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Modal, Select, Table, Tooltip } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Button, Modal, Spin } from 'antd';
 import { TriangleAlert } from 'lucide-react';
-import { ImportPreviewErrorCode, ImportUnmappedTarget, SKIP_IMPORT_SOURCE_FIELD } from '@/constants/importExport';
+import {
+  ImportExportFileType,
+  ImportPreviewErrorCode,
+  ImportUnmappedTarget,
+  SKIP_IMPORT_SOURCE_FIELD,
+} from '@/constants/importExport';
 import i18n from '@/i18n';
 import sqlService, { IImportPreview } from '@/service/sql';
+import type { ICsvOptions, IExcelOptions, IJsonOptions, ImportExecutionMode } from '@/typings/importExport';
 import {
-  buildImportMappingRows,
   buildInitialImportMapping,
   getDuplicateImportMappings,
   getImportPreviewErrorMessage,
-  ImportMappingRow,
 } from './mapping';
 import { useStyles } from './style';
 import type { FileUrl } from '@/components/UploadLocalFile';
 import { stageSelectedImportFile } from './fileStaging';
+import CsvOptionsSections from './CsvOptionsSections';
+import ExcelOptionsSections from './ExcelOptionsSections';
+import JsonOptionsSections from './JsonOptionsSections';
+import { DEFAULT_EXCEL_OPTIONS, DEFAULT_JSON_OPTIONS } from '../../utils/importOptions';
+import ImportModeControl from '../ImportModeControl';
+import useImportDataSections from './ImportDataSections';
+import {
+  buildCsvOptionsForTaskSubmit,
+  DEFAULT_CSV_OPTIONS,
+  inferImportFileFormat,
+} from '../../utils/csvOptions';
 
 interface IProps {
   dataSourceId: number;
@@ -31,8 +45,15 @@ interface IProps {
  * unmapped target columns are filled (DEFAULT or NULL), executes the import, and reports
  * task progress. Preview and execution share the backend parser.
  */
-const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableName, file, onSubmitted }: IProps) => {
-  const { styles, cx } = useStyles();
+const ImportMappingContent = ({
+  dataSourceId,
+  databaseName,
+  schemaName,
+  tableName,
+  file,
+  onSubmitted,
+}: IProps) => {
+  const { styles } = useStyles();
   const [modal, modalContextHolder] = Modal.useModal();
   const [preview, setPreview] = useState<IImportPreview | null>(null);
   const [fileId, setFileId] = useState<string>();
@@ -41,168 +62,178 @@ const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableNam
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [unmappedTarget, setUnmappedTarget] = useState(ImportUnmappedTarget.DEFAULT);
   const [executing, setExecuting] = useState(false);
+  const [mode, setMode] = useState<ImportExecutionMode>('STANDARD');
+  const [activeSections, setActiveSections] = useState<string[]>(['mapping', 'preview']);
+  const [csvOptions, setCsvOptions] = useState<ICsvOptions>(DEFAULT_CSV_OPTIONS);
+  const [excelOptions, setExcelOptions] = useState<IExcelOptions>(DEFAULT_EXCEL_OPTIONS);
+  const [jsonOptions, setJsonOptions] = useState<IJsonOptions>(DEFAULT_JSON_OPTIONS);
+  const [sheets, setSheets] = useState<string[]>([]);
+  const selectedFileName = file.fileName || file.file?.name || file.filePath || '';
+  const fileFormat = inferImportFileFormat(selectedFileName);
+  const isCsv = fileFormat === ImportExportFileType.CSV;
+  const isJson = fileFormat === ImportExportFileType.JSON;
+  const isExcel = fileFormat === ImportExportFileType.XLS || fileFormat === ImportExportFileType.XLSX;
+  const emptyAsNull = isCsv ? csvOptions.emptyAsNull : isJson ? jsonOptions.emptyAsNull : excelOptions.emptyAsNull;
+  const setEmptyAsNull = (value: boolean) => {
+    if (isCsv) setCsvOptions((current) => ({ ...current, emptyAsNull: value }));
+    else if (isJson) setJsonOptions((current) => ({ ...current, emptyAsNull: value }));
+    else setExcelOptions((current) => ({ ...current, emptyAsNull: value }));
+  };
+  const fileOptions = useMemo(
+    () => (isCsv ? { csvOptions } : isJson ? { jsonOptions } : { excelOptions }),
+    [isCsv, isJson, csvOptions, jsonOptions, excelOptions],
+  );
+  const currentPreviewKey = JSON.stringify({
+    dataSourceId,
+    databaseName,
+    schemaName,
+    tableName,
+    fileId,
+    ...fileOptions,
+  });
+  const [loadedPreviewKey, setLoadedPreviewKey] = useState<string>();
   const resolveErrorMessage = useCallback(
     (requestError: unknown) =>
-      getImportPreviewErrorMessage(requestError, i18n('common.text.failure'), {
-        [ImportPreviewErrorCode.DUPLICATE_SOURCE_COLUMNS]: i18n('workspace.importExport.duplicateSourceColumns'),
+      getImportPreviewErrorMessage(requestError, i18n('workspace.importExport.previewFailed'), {
+        [ImportPreviewErrorCode.DUPLICATE_SOURCE_COLUMNS]: i18n(
+          'workspace.importExport.duplicateSourceColumns',
+        ),
+        [ImportPreviewErrorCode.INVALID_CSV_OPTIONS]: i18n('workspace.importExport.invalidCsvOptions'),
       }),
     [],
   );
 
-  const load = useCallback(
-    (stagedFileId: string) => {
-      setLoading(true);
-      setError(null);
-      sqlService
-        .getImportPreview({ dataSourceId, databaseName, schemaName, tableName, fileId: stagedFileId })
-        .then((data) => {
-          setPreview(data);
-          setMapping(buildInitialImportMapping(data.sourceColumns, data.suggestedMapping));
-        })
-        .catch((e) => {
-          setError(resolveErrorMessage(e));
-        })
-        .finally(() => setLoading(false));
-    },
-    [dataSourceId, databaseName, schemaName, tableName, resolveErrorMessage],
-  );
-
   useEffect(() => {
+    let active = true;
+    setFileId(undefined);
+    setSheets([]);
+    setMode('STANDARD');
     setLoading(true);
     setError(null);
     stageSelectedImportFile(file, sqlService.uploadImportFile, sqlService.stageDesktopImportFile)
       .then((id) => {
-        setFileId(id);
-        load(id);
+        if (active) {
+          setFileId(id);
+        }
       })
       .catch((e) => {
-        setError(resolveErrorMessage(e));
-        setLoading(false);
+        if (active) {
+          setError(resolveErrorMessage(e));
+          setLoading(false);
+        }
       });
-  }, [file, load, resolveErrorMessage]);
+    return () => {
+      active = false;
+    };
+  }, [file, resolveErrorMessage]);
 
-  const targetOptions = useMemo(() => {
-    if (!preview) {
-      return [];
+  useEffect(() => {
+    if (!fileId) {
+      return;
     }
-    return [
-      { value: SKIP_IMPORT_SOURCE_FIELD, label: i18n('workspace.importExport.skipSourceField') },
-      ...preview.targetColumns.map((c) => ({
-        value: c.name,
-        label: `${c.name} (${c.dataType}${c.nullable ? '' : ', NOT NULL'})${c.comment ? ` - ${c.comment}` : ''}`,
-      })),
-    ];
-  }, [preview]);
+    let active = true;
+    let validatedCsvOptions: ICsvOptions | undefined;
+    try {
+      validatedCsvOptions = buildCsvOptionsForTaskSubmit(isCsv, csvOptions);
+    } catch (e) {
+      setPreview(null);
+      setLoadedPreviewKey(undefined);
+      setMapping({});
+      setError(resolveErrorMessage(e));
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    sqlService
+      .getImportPreview({
+        dataSourceId,
+        databaseName,
+        schemaName,
+        tableName,
+        fileId,
+        ...fileOptions,
+        csvOptions: validatedCsvOptions,
+      })
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        setPreview(data);
+        setLoadedPreviewKey(currentPreviewKey);
+        setMapping(buildInitialImportMapping(data.sourceColumns, data.suggestedMapping));
+      })
+      .catch((e) => {
+        if (active) {
+          setPreview(null);
+          setLoadedPreviewKey(undefined);
+          setMapping({});
+          setError(resolveErrorMessage(e));
+        }
+      })
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [
+    currentPreviewKey,
+    csvOptions,
+    fileOptions,
+    dataSourceId,
+    databaseName,
+    fileId,
+    isCsv,
+    resolveErrorMessage,
+    schemaName,
+    tableName,
+  ]);
+
+  useEffect(() => {
+    if (!fileId || !isExcel) return;
+    let active = true;
+    sqlService
+      .getImportSheets({ dataSourceId, databaseName, schemaName, fileId })
+      .then((names) => {
+        if (active) setSheets(names);
+      })
+      .catch(() => {
+        // Worksheets only refine the selection; the preview below already reports file problems.
+        if (active) setSheets([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fileId, isExcel, dataSourceId, databaseName, schemaName, tableName, resolveErrorMessage]);
 
   const blockedColumns = useMemo(() => {
-    if (!preview) {
-      return [];
-    }
+    if (!preview) return [];
     return preview.targetColumns.filter(
-      (c) =>
-        !c.nullable &&
-        !c.autoIncrement &&
-        !Object.values(mapping).includes(c.name) &&
+      (column) =>
+        !column.nullable &&
+        !column.autoIncrement &&
+        !Object.values(mapping).includes(column.name) &&
         (unmappedTarget === ImportUnmappedTarget.NULL ||
-          (c.defaultValue === null && unmappedTarget === ImportUnmappedTarget.DEFAULT)),
+          (column.defaultValue === null && unmappedTarget === ImportUnmappedTarget.DEFAULT)),
     );
   }, [preview, mapping, unmappedTarget]);
-
-  const mappingRows = preview ? buildImportMappingRows(preview.sourceColumns, preview.targetColumns, mapping) : [];
   const duplicateMappings = getDuplicateImportMappings(mapping);
-  const updateMapping = (sourceColumn: string, targetColumn: string) => {
-    setMapping((previous) => ({ ...previous, [sourceColumn]: targetColumn }));
-  };
-
-  const columns: ColumnsType<ImportMappingRow<IImportPreview['targetColumns'][number]>> = [
-    {
-      title: i18n('workspace.importExport.sourceField'),
-      width: '28%',
-      render: (_, record) =>
-        record.kind === 'source' ? (
-          record.sourceColumn
-        ) : (
-          <span className={styles.unmappedSource}>{i18n('workspace.importExport.unmapped')}</span>
-        ),
-    },
-    {
-      title: i18n('workspace.importExport.targetColumn'),
-      width: '52%',
-      render: (_, record) =>
-        record.kind === 'source' ? (
-          <div className={styles.targetColumnCell}>
-            {duplicateMappings[record.sourceColumn] && (
-              <span className={styles.mappingWarningSlot}>
-                <Tooltip
-                  title={i18n(
-                    'workspace.importExport.duplicateMappingContent',
-                    duplicateMappings[record.sourceColumn].targetColumn,
-                    duplicateMappings[record.sourceColumn].mappedSource,
-                  )}
-                >
-                  <span
-                    className={styles.mappingWarningIcon}
-                    role="img"
-                    aria-label={i18n(
-                      'workspace.importExport.duplicateMappingContent',
-                      duplicateMappings[record.sourceColumn].targetColumn,
-                      duplicateMappings[record.sourceColumn].mappedSource,
-                    )}
-                  >
-                    <TriangleAlert size={16} />
-                  </span>
-                </Tooltip>
-              </span>
-            )}
-            <Select
-              className={cx(
-                styles.targetColumnSelect,
-                duplicateMappings[record.sourceColumn] && styles.targetColumnSelectWarning,
-              )}
-              value={mapping[record.sourceColumn]}
-              options={targetOptions}
-              onChange={(value) => updateMapping(record.sourceColumn, value)}
-            />
-          </div>
-        ) : (
-          targetOptions.find(({ value }) => value === record.targetColumn.name)?.label
-        ),
-    },
-    {
-      title: i18n('workspace.importExport.mappingStatus'),
-      width: '20%',
-      render: (_, record) => {
-        if (record.kind === 'source') {
-          return mapping[record.sourceColumn] === SKIP_IMPORT_SOURCE_FIELD
-            ? i18n('workspace.importExport.skipped')
-            : i18n('workspace.importExport.mapped');
-        }
-        if (blockedColumns.some(({ name }) => name === record.targetColumn.name)) {
-          return <span className={styles.requiredStatus}>{i18n('workspace.importExport.unmappedRequired')}</span>;
-        }
-        if (record.targetColumn.autoIncrement) {
-          return i18n('workspace.importExport.unmappedAutoIncrement');
-        }
-        return unmappedTarget === ImportUnmappedTarget.NULL
-          ? i18n('workspace.importExport.unmappedNullValue')
-          : i18n('workspace.importExport.unmappedDefaultValue');
-      },
-    },
-  ];
-
-  const previewColumns: ColumnsType<{ key: number; values: string[] }> =
-    preview?.sourceColumns.map((column, index) => ({
-      title: column,
-      width: 180,
-      ellipsis: true,
-      render: (_, record) => record.values[index],
-    })) || [];
-
-  const previewData =
-    preview?.previewData.map((values, index) => ({
-      key: index,
-      values,
-    })) || [];
+  const dataSectionItems = useImportDataSections({
+    preview,
+    mapping,
+    duplicateMappings,
+    blockedColumnNames: new Set(blockedColumns.map(({ name }) => name)),
+    unmappedTarget,
+    emptyAsNull,
+    emptyAsNullLabel: i18n(
+      isJson ? 'workspace.importExport.emptyStringAsNull' : 'workspace.importExport.emptyAsNull',
+    ),
+    loading,
+    disabled: executing,
+    onMappingChange: (sourceColumn, targetColumn) =>
+      setMapping((current) => ({ ...current, [sourceColumn]: targetColumn })),
+    onUnmappedTargetChange: setUnmappedTarget,
+    onEmptyAsNullChange: setEmptyAsNull,
+  });
 
   const execute = () => {
     const duplicateMapping = Object.values(duplicateMappings)[0];
@@ -230,6 +261,14 @@ const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableNam
       setExecuting(false);
       return;
     }
+    let taskCsvOptions: ICsvOptions | undefined;
+    try {
+      taskCsvOptions = buildCsvOptionsForTaskSubmit(isCsv, csvOptions);
+    } catch (e) {
+      setExecuting(false);
+      setError(resolveErrorMessage(e));
+      return;
+    }
     sqlService
       .executeImportWithMapping({
         dataSourceId,
@@ -241,6 +280,9 @@ const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableNam
           .filter(([, target]) => target && target !== SKIP_IMPORT_SOURCE_FIELD)
           .map(([source, target]) => ({ sourceColumn: source, targetColumn: target })),
         unmappedTarget,
+        ...fileOptions,
+        csvOptions: taskCsvOptions,
+        mode,
       })
       .then((result) => onSubmitted(result.taskId))
       .catch((e) => setError(resolveErrorMessage(e)))
@@ -250,50 +292,77 @@ const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableNam
   return (
     <div className={styles.container}>
       {modalContextHolder}
-      {error && <div className={styles.error}>{error}</div>}
-      {preview && (
-        <>
-          <div className={styles.toolbar}>
-            <strong className={styles.sectionTitle}>{i18n('workspace.importExport.fieldMapping')}</strong>
-            <Select
-              className={styles.unmappedTargetSelect}
-              value={unmappedTarget}
-              onChange={(v) => setUnmappedTarget(v)}
-              options={[
-                { value: ImportUnmappedTarget.DEFAULT, label: i18n('workspace.importExport.unmappedDefault') },
-                { value: ImportUnmappedTarget.NULL, label: i18n('workspace.importExport.unmappedNull') },
-              ]}
+      <div className={styles.scrollContent}>
+        {error && preview && <div className={styles.error}>{error}</div>}
+        <div className={styles.csvOptions}>
+          {isCsv && (
+            <CsvOptionsSections
+              value={csvOptions}
+              activeKeys={activeSections}
+              disabled={executing}
+              dataItems={dataSectionItems}
+              onChange={setCsvOptions}
+              onActiveKeysChange={setActiveSections}
             />
+          )}
+          {isJson && (
+            <JsonOptionsSections
+              value={jsonOptions}
+              disabled={executing}
+              activeKeys={activeSections}
+              onActiveKeysChange={setActiveSections}
+              dataItems={dataSectionItems}
+              onChange={setJsonOptions}
+            />
+          )}
+          {isExcel && (
+            <ExcelOptionsSections
+              value={excelOptions}
+              sheets={sheets}
+              disabled={executing}
+              activeKeys={activeSections}
+              onActiveKeysChange={setActiveSections}
+              dataItems={dataSectionItems}
+              onChange={setExcelOptions}
+            />
+          )}
+        </div>
+        {!preview && (
+          <div className={styles.previewState} role={error ? undefined : 'status'}>
+            {error ? (
+              <div className={styles.previewError} role="alert">
+                <TriangleAlert size={24} />
+                <span>{error}</span>
+              </div>
+            ) : (
+              <Spin />
+            )}
           </div>
-          <Table
-            className={styles.mappingTable}
-            size="small"
-            rowKey="key"
-            columns={columns}
-            dataSource={mappingRows}
-            loading={loading}
-            pagination={false}
-            tableLayout="fixed"
-            scroll={{ y: 220 }}
-          />
-          <strong className={styles.previewTitle}>
-            {i18n('workspace.importExport.dataPreview', preview.previewLimit)}
-          </strong>
-          <Table
-            className={styles.previewTable}
-            size="small"
-            rowKey="key"
-            columns={previewColumns}
-            dataSource={previewData}
-            pagination={false}
-            scroll={{ x: 'max-content', y: 380 }}
-          />
-          <div className={styles.actions}>
-            <Button type="primary" loading={executing} onClick={execute}>
-              {i18n('common.button.execute')}
-            </Button>
-          </div>
-        </>
+        )}
+      </div>
+      {preview && (
+        <div className={styles.actions}>
+          {isCsv && (
+            <ImportModeControl
+              value={mode}
+              onChange={setMode}
+              disabled={executing || loading || loadedPreviewKey !== currentPreviewKey}
+            />
+          )}
+          <Button
+            type="primary"
+            loading={executing}
+            disabled={
+              loading ||
+              !fileId ||
+              loadedPreviewKey !== currentPreviewKey ||
+              !Object.values(mapping).some((target) => target && target !== SKIP_IMPORT_SOURCE_FIELD)
+            }
+            onClick={execute}
+          >
+            {i18n('common.button.execute')}
+          </Button>
+        </div>
       )}
     </div>
   );

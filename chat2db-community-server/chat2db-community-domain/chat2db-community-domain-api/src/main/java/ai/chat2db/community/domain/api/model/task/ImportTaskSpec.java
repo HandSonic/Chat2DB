@@ -30,8 +30,22 @@ public class ImportTaskSpec implements TaskSpec {
 
     private String dataTimeFormat;
 
+    private CsvOptions csvOptions;
+
+    private ExcelOptions excelOptions;
+
+    private JsonOptions jsonOptions;
+
+    private SqlImportOptions sqlImportOptions;
+
     /** Optional mapping supplied by the import-preview workflow. */
     private List<ImportColumnMapping> columnMappings;
 
     private UnmappedTargetStrategy unmappedTarget;
+
+    /**
+     * Execution mode; {@code null} resolves to {@code STANDARD}.
+     */
+    private String mode;
+
 }
